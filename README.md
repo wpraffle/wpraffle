@@ -836,17 +836,3 @@ raffle-system-master/
 7. [ ] Copy the shortcode `[raffle id="X"]` to use anywhere
 8. [ ] Test with a small purchase
 9. [ ] When ready, draw winner from **Raffles → View Details**
-</task_progress>
-- [x] Review current documentation accuracy
-- [x] Review activation/page creation logic
-- [x] Review settings pages structure
-- [x] Plan GitHub auto-updates integration
-- [x] Build Settings Page (tabbed)
-- [x] Create GitHub updater class
-- [x] Update admin class for new menus + save handlers
-- [x] Add page auto-creation on activation
-- [x] Update main plugin file (include updater + activation notice)
-- [x] Fix test email redirect + notices
-- [x] Rewrite DOCUMENTATION.md
-- [ ] Sync & test</task_progress>
-</write_to_file>
