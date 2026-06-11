@@ -1,0 +1,970 @@
+<?php
+/**
+ * WPRaffle — Unified Settings Page (Tabbed)
+ */
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+// Get current tab
+$tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general';
+$tabs = array(
+    'general'  => 'General',
+    'pages'    => 'Pages',
+    'email'    => 'Email',
+    'legal'    => 'Legal',
+    'sync'     => 'Sync',
+    'sync'     => 'Sync',
+    'advanced' => 'Advanced',
+    'updates'  => 'Updates',
+);
+
+// Load settings
+$general = wp_parse_args( get_option( 'wpraffle_general_settings', array() ), array(
+    'company_name'    => get_bloginfo( 'name' ),
+    'company_address' => '',
+    'currency_code'   => 'GBP',
+    'logo_url'        => '',
+    'max_tickets_default' => 100,
+) );
+
+$email = wp_parse_args( get_option( 'wpraffle_email_settings', array() ), array(
+    'from_name'    => get_bloginfo( 'name' ),
+    'from_email'   => get_option( 'admin_email' ),
+    'accent_color' => '#6c5ce7',
+    'logo_url'     => '',
+    'footer_text'  => 'You are receiving this email because you entered a competition on ' . get_bloginfo( 'name' ) . '.',
+) );
+
+$advanced = wp_parse_args( get_option( 'wpraffle_advanced_settings', array() ), array(
+    'auto_fix_duplicates' => 1,
+    'rate_limit_per_minute' => 5,
+    'audit_log_days' => 90,
+    'enable_audit' => 1,
+) );
+
+$updates = wp_parse_args( get_option( 'wpraffle_update_settings', array() ), array(
+    'github_repo'   => 'wpraffle/wpraffle',
+    'auto_update'   => 1,
+    'update_channel' => 'stable',
+) );
+
+$legal = wp_parse_args( get_option( 'wpraffle_legal_settings', array() ), array(
+    'rules_template' => "This competition is open to UK residents aged 18 or over.\n\nYou may enter this competition up to {{max_tickets}} times.\n\nYou will be randomly allocated your ticket number(s) when ordering and you will receive an email confirmation.\n\nThe total amount of tickets for this competition is ({{total_tickets}}).\n\nIf all tickets do not sell out, the draw will happen on {{draw_date}} regardless.\n\nYou may enter the competition online or for free by post by sending your entry to {{company_name}} on a postcard. You must have an account on {{company_name}} for your entry to be processed. All details on your entry MUST correspond to the details on your account to receive the order confirmation and ticket number. Postal entries received without a registered account cannot be processed.\n\nThe live draw will take place on the {{company_name}} Facebook page using an independently verified drawing service (Random Picker) to select the winning ticket number from all Entrants.\n\nThis competition is in no way sponsored, endorsed, administered by or associated with Facebook, Apple or Google. By entering the competitions, Entrants agree that neither Facebook, Apple, nor Google have any liability and are not responsible for the administration or promotion of this competition.",
+    'faq_template' => "How many times can I enter this competition?\nYou can enter this competition up to {{max_tickets}} times.\n\nHow do I get my number?\nOnce your order has been placed your ticket number(s) will be randomly allocated and will show on your order confirmation. They will also be emailed to you, and will be available in the my account area.\n\nHow is the winner chosen?\nThe draw is done live on Facebook using an independently verified drawing service (RandomPicker) to determine the winning ticket number. You'll be contacted directly if you have won.\n\nCan the draw date change?\nIf all the entries are sold sooner the draw may be brought forward. Keep updated on the confirmed draw date via our Facebook page and website.\n\nHow do Instant Payouts work?\nWhen you withdraw money from your {{company_name}} Cash Wallet to your bank account, we use an open banking service provided by an FCA (Financial Conduct Authority) Regulated Company (TrueLayer) to instantly send the money to your bank account. No sensitive details are shared with us, and it is completely secure. This means after winning a cash prize on an Instant Win Competition, you can pay yourself out instantly and don't have to wait for a manual payment to be made to you.",
+) );
+
+// Page status
+$pages = get_option( 'wpraffle_pages', array() );
+$saved = isset( $_GET['saved'] ) && $_GET['saved'] === '1';
+
+// Test email status
+$test_sent   = isset( $_GET['test'] ) && $_GET['test'] === 'sent';
+$test_failed = isset( $_GET['test'] ) && $_GET['test'] === 'failed';
+
+// Check for updates
+$latest_version = get_transient( 'wpraffle_latest_version' );
+$update_available = $latest_version && version_compare( $latest_version, RAFFLE_SYSTEM_VERSION, '>' );
+?>
+<div class="wrap rs-wrap">
+
+    <div class="rs-page-header">
+        <div>
+            <h1 class="rs-page-title">
+                <svg class="wpr-icon wpr-icon--xl" style="color:#6c5ce7;margin-right:10px;"><use href="#wpr-settings"></use></svg>
+                Settings
+            </h1>
+            <p class="rs-page-subtitle">Configure WPRaffle — general, pages, email, and advanced options.</p>
+        </div>
+    </div>
+
+    <?php if ( $saved ) : ?>
+        <div class="notice notice-success is-dismissible"><p><strong>Settings saved.</strong></p></div>
+    <?php endif; ?>
+    <?php if ( $test_sent ) : ?>
+        <div class="notice notice-success is-dismissible"><p><strong>Test email sent!</strong> Check your inbox at <code><?php echo esc_html( get_option( 'admin_email' ) ); ?></code>.</p></div>
+    <?php endif; ?>
+    <?php if ( $test_failed ) : ?>
+        <div class="notice notice-error is-dismissible"><p><strong>Test email failed to send.</strong> Check your WordPress mail configuration (e.g. install WP Mail SMTP).</p></div>
+    <?php endif; ?>
+
+    <!-- Tab Navigation -->
+    <nav class="nav-tab-wrapper wp-clearfix" style="margin-bottom:24px;">
+        <?php foreach ( $tabs as $key => $label ) : ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpraffle-settings&tab=' . $key ) ); ?>"
+               class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>">
+                <?php echo esc_html( $label ); ?>
+            </a>
+        <?php endforeach; ?>
+    </nav>
+
+    <!-- ════════════════════ GENERAL TAB ════════════════════ -->
+    <?php if ( $tab === 'general' ) : ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_general_settings">
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Company Information</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row"><label for="company_name">Company Name</label></th>
+                    <td>
+                        <input type="text" id="company_name" name="company_name" value="<?php echo esc_attr( $general['company_name'] ); ?>" class="regular-text">
+                        <p class="description">Used in email templates, legal text, and postal entry instructions.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="company_address">Company Address</label></th>
+                    <td>
+                        <textarea id="company_address" name="company_address" rows="3" class="large-text"><?php echo esc_textarea( $general['company_address'] ); ?></textarea>
+                        <p class="description">Required for UK raffle regulations. Displayed in postal entry instructions and email footers.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="logo_url">Site Logo URL</label></th>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <input type="url" id="general_logo_url" name="logo_url" value="<?php echo esc_attr( $general['logo_url'] ); ?>" class="regular-text" placeholder="https://example.com/logo.png">
+                            <button type="button" class="button wpraffle-media-btn" data-target="general_logo_url">Choose Image</button>
+                        </div>
+                        <p class="description">Used for Open Graph tags and email templates. Recommended: 360×100px PNG.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Defaults</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row"><label for="currency_code">Currency Code</label></th>
+                    <td>
+                        <select id="currency_code" name="currency_code">
+                            <?php
+                            $currencies = array( 'GBP', 'USD', 'EUR', 'COP' );
+                            foreach ( $currencies as $c ) : ?>
+                                <option value="<?php echo esc_attr( $c ); ?>" <?php selected( $general['currency_code'], $c ); ?>><?php echo esc_html( $c ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Winners Page — Show Instant Wins</th>
+                    <td>
+                        <label><input type="checkbox" name="winners_show_instant_wins" value="1" <?php checked( $general['winners_show_instant_wins'] ?? 1, 1 ); ?>> Show instant win prizes on the winners/ended raffles page</label>
+                        <p class="description">When enabled, instant win prizes are displayed on each ended competition card. Can also be overridden per-shortcode with <code>show_instant="no"</code>.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="max_tickets_default">Default Max Tickets Per User</label></th>
+                    <td>
+                        <input type="number" id="max_tickets_default" name="max_tickets_default" value="<?php echo esc_attr( $general['max_tickets_default'] ); ?>" min="1" max="9999" class="small-text">
+                        <p class="description">Default limit applied to new raffles. Can be overridden per raffle.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <?php submit_button( 'Save General Settings', 'primary' ); ?>
+    </form>
+
+    <!-- ════════════════════ PAGES TAB ════════════════════ -->
+    <?php elseif ( $tab === 'pages' ) : ?>
+
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_pages', 'wpraffle_pages_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_pages">
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Page Assignments</h2>
+            <p class="description" style="margin-bottom:16px;">Select which WordPress pages are used for each raffle feature. You can pick an existing page or create a new one.</p>
+
+            <table class="widefat striped" style="max-width:700px;">
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Shortcode / Type</th>
+                        <th>Assigned Page</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    $page_configs = array(
+                        'raffles'     => array( 'title' => 'Raffles',         'shortcode' => '[raffle_list]',      'type' => 'page' ),
+                        'ended'       => array( 'title' => 'Past Raffles',    'shortcode' => '[raffle_ended_list]', 'type' => 'page' ),
+                        'entry_list'  => array( 'title' => 'Entry Lists',     'shortcode' => '[raffle_entry_list]', 'type' => 'page' ),
+                        'live_draw'   => array( 'title' => 'Live Draw',       'shortcode' => '[raffle_live_draw]',  'type' => 'page' ),
+                    );
+                    foreach ( $page_configs as $key => $cfg ) :
+                        $page_id = isset( $pages[ $key ] ) ? (int) $pages[ $key ] : 0;
+                        $page_exists = $page_id && get_post( $page_id );
+                    ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( $cfg['title'] ); ?></strong></td>
+                        <td><code><?php echo esc_html( $cfg['shortcode'] ); ?></code></td>
+                        <td>
+                            <?php
+                            wp_dropdown_pages( array(
+                                'name'             => 'wpraffle_page_' . $key,
+                                'id'               => 'wpraffle_page_' . $key,
+                                'selected'         => $page_id ?: 0,
+                                'show_option_none' => '— Select a page —',
+                                'option_none_value' => '0',
+                                'post_status'      => 'publish,private,draft',
+                            ) );
+                            ?>
+                        </td>
+                        <td>
+                            <?php if ( $page_exists ) : ?>
+                                <a href="<?php echo esc_url( get_edit_post_link( $page_id ) ); ?>" class="button button-small">Edit</a>
+                                <a href="<?php echo esc_url( get_permalink( $page_id ) ); ?>" class="button button-small" target="_blank">View</a>
+                            <?php else : ?>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;">
+                                    <?php wp_nonce_field( 'wpraffle_create_page', 'wpraffle_page_nonce' ); ?>
+                                    <input type="hidden" name="action" value="wpraffle_create_page">
+                                    <input type="hidden" name="page_key" value="<?php echo esc_attr( $key ); ?>">
+                                    <button type="submit" class="button button-small">Create Page</button>
+                                </form>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <tr style="background:#f0fdf4;">
+                        <td><strong>My Raffles</strong></td>
+                        <td><code>WooCommerce Endpoint</code></td>
+                        <td colspan="2">
+                            <span style="color:#16a34a;font-weight:600;">✓ Automatically added to My Account</span>
+                            <p class="description" style="margin-top:4px;">Appears as a tab under <strong>My Account</strong> at <code>/my-account/my-raffles/</code>. No page assignment needed — it's registered via <code>add_rewrite_endpoint()</code>.</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <?php submit_button( 'Save Page Assignments', 'primary' ); ?>
+        </div>
+    </form>
+
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Shortcode Reference</h2>
+        <p class="description" style="margin-bottom:16px;">Use these shortcodes in any page or post to display raffle content.</p>
+        <table class="widefat striped" style="max-width:700px;">
+            <thead>
+                <tr><th>Shortcode</th><th>Description</th><th>Attributes</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>[raffle id="X"]</code></td>
+                    <td>Display a single raffle with full details, ticket selection, countdown, and purchase button. Replace <strong>X</strong> with the raffle ID.</td>
+                    <td><code>id</code> — The raffle ID <em>(required)</em></td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_list]</code></td>
+                    <td>Display a responsive grid of raffles. Shows live raffles by default; use the <code>status</code> attribute to filter.</td>
+                    <td><code>status</code> — <code>active</code> <em>(default)</em>, <code>finished</code>, <code>draft</code>, or <code>all</code></td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_ended_list]</code></td>
+                    <td>Display a dedicated page showing all ended/finished competitions, total entries, winners, instant wins, and draw verification links.</td>
+                    <td>
+                        <code>columns</code> — Grid columns <em>(default: 3)</em><br>
+                        <code>show_image</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_winner</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_instant</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_video_btn</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_verified_btn</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_date</code> — <code>yes</code> / <code>no</code><br>
+                        <code>show_entries</code> — <code>yes</code> / <code>no</code>
+                    </td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_lookup]</code></td>
+                    <td>Display a ticket lookup form where users can enter their email to find their purchased tickets. Logged-in users are redirected to their account dashboard instead.</td>
+                    <td><em>None</em></td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_live_draw raffle_id="X"]</code></td>
+                    <td>Display an animated live draw page for a raffle. Shows a slot-machine style draw with a "DRAW WINNER" button. Admin only — the actual draw requires admin permissions.</td>
+                    <td><code>raffle_id</code> — The raffle ID <em>(required)</em></td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_entry_list]</code></td>
+                    <td>Display all closed/ended competitions with a download button for each, allowing customers to download the full entry list as a PDF file.</td>
+                    <td>
+                        <code>layout</code> — <code>grid</code> / <code>list</code> <em>(default: grid)</em><br>
+                        <code>columns</code> — Grid columns <em>(default: 2, only used when layout=grid)</em><br>
+                        <code>button_text</code> — Button label <em>(default: "Download Entry List")</em><br>
+                        <code>button_bg</code> — Button background colour <em>(default: #1e40af)</em><br>
+                        <code>button_color</code> — Button text colour <em>(default: #ffffff)</em><br>
+                        <code>button_radius</code> — Button border radius <em>(default: 8)</em><br>
+                        <code>show_image</code> — <code>yes</code> / <code>no</code>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rs-card">
+        <h2 class="rs-card-title">Elementor Widgets</h2>
+        <p class="description" style="margin-bottom:16px;">If Elementor is active, these custom widgets are available for building raffle pages:</p>
+        <table class="widefat striped" style="max-width:700px;">
+            <thead>
+                <tr><th>Widget</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Raffle Title</td><td>Raffle title with styling options</td></tr>
+                <tr><td>Raffle Image</td><td>Prize image with lightbox</td></tr>
+                <tr><td>Raffle Price</td><td>Ticket price or prize value</td></tr>
+                <tr><td>Raffle Progress</td><td>Sales progress bar with stats</td></tr>
+                <tr><td>Raffle Countdown</td><td>Live countdown timer to draw date</td></tr>
+                <tr><td>Raffle Quantity Selector</td><td>Package selection grid</td></tr>
+                <tr><td>Raffle Enter Button</td><td>CTA button to enter the raffle</td></tr>
+                <tr><td>Raffle Description</td><td>Raffle description text</td></tr>
+                <tr><td>Raffle Stats Header</td><td>Key stats (sold, remaining, price)</td></tr>
+                <tr><td>Raffle Tabs</td><td>Tabbed content (description, instant wins, question)</td></tr>
+                <tr><td>Raffle Instant Wins</td><td>Instant win prizes grid</td></tr>
+                <tr><td>Raffle Question</td><td>Skill question form</td></tr>
+                <tr><td>Raffle Trust Badge</td><td>Trust/verification badge</td></tr>
+                <tr><td>Raffle Full Page</td><td>Complete raffle layout (all-in-one)</td></tr>
+                <tr><td>Raffle Modal</td><td>Purchase/entry modal</td></tr>
+                <tr><td>Entry List Downloads</td><td>Closed competition entry list download grid with customisable buttons</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ════════════════════ EMAIL TAB ════════════════════ -->
+    <?php elseif ( $tab === 'email' ) : ?>
+    <div style="display:grid;grid-template-columns:1fr 380px;gap:28px;align-items:start;">
+
+        <div>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="wpraffle-email-settings-form">
+                <?php wp_nonce_field( 'wpraffle_save_email_settings', 'wpraffle_email_nonce' ); ?>
+                <input type="hidden" name="action" value="wpraffle_save_email_settings">
+
+                <div class="rs-card" style="margin-bottom:20px;">
+                    <h2 class="rs-card-title">Sender Details</h2>
+                    <table class="form-table" style="margin:0;">
+                        <tr>
+                            <th scope="row"><label for="from_name">From Name</label></th>
+                            <td>
+                                <input type="text" id="from_name" name="from_name" value="<?php echo esc_attr( $email['from_name'] ); ?>" class="regular-text">
+                                <p class="description">The name that appears in the "From" field of all emails.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="from_email">From Email</label></th>
+                            <td>
+                                <input type="email" id="from_email" name="from_email" value="<?php echo esc_attr( $email['from_email'] ); ?>" class="regular-text">
+                                <p class="description">The reply-to address. Use an address at your own domain for best deliverability.</p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="rs-card" style="margin-bottom:20px;">
+                    <h2 class="rs-card-title">Email Branding</h2>
+                    <table class="form-table" style="margin:0;">
+                        <tr>
+                            <th scope="row"><label for="accent_color">Accent Colour</label></th>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <input type="color" id="accent_color" name="accent_color" value="<?php echo esc_attr( $email['accent_color'] ); ?>" style="width:50px;height:36px;border:1px solid #ddd;border-radius:6px;padding:2px;cursor:pointer;">
+                                    <input type="text" id="accent_color_hex" value="<?php echo esc_attr( $email['accent_color'] ); ?>" class="small-text" style="font-family:monospace;" readonly>
+                                </div>
+                                <p class="description">Used for the email header gradient, buttons, and ticket number highlights.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="email_logo_url">Logo URL</label></th>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <input type="url" id="email_logo_url" name="logo_url" value="<?php echo esc_attr( $email['logo_url'] ); ?>" class="regular-text" placeholder="https://example.com/logo.png">
+                                    <button type="button" class="button wpraffle-media-btn" data-target="email_logo_url">Choose Image</button>
+                                </div>
+                                <p class="description">Your logo displayed in the email header. Recommended: 360x100px PNG with transparent background.</p>
+                                <?php if ( $email['logo_url'] ) : ?>
+                                    <div style="margin-top:10px;padding:10px;background:#f9f9f9;border:1px solid #e5e7eb;border-radius:8px;display:inline-block;">
+                                        <img src="<?php echo esc_url( $email['logo_url'] ); ?>" style="max-height:50px;max-width:200px;display:block;">
+                                    </div>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="footer_text">Footer Text</label></th>
+                            <td>
+                                <textarea id="footer_text" name="footer_text" rows="3" class="large-text"><?php echo esc_textarea( $email['footer_text'] ); ?></textarea>
+                                <p class="description">Shown in the footer of every email.</p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <?php submit_button( 'Save Email Settings', 'primary' ); ?>
+            </form>
+        </div>
+
+        <!-- Right sidebar -->
+        <div style="position:sticky;top:32px;">
+            <div class="rs-card" style="margin-bottom:20px;">
+                <h2 class="rs-card-title">Automated Email Types</h2>
+                <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;">
+                    <?php
+                    $email_types = array(
+                        array( 'icon' => 'ticket', 'label' => 'Purchase Confirmation',  'desc' => 'Sent immediately after a successful order.' ),
+                        array( 'icon' => 'trophy', 'label' => 'Winner Notification',    'desc' => 'Sent to the winner when the draw is conducted.' ),
+                        array( 'icon' => 'zap',    'label' => 'Instant Win Alert',      'desc' => 'Sent when a ticket wins an instant prize.' ),
+                        array( 'icon' => 'clock',  'label' => 'Draw Reminder',          'desc' => 'Sent to all entrants 24h before the draw date.' ),
+                        array( 'icon' => 'alert',  'label' => 'Sold Out Admin Alert',   'desc' => 'Sent to admin when all tickets are sold.' ),
+                    );
+                    foreach ( $email_types as $et ) : ?>
+                        <li style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #f3f4f6;">
+                            <svg class="wpr-icon wpr-icon--md" style="color:#6c5ce7;flex-shrink:0;margin-top:2px;"><use href="#wpr-<?php echo esc_attr( $et['icon'] ); ?>"></use></svg>
+                            <div>
+                                <div style="font-weight:700;font-size:13px;color:#1f2937;"><?php echo esc_html( $et['label'] ); ?></div>
+                                <div style="font-size:12px;color:#6b7280;margin-top:2px;"><?php echo esc_html( $et['desc'] ); ?></div>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+
+            <div class="rs-card">
+                <h2 class="rs-card-title">Send Test Email</h2>
+                <p style="font-size:13px;color:#6b7280;margin:0 0 16px;">Send a test email to verify your settings and preview the template.</p>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <?php wp_nonce_field( 'wpraffle_test_email', 'wpraffle_test_nonce' ); ?>
+                    <input type="hidden" name="action" value="wpraffle_send_test_email">
+                    <input type="email" name="test_email_to" value="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>" class="regular-text" style="width:100%;margin-bottom:12px;">
+                    <?php submit_button( 'Send Test Email', 'secondary', 'submit', false, array( 'style' => 'width:100%' ) ); ?>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════ LEGAL TAB ════════════════════ -->
+    <?php elseif ( $tab === 'legal' ) : ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_legal_settings">
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Competition Rules Template</h2>
+            <p class="description" style="margin-bottom:12px;">This text is displayed in the "Raffle Rules" accordion on every competition. Use placeholders to auto-fill raffle-specific details.</p>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row"><label for="rules_template">Rules Text</label></th>
+                    <td>
+                        <textarea id="rules_template" name="rules_template" rows="12" class="large-text" style="font-size:13px;line-height:1.6;"><?php echo esc_textarea( $legal['rules_template'] ); ?></textarea>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">FAQ Items</h2>
+            <p class="description" style="margin-bottom:12px;">Each item is a question & answer pair displayed in the "Frequently Asked Questions" accordion. Add, edit, or remove items individually.</p>
+            <div id="wpraffle-faq-items">
+                <?php
+                // Parse existing FAQ items (from new array or legacy text)
+                $faq_items = array();
+                if ( ! empty( $legal['faq_items'] ) ) {
+                    $faq_items = is_string( $legal['faq_items'] ) ? json_decode( $legal['faq_items'], true ) : $legal['faq_items'];
+                }
+                if ( empty( $faq_items ) && ! empty( $legal['faq_template'] ) ) {
+                    $faq_items = wpraffle_parse_faq( $legal['faq_template'] );
+                }
+                if ( ! empty( $faq_items ) ) :
+                    foreach ( $faq_items as $i => $item ) :
+                ?>
+                <div class="wpraffle-faq-row" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+                    <div style="flex:1;min-width:0;">
+                        <label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Question</label>
+                        <input type="text" name="faq_questions[]" value="<?php echo esc_attr( $item['q'] ?? '' ); ?>" class="regular-text" style="width:100%;" placeholder="e.g. How many times can I enter?">
+                    </div>
+                    <div style="flex:2;min-width:0;">
+                        <label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Answer</label>
+                        <textarea name="faq_answers[]" rows="3" class="large-text" style="width:100%;font-size:13px;line-height:1.5;" placeholder="Enter the answer..."><?php echo esc_textarea( $item['a'] ?? '' ); ?></textarea>
+                    </div>
+                    <button type="button" class="button wpraffle-faq-remove" style="margin-top:20px;flex-shrink:0;color:#dc2626;" title="Remove this FAQ item">✕</button>
+                </div>
+                <?php endforeach; else : ?>
+                <div class="wpraffle-faq-row" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+                    <div style="flex:1;min-width:0;">
+                        <label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Question</label>
+                        <input type="text" name="faq_questions[]" value="" class="regular-text" style="width:100%;" placeholder="e.g. How many times can I enter?">
+                    </div>
+                    <div style="flex:2;min-width:0;">
+                        <label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Answer</label>
+                        <textarea name="faq_answers[]" rows="3" class="large-text" style="width:100%;font-size:13px;line-height:1.5;" placeholder="Enter the answer..."></textarea>
+                    </div>
+                    <button type="button" class="button wpraffle-faq-remove" style="margin-top:20px;flex-shrink:0;color:#dc2626;" title="Remove this FAQ item">✕</button>
+                </div>
+                <?php endif; ?>
+            </div>
+            <button type="button" class="button" id="wpraffle-faq-add" style="margin-top:8px;">+ Add FAQ Item</button>
+        </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var container = document.getElementById('wpraffle-faq-items');
+            var addBtn = document.getElementById('wpraffle-faq-add');
+            if (!container || !addBtn) return;
+
+            addBtn.addEventListener('click', function() {
+                var row = document.createElement('div');
+                row.className = 'wpraffle-faq-row';
+                row.style.cssText = 'display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;';
+                row.innerHTML = '<div style="flex:1;min-width:0;"><label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Question</label><input type="text" name="faq_questions[]" value="" class="regular-text" style="width:100%;" placeholder="e.g. How many times can I enter?"></div><div style="flex:2;min-width:0;"><label style="font-weight:600;font-size:12px;color:#374151;display:block;margin-bottom:4px;">Answer</label><textarea name="faq_answers[]" rows="3" class="large-text" style="width:100%;font-size:13px;line-height:1.5;" placeholder="Enter the answer..."></textarea></div><button type="button" class="button wpraffle-faq-remove" style="margin-top:20px;flex-shrink:0;color:#dc2626;" title="Remove this FAQ item">✕</button>';
+                container.appendChild(row);
+            });
+
+            container.addEventListener('click', function(e) {
+                if (e.target.classList.contains('wpraffle-faq-remove')) {
+                    var rows = container.querySelectorAll('.wpraffle-faq-row');
+                    if (rows.length > 1) {
+                        e.target.closest('.wpraffle-faq-row').remove();
+                    } else {
+                        alert('You must have at least one FAQ item.');
+                    }
+                }
+            });
+        });
+        </script>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Available Placeholders</h2>
+            <p class="description" style="margin-bottom:12px;">These are automatically replaced with raffle-specific values on the front-end:</p>
+            <table class="widefat striped" style="max-width:600px;">
+                <thead><tr><th>Placeholder</th><th>Replaced With</th></tr></thead>
+                <tbody>
+                    <tr><td><code>{{max_tickets}}</code></td><td>Max entries per user for this raffle</td></tr>
+                    <tr><td><code>{{total_tickets}}</code></td><td>Total number of tickets available</td></tr>
+                    <tr><td><code>{{draw_date}}</code></td><td>Formatted draw date (e.g. "June 8, 2026")</td></tr>
+                    <tr><td><code>{{company_name}}</code></td><td>Your company name from General settings</td></tr>
+                    <tr><td><code>{{ticket_price}}</code></td><td>Price per entry</td></tr>
+                    <tr><td><code>{{prize_description}}</code></td><td>Raffle title / prize name</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <?php submit_button( 'Save Legal Settings', 'primary' ); ?>
+    </form>
+
+    <!-- ════════════════════ ADVANCED TAB ════════════════════ -->
+    <!-- SNC TAB -->
+    <?php elseif ( $tab === 'sync' ) : ?>
+
+    <?php
+    global $wpdb;
+    $raffles_table = $wpdb->prefix . 'raffles';
+    $sync_results  = array();
+    $sync_done     = false;
+
+    // Handle sync all
+    if ( isset( $_GET['sync_all'] ) && check_admin_referer( 'wpraffle_sync_all', 'sync_nonce' ) ) {
+        $all_raffles = $wpdb->get_results( "SELECT * FROM {$raffles_table}" );
+        foreach ( $all_raffles as $r ) {
+            if ( ! $r->wc_product_id ) continue;
+            $product = get_post( $r->wc_product_id );
+            if ( ! $product ) continue;
+
+            $wc_status = $r->status === 'draft' ? 'draft' : 'publish';
+            wp_update_post( array(
+                'ID'          => $r->wc_product_id,
+                'post_title'  => $r->title,
+                'post_status' => $wc_status,
+            ) );
+            update_post_meta( $r->wc_product_id, '_regular_price', $r->ticket_price );
+            update_post_meta( $r->wc_product_id, '_price', $r->ticket_price );
+            update_post_meta( $r->wc_product_id, '_raffle_id', $r->id );
+            update_post_meta( $r->wc_product_id, '_raffle_status', $r->status );
+        }
+        $sync_done = true;
+    }
+
+    // Handle individual sync
+    if ( isset( $_GET['sync_raffle'] ) && check_admin_referer( 'wpraffle_sync_single', 'sync_nonce' ) ) {
+        $sync_id = absint( $_GET['sync_raffle'] );
+        $r = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$raffles_table} WHERE id = %d", $sync_id ) );
+        if ( $r && $r->wc_product_id ) {
+            $product = get_post( $r->wc_product_id );
+            if ( $product ) {
+                $wc_status = $r->status === 'draft' ? 'draft' : 'publish';
+                wp_update_post( array(
+                    'ID'          => $r->wc_product_id,
+                    'post_title'  => $r->title,
+                    'post_status' => $wc_status,
+                ) );
+                update_post_meta( $r->wc_product_id, '_regular_price', $r->ticket_price );
+                update_post_meta( $r->wc_product_id, '_price', $r->ticket_price );
+                update_post_meta( $r->wc_product_id, '_raffle_id', $r->id );
+                update_post_meta( $r->wc_product_id, '_raffle_status', $r->status );
+                $sync_done = true;
+            }
+        }
+    }
+
+    // Handle create missing products
+    if ( isset( $_GET['sync_create'] ) && check_admin_referer( 'wpraffle_sync_create', 'sync_nonce' ) ) {
+        $create_id = absint( $_GET['sync_create'] );
+        $r = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$raffles_table} WHERE id = %d", $create_id ) );
+        if ( $r && class_exists( 'WooCommerce' ) ) {
+            $wc_status = $r->status === 'draft' ? 'draft' : 'publish';
+            $pid = wp_insert_post( array(
+                'post_title'   => $r->title,
+                'post_content' => $r->description,
+                'post_status'  => $wc_status,
+                'post_type'    => 'product',
+            ) );
+            if ( ! is_wp_error( $pid ) ) {
+                wp_set_object_terms( $pid, 'simple', 'product_type' );
+                update_post_meta( $pid, '_price', $r->ticket_price );
+                update_post_meta( $pid, '_regular_price', $r->ticket_price );
+                update_post_meta( $pid, '_virtual', 'yes' );
+                update_post_meta( $pid, '_raffle_id', $r->id );
+                update_post_meta( $pid, '_raffle_status', $r->status );
+                $wpdb->update( $raffles_table, array( 'wc_product_id' => $pid ), array( 'id' => $r->id ) );
+                $sync_done = true;
+            }
+        }
+    }
+
+    // Build sync data
+    $all_raffles = $wpdb->get_results( "SELECT * FROM {$raffles_table} ORDER BY created_at DESC" );
+    foreach ( $all_raffles as $r ) {
+        $row = array(
+            'raffle'       => $r,
+            'product'      => null,
+            'issues'       => array(),
+            'status_match' => true,
+        );
+
+        if ( ! $r->wc_product_id ) {
+            $row['issues'][] = 'No WooCommerce product linked';
+        } else {
+            $product = get_post( $r->wc_product_id );
+            if ( ! $product ) {
+                $row['issues'][] = 'WooCommerce product (ID: ' . $r->wc_product_id . ') has been deleted';
+            } else {
+                $row['product'] = $product;
+                $wc_status = $product->post_status;
+                $expected_status = $r->status === 'draft' ? 'draft' : 'publish';
+
+                if ( $wc_status !== $expected_status ) {
+                    $row['status_match'] = false;
+                    $row['issues'][] = 'Status mismatch: Raffle is "' . $r->status . '" but product is "' . $wc_status . '"';
+                }
+
+                $wc_price = get_post_meta( $r->wc_product_id, '_price', true );
+                if ( $wc_price != $r->ticket_price ) {
+                    $row['issues'][] = 'Price mismatch: Raffle is ' . $r->ticket_price . ' but product is ' . $wc_price;
+                }
+
+                $wc_raffle_id = get_post_meta( $r->wc_product_id, '_raffle_id', true );
+                if ( $wc_raffle_id != $r->id ) {
+                    $row['issues'][] = 'Product _raffle_id meta mismatch';
+                }
+            }
+        }
+
+        $sync_results[] = $row;
+    }
+
+    $issues_count = 0;
+    foreach ( $sync_results as $sr ) {
+        if ( ! empty( $sr['issues'] ) ) $issues_count++;
+    }
+    ?>
+
+    <?php if ( $sync_done ) : ?>
+        <div class="notice notice-success is-dismissible"><p><strong>Sync completed.</strong> Raffle and WooCommerce product data has been synchronised.</p></div>
+    <?php endif; ?>
+
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Raffle & WooCommerce Product Sync</h2>
+        <p class="description" style="margin-bottom:16px;">This tool ensures every raffle has a matching WooCommerce product with the correct status, price, and metadata. If products get out of sync (e.g. manually editing a product, deleting via WP admin), use this to fix them.</p>
+
+        <?php if ( $issues_count > 0 ) : ?>
+            <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+                <svg class="wpr-icon wpr-icon--lg" style="color:#d97706;"><use href="#wpr-alert"></use></svg>
+                <div>
+                    <strong style="color:#92400e;"><?php echo esc_html( $issues_count ); ?> raffle(s) have sync issues.</strong>
+                    <div style="font-size:13px;color:#78350f;">Click "Sync All" below to fix all issues at once, or sync individually.</div>
+                </div>
+            </div>
+        <?php else : ?>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+                <svg class="wpr-icon wpr-icon--lg" style="color:#16a34a;"><use href="#wpr-check-circle"></use></svg>
+                <div>
+                    <strong style="color:#166534;">All raffles are in sync.</strong>
+                    <div style="font-size:13px;color:#15803d;">No issues found between raffles and WooCommerce products.</div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <div style="margin-bottom:16px;">
+            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=sync&sync_all=1' ), 'wpraffle_sync_all', 'sync_nonce' ) ); ?>" class="button button-primary" onclick="return confirm('This will update all WooCommerce products to match their raffle data. Continue?');">
+                <?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm', 'Sync' ); ?> Sync All
+            </a>
+        </div>
+    </div>
+
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Sync Status Table</h2>
+        <table class="widefat striped" style="max-width:900px;">
+            <thead>
+                <tr>
+                    <th>Raffle</th>
+                    <th>Raffle Status</th>
+                    <th>WC Product</th>
+                    <th>Product Status</th>
+                    <th>Price</th>
+                    <th>Issues</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ( $sync_results as $sr ) :
+                    $r = $sr['raffle'];
+                    $has_issues = ! empty( $sr['issues'] );
+                ?>
+                <tr style="<?php echo $has_issues ? 'background:#fef2f2;' : ''; ?>">
+                    <td>
+                        <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=raffle-list&action=edit&id=' . $r->id ) ); ?>"><?php echo esc_html( $r->title ); ?></a></strong>
+                        <div style="font-size:11px;color:#6b7280;">ID: <?php echo esc_html( $r->id ); ?></div>
+                    </td>
+                    <td>
+                        <?php
+                        $status_colors = array( 'draft' => '#6b7280', 'active' => '#16a34a', 'finished' => '#dc2626' );
+                        $sc = isset( $status_colors[ $r->status ] ) ? $status_colors[ $r->status ] : '#6b7280';
+                        ?>
+                        <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;color:#fff;background:<?php echo esc_attr( $sc ); ?>;"><?php echo esc_html( ucfirst( $r->status ) ); ?></span>
+                    </td>
+                    <td>
+                        <?php if ( $sr['product'] ) : ?>
+                            <a href="<?php echo esc_url( get_edit_post_link( $r->wc_product_id ) ); ?>" target="_blank">#<?php echo esc_html( $r->wc_product_id ); ?></a>
+                        <?php elseif ( $r->wc_product_id ) : ?>
+                            <span style="color:#dc2626;font-weight:600;">#<?php echo esc_html( $r->wc_product_id ); ?> (deleted)</span>
+                        <?php else : ?>
+                            <span style="color:#9ca3af;">None</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ( $sr['product'] ) :
+                            $psc = $sr['product']->post_status === 'publish' ? '#16a34a' : '#6b7280';
+                        ?>
+                            <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;color:#fff;background:<?php echo esc_attr( $psc ); ?>;"><?php echo esc_html( ucfirst( $sr['product']->post_status ) ); ?></span>
+                        <?php else : ?>
+                            <span style="color:#9ca3af;">&mdash;</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php
+                        if ( $sr['product'] ) {
+                            $wc_price = get_post_meta( $r->wc_product_id, '_price', true );
+                            $price_match = $wc_price == $r->ticket_price;
+                            echo '<span style="' . ( $price_match ? 'color:#16a34a' : 'color:#dc2626;font-weight:700' ) . ';">' . esc_html( wpr_price( $wc_price ) ) . '</span>';
+                            echo '<div style="font-size:11px;color:#9ca3af;">Expected: ' . esc_html( wpr_price( $r->ticket_price ) ) . '</div>';
+                        } else {
+                            echo '<span style="color:#9ca3af;">&mdash;</span>';
+                        }
+                        ?>
+                    </td>
+                    <td>
+                        <?php if ( $has_issues ) : ?>
+                            <ul style="margin:0;padding:0 0 0 16px;color:#dc2626;font-size:12px;">
+                                <?php foreach ( $sr['issues'] as $issue ) : ?>
+                                    <li><?php echo esc_html( $issue ); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else : ?>
+                            <span style="color:#16a34a;font-weight:600;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'OK' ); ?> OK</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ( $has_issues ) : ?>
+                            <?php if ( ! $r->wc_product_id || ! $sr['product'] ) : ?>
+                                <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=sync&sync_create=' . $r->id ), 'wpraffle_sync_create', 'sync_nonce' ) ); ?>" class="button button-small" onclick="return confirm('Create a WooCommerce product for this raffle?');">Create Product</a>
+                            <?php else : ?>
+                                <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=sync&sync_raffle=' . $r->id ), 'wpraffle_sync_single', 'sync_nonce' ) ); ?>" class="button button-small">Fix</a>
+                            <?php endif; ?>
+                        <?php else : ?>
+                            <span style="color:#9ca3af;font-size:12px;">&mdash;</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+
+    <?php elseif ( $tab === 'advanced' ) : ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_advanced_settings">
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Duplicate Handling</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row">Auto-Fix Duplicates</th>
+                    <td>
+                        <label><input type="checkbox" name="auto_fix_duplicates" value="1" <?php checked( $advanced['auto_fix_duplicates'], 1 ); ?>> Automatically fix duplicate tickets after each purchase</label>
+                        <p class="description">Recommended: enabled. Runs the duplicate correction algorithm after every purchase.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Security</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row"><label for="rate_limit_per_minute">Rate Limit (per minute)</label></th>
+                    <td>
+                        <input type="number" id="rate_limit_per_minute" name="rate_limit_per_minute" value="<?php echo esc_attr( $advanced['rate_limit_per_minute'] ); ?>" min="1" max="60" class="small-text">
+                        <p class="description">Max AJAX requests per IP per minute. Prevents brute-force ticket purchasing.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Audit Log</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row">Enable Audit Logging</th>
+                    <td>
+                        <label><input type="checkbox" name="enable_audit" value="1" <?php checked( $advanced['enable_audit'], 1 ); ?>> Log all raffle actions (draws, purchases, admin changes)</label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="audit_log_days">Retention Period (days)</label></th>
+                    <td>
+                        <input type="number" id="audit_log_days" name="audit_log_days" value="<?php echo esc_attr( $advanced['audit_log_days'] ); ?>" min="7" max="365" class="small-text">
+                        <p class="description">Logs older than this will be automatically purged.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Scheduled Tasks</h2>
+            <table class="widefat" style="max-width:600px;">
+                <thead><tr><th>Task</th><th>Interval</th><th>Next Run</th></tr></thead>
+                <tbody>
+                    <?php
+                    $crons = array(
+                        'raffle_system_auto_draw_cron' => 'Auto Draw (expired raffles)',
+                        'raffle_draw_reminder_cron' => 'Draw Reminder Emails',
+                        'raffle_cleanup_reservations' => 'Cleanup Expired Reservations',
+                    );
+                    foreach ( $crons as $hook => $label ) :
+                        $timestamp = wp_next_scheduled( $hook );
+                    ?>
+                    <tr>
+                        <td><?php echo esc_html( $label ); ?></td>
+                        <td>Hourly</td>
+                        <td><?php echo $timestamp ? esc_html( date( 'Y-m-d H:i:s', $timestamp ) ) : '<em>Not scheduled</em>'; ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <?php submit_button( 'Save Advanced Settings', 'primary' ); ?>
+    </form>
+
+    <!-- ════════════════════ UPDATES TAB ════════════════════ -->
+    <?php elseif ( $tab === 'updates' ) : ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_update_settings">
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Update Status</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row">Current Version</th>
+                    <td><code style="font-size:14px;padding:4px 10px;background:#f3f4f6;border-radius:4px;"><?php echo esc_html( RAFFLE_SYSTEM_VERSION ); ?></code></td>
+                </tr>
+                <tr>
+                    <th scope="row">Latest Available</th>
+                    <td>
+                        <?php if ( $latest_version ) : ?>
+                            <code style="font-size:14px;padding:4px 10px;background:<?php echo $update_available ? '#fef2f2' : '#f0fdf4'; ?>;border-radius:4px;"><?php echo esc_html( $latest_version ); ?></code>
+                            <?php if ( $update_available ) : ?>
+                                <span style="color:#e74c3c;font-weight:700;margin-left:12px;">Update available!</span>
+                            <?php else : ?>
+                                <span style="color:#00b894;font-weight:700;margin-left:12px;">Up to date</span>
+                            <?php endif; ?>
+                        <?php else : ?>
+                            <em>Not checked yet</em>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </table>
+
+            <div style="margin-top:12px;">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpraffle-settings&tab=updates&check_updates=1' ) ); ?>" class="button">Check for Updates</a>
+            </div>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">GitHub Repository</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row"><label for="github_repo">Repository</label></th>
+                    <td>
+                        <input type="text" id="github_repo" name="github_repo" value="<?php echo esc_attr( $updates['github_repo'] ); ?>" class="regular-text" placeholder="owner/repo">
+                        <p class="description">GitHub repository in <code>owner/repo</code> format. Releases are checked for updates.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Auto-Update</th>
+                    <td>
+                        <label><input type="checkbox" name="auto_update" value="1" <?php checked( $updates['auto_update'], 1 ); ?>> Automatically install updates when available</label>
+                        <p class="description">When disabled, you will be notified of available updates but must install manually.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <?php submit_button( 'Save Update Settings', 'primary' ); ?>
+    </form>
+
+    <?php endif; ?>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Color picker sync
+    var picker = document.getElementById('accent_color');
+    var hex = document.getElementById('accent_color_hex');
+    if ( picker && hex ) {
+        picker.addEventListener('input', function() { hex.value = picker.value; });
+    }
+
+    // Media upload buttons
+    document.querySelectorAll('.wpraffle-media-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.getElementById(btn.dataset.target);
+            if ( ! target ) return;
+            var frame = wp.media({
+                title: 'Choose Image',
+                button: { text: 'Use this image' },
+                multiple: false
+            });
+            frame.on('select', function() {
+                var attachment = frame.state().get('selection').first().toJSON();
+                target.value = attachment.url;
+            });
+            frame.open();
+        });
+    });
+});
+</script>

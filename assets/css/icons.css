@@ -1,0 +1,45 @@
+/* ==========================================================================
+   WPRaffle — Icon System (Lucide SVG Sprite)
+   Icons sourced from Lucide (https://lucide.dev) — MIT License
+   ========================================================================== */
+
+/* ─── Base icon ─────────────────────────────── */
+.wpr-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    vertical-align: middle;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* default size */
+    width: 18px;
+    height: 18px;
+}
+
+/* ─── Size variants ──────────────────────────── */
+.wpr-icon--xs  { width: 12px; height: 12px; }
+.wpr-icon--sm  { width: 14px; height: 14px; }
+.wpr-icon--md  { width: 18px; height: 18px; } /* default */
+.wpr-icon--lg  { width: 22px; height: 22px; }
+.wpr-icon--xl  { width: 28px; height: 28px; }
+.wpr-icon--2xl { width: 36px; height: 36px; }
+.wpr-icon--3xl { width: 48px; height: 48px; }
+
+/* ─── Colour helpers ─────────────────────────── */
+.wpr-icon--primary  { color: var(--rf-primary, #6c5ce7); }
+.wpr-icon--success  { color: var(--rf-success, #00b894); }
+.wpr-icon--warning  { color: var(--rf-warning, #fdcb6e); }
+.wpr-icon--danger   { color: var(--rf-danger, #ff6b6b); }
+.wpr-icon--muted    { color: #9ca3af; }
+.wpr-icon--white    { color: #ffffff; }
+
+/* ─── Inline spacing ─────────────────────────── */
+.wpr-icon + span,
+span + .wpr-icon,
+.wpr-icon + .wpr-icon-label {
+    margin-left: 4px;
+}
