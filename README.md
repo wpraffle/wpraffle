@@ -84,7 +84,7 @@
 ### Manual Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/wpraffle.git
+git clone https://github.com/wpraffle/wpraffle.git
 # Copy to wp-content/plugins/wpraffle/
 # Activate from WordPress Plugins page
 ```
