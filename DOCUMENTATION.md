@@ -23,29 +23,28 @@
 10. [Ticket System](#ticket-system)
 11. [Purchase Process](#purchase-process)
 12. [WooCommerce Integration](#woocommerce-integration)
-13. [Wompi Payment Gateway](#wompi-payment-gateway)
-14. [Instant Wins](#instant-wins)
-15. [Multi-Winner & Multi-Prize Draws](#multi-winner--multi-prize-draws)
-16. [Skill Questions](#skill-questions)
-17. [Free / Postal Entry](#free--postal-entry)
-18. [Geo-Restriction](#geo-restriction)
-19. [Referral System](#referral-system)
-20. [Templates & Clone](#templates--clone)
-21. [Live Draw](#live-draw)
-22. [Winner Draw](#winner-draw)
-23. [Email System](#email-system)
-24. [Countdown Timer](#countdown-timer)
-25. [Progress Bar](#progress-bar)
-26. [Audit Log](#audit-log)
-27. [Duplicate Detection & Correction](#duplicate-detection--correction)
-28. [Reservations](#reservations)
-29. [Analytics Dashboard](#analytics-dashboard)
-30. [GitHub Auto-Updates](#github-auto-updates)
-31. [AJAX Endpoints](#ajax-endpoints)
-32. [Security](#security)
-33. [Cron Jobs](#cron-jobs)
-34. [File Structure](#file-structure)
-35. [Hooks & Filters](#hooks--filters)
+13. [Instant Wins](#instant-wins)
+14. [Multi-Winner & Multi-Prize Draws](#multi-winner--multi-prize-draws)
+15. [Skill Questions](#skill-questions)
+16. [Free / Postal Entry](#free--postal-entry)
+17. [Geo-Restriction](#geo-restriction)
+18. [Referral System](#referral-system)
+19. [Templates & Clone](#templates--clone)
+20. [Live Draw](#live-draw)
+21. [Winner Draw](#winner-draw)
+22. [Email System](#email-system)
+23. [Countdown Timer](#countdown-timer)
+24. [Progress Bar](#progress-bar)
+25. [Audit Log](#audit-log)
+26. [Duplicate Detection & Correction](#duplicate-detection--correction)
+27. [Reservations](#reservations)
+28. [Analytics Dashboard](#analytics-dashboard)
+29. [GitHub Auto-Updates](#github-auto-updates)
+30. [AJAX Endpoints](#ajax-endpoints)
+31. [Security](#security)
+32. [Cron Jobs](#cron-jobs)
+33. [File Structure](#file-structure)
+34. [Hooks & Filters](#hooks--filters)
 
 ---
 
@@ -78,7 +77,7 @@ WPRaffle is a comprehensive WordPress plugin for running online raffles and comp
 - Elementor (optional, for visual page building)
 
 ### Install
-1. Upload the `raffle-system-master` folder to `/wp-content/plugins/`
+1. Upload the `wpraffle` folder to `/wp-content/plugins/`
 2. Activate the plugin from **Plugins → Installed Plugins**
 3. WPRaffle will automatically:
    - Create all required database tables
@@ -232,8 +231,6 @@ The plugin creates **10 tables**:
 | total_amount | decimal(10,2) | Total paid |
 | payment_status | varchar(20) | `pending`, `completed` |
 | wc_order_id | bigint(20) | WooCommerce order ID |
-| wompi_reference | varchar(255) | Wompi payment reference |
-| wompi_transaction | varchar(255) | Wompi transaction ID |
 | purchase_date | datetime | Transaction timestamp |
 | referral_code | varchar(50) | Referral code used |
 | entry_type | varchar(20) | `paid`, `free`, `referral` |
@@ -390,9 +387,9 @@ Unified settings page at **Raffles → Settings** with 6 tabs:
 - Email types reference (5 automated email types)
 
 ### Payment
-- Payment method: WooCommerce or Wompi
-- Wompi environment (test/production)
-- Wompi public and private keys
+- WooCommerce handles all payment processing
+- Supports any WooCommerce payment gateway (Stripe, PayPal, etc.)
+- Raffle products automatically created and synced
 
 ### Advanced
 - Auto-fix duplicates toggle
@@ -459,17 +456,6 @@ Each raffle automatically creates/updates a WooCommerce simple product:
 - Orders link back to raffle purchases
 - WooCommerce handles checkout flow and payment processing
 - Shadow product for generic raffle entry purchases
-
----
-
-## Wompi Payment Gateway
-
-Alternative direct credit card processing via Wompi API:
-- Sandbox/test and production environments
-- Public/private key authentication
-- Direct card tokenisation
-- Transaction reference tracking
-- Configured in **Settings → Payment**
 
 ---
 
@@ -829,31 +815,3 @@ wpraffle/
 ### Filters
 - `pre_set_site_transient_update_plugins` — Inject plugin updates
 - `plugins_api` — Plugin info for update screen
-
----
-
-## Quick Start Checklist
-
-1. [ ] Install and activate WPRaffle
-2. [ ] Configure **Settings → General** (company name, address)
-3. [ ] Configure **Settings → Email** (sender details, branding)
-4. [ ] Configure **Settings → Payment** (WooCommerce or Wompi)
-5. [ ] Verify auto-created pages at **Settings → Pages**
-6. [ ] Create your first raffle at **Raffles → Create Raffle**
-7. [ ] Copy the shortcode `[raffle id="X"]` to use anywhere
-8. [ ] Test with a small purchase
-9. [ ] When ready, draw winner from **Raffles → View Details**
-</task_progress>
-- [x] Review current documentation accuracy
-- [x] Review activation/page creation logic
-- [x] Review settings pages structure
-- [x] Plan GitHub auto-updates integration
-- [x] Build Settings Page (tabbed)
-- [x] Create GitHub updater class
-- [x] Update admin class for new menus + save handlers
-- [x] Add page auto-creation on activation
-- [x] Update main plugin file (include updater + activation notice)
-- [x] Fix test email redirect + notices
-- [x] Rewrite DOCUMENTATION.md
-- [ ] Sync & test</task_progress>
-</write_to_file>
