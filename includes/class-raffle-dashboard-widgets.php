@@ -257,7 +257,7 @@ class Raffle_Dashboard_Widgets {
                             '<div>' +
                                 '<div class=\"rs-dw-raffle-title\">' + $('<span>').text(r.title).html() + '</div>' +
                                 '<div class=\"rs-dw-raffle-meta\">' + Number(r.sold_tickets).toLocaleString() + ' / ' + Number(r.total_tickets).toLocaleString() + ' tickets · ' + raffleDW.curSym + Number(r.ticket_price).toFixed(2) + '/entry' +
-                                (r.draw_date ? ' · Draw: ' + r.draw_date : '') +
+                                (r.draw_date ? ' · Draw: ' + $('<span>').text(r.draw_date).html() : '') +
                                 '</div>' +
                             '</div>' +
                             '<div>' +
@@ -285,7 +285,7 @@ class Raffle_Dashboard_Widgets {
                             '<td>' + $('<span>').text(t.buyer_name).html() + '</td>' +
                             '<td>' + Number(t.quantity).toLocaleString() + '</td>' +
                             '<td>' + raffleDW.curSym + Number(t.total_amount).toFixed(2) + '</td>' +
-                            '<td><span class=\"rs-dw-status rs-dw-status-' + statusCls + '\">' + t.payment_status + '</span></td>' +
+                            '<td><span class=\"rs-dw-status rs-dw-status-' + statusCls + '\">' + $('<span>').text(t.payment_status).html() + '</span></td>' +
                         '</tr>';
                     }
                     txnHtml += '</tbody></table>';

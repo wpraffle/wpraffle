@@ -44,6 +44,11 @@ class Raffle_Purchase {
             wp_send_json_error( array( 'message' => 'Raffle not found or not active.' ) );
         }
 
+        // SEC-6 FIX: Enforce geo restrictions in purchase flow
+        if ( class_exists( 'Raffle_Geo' ) && ! Raffle_Geo::check_eligibility( $raffle ) ) {
+            wp_send_json_error( array( 'message' => 'This competition is not available in your region.' ) );
+        }
+
         // Validate max tickets per user (per-purchase limit)
         $max_tickets = isset( $raffle->max_tickets_per_user ) ? (int) $raffle->max_tickets_per_user : 100;
         if ( $quantity < 1 || $quantity > $max_tickets ) {
@@ -90,7 +95,8 @@ class Raffle_Purchase {
         }
 
         // Rate limiting: prevent spam purchases (max 1 request per 30 seconds per email+IP)
-        $rate_key  = 'raffle_rate_' . md5( $buyer_email . '_' . $_SERVER['REMOTE_ADDR'] );
+        $client_ip = self::get_client_ip();
+        $rate_key  = 'raffle_rate_' . md5( $buyer_email . '_' . $client_ip );
         if ( get_transient( $rate_key ) ) {
             wp_send_json_error( array( 'message' => 'Please wait a moment before trying again.' ) );
         }
@@ -150,5 +156,32 @@ class Raffle_Purchase {
             'purchase_id' => $purchase_id,
             'total'       => number_format( $total_amount, 2 ),
         ) );
+    }
+
+    /**
+     * SEC-11 FIX: Get the real client IP, accounting for reverse proxies.
+     */
+    private static function get_client_ip() {
+        $headers = array(
+            'HTTP_CF_CONNECTING_IP', // CloudFlare
+            'HTTP_X_FORWARDED_FOR',  // Standard proxy
+            'HTTP_X_REAL_IP',        // Nginx proxy
+            'REMOTE_ADDR',          // Direct connection
+        );
+
+        foreach ( $headers as $header ) {
+            if ( ! empty( $_SERVER[ $header ] ) ) {
+                $ip = sanitize_text_field( wp_unslash( $_SERVER[ $header ] ) );
+                // X-Forwarded-For can contain multiple IPs — take the first
+                if ( strpos( $ip, ',' ) !== false ) {
+                    $ip = trim( explode( ',', $ip )[0] );
+                }
+                if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+                    return $ip;
+                }
+            }
+        }
+
+        return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' ) );
     }
 }

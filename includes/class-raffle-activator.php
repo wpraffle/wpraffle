@@ -270,7 +270,8 @@ class Raffle_Activator {
 
         if ( ! is_wp_error( $post_id ) ) {
             wp_set_object_terms( $post_id, 'simple', 'product_type' );
-            update_post_meta( $post_id, '_visibility', 'hidden' );
+            // SEC-15 FIX: Use product_visibility taxonomy instead of deprecated _visibility meta
+            wp_set_object_terms( $post_id, array( 'exclude-from-catalog', 'exclude-from-search' ), 'product_visibility' );
             update_post_meta( $post_id, '_stock_status', 'instock' );
             update_post_meta( $post_id, '_regular_price', '0' );
             update_post_meta( $post_id, '_price', '0' );

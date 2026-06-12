@@ -297,11 +297,9 @@
     form.find(".raffle-submit-btn").prop("disabled", false);
     modal.find(".raffle-loading").hide();
     modal.find(".raffle-error-msg").remove();
-    form.before(
-      '<div class="raffle-error-msg" style="background:#fee;color:#c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:14px;">' +
-        msg +
-        "</div>"
-    );
+    var errorDiv = $('<div class="raffle-error-msg" style="background:#fee;color:#c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:14px;"></div>');
+    errorDiv.text(msg);
+    form.before(errorDiv);
   }
 
   function showConfirmation(tickets) {
@@ -409,10 +407,11 @@
       answer_index: answerIdx,
     }, function (response) {
       if (response.success) {
-        form.html('<div class="free-entry-success" style="background:#dcfce7;color:#166534;padding:20px;border-radius:8px;text-align:center;">' +
-          '<h3>🎉 You\'re In!</h3>' +
-          '<p>Your free entry has been submitted. Ticket number: <strong>' + response.data.ticket_number + '</strong></p>' +
-          '</div>');
+        var ticketSpan = $('<strong>').text(response.data.ticket_number);
+        form.html($('<div class="free-entry-success" style="background:#dcfce7;color:#166534;padding:20px;border-radius:8px;text-align:center;">')
+          .append('<h3>🎉 You\'re In!</h3>')
+          .append($('<p>').text('Your free entry has been submitted. Ticket number: ').append(ticketSpan))
+        );
       } else {
         alert(response.data.message || "Error submitting free entry.");
         btn.prop("disabled", false).text("Submit Free Entry");
@@ -439,7 +438,8 @@
   });
 
   function showToast(msg) {
-    var toast = $('<div class="raffle-toast" style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#166534;color:#fff;padding:12px 24px;border-radius:8px;z-index:99999;font-weight:600;">' + msg + '</div>');
+    var toast = $('<div class="raffle-toast" style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#166534;color:#fff;padding:12px 24px;border-radius:8px;z-index:99999;font-weight:600;"></div>');
+    toast.text(msg);
     $("body").append(toast);
     setTimeout(function () { toast.fadeOut(function () { toast.remove(); }); }, 2500);
   }

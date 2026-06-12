@@ -73,11 +73,25 @@ class Raffle_Tickets {
         if ( ! empty( $requested_numbers ) ) {
             $req_array = array_filter( array_map( 'intval', explode( ',', $requested_numbers ) ) );
             foreach ( $req_array as $req_num ) {
-                if ( $req_num >= 1 && $req_num <= $total && ! isset( $taken_set[ $req_num ] ) && ! isset( $selected_set[ $req_num ] ) ) {
-                    $selected[] = $req_num;
-                    $selected_set[ $req_num ] = true;
+                if ( $req_num < 1 || $req_num > $total ) {
+                    if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+                    return new WP_Error( 'invalid_number', sprintf( 'Selected number %d is out of range.', $req_num ) );
                 }
-                if ( count( $selected ) >= $quantity ) break;
+                if ( isset( $taken_set[ $req_num ] ) ) {
+                    if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+                    return new WP_Error( 'number_taken', sprintf( 'Ticket number %d is already sold.', $req_num ) );
+                }
+                if ( isset( $selected_set[ $req_num ] ) ) {
+                    if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+                    return new WP_Error( 'duplicate_number', sprintf( 'Duplicate ticket number %d selected.', $req_num ) );
+                }
+                $selected[] = $req_num;
+                $selected_set[ $req_num ] = true;
+            }
+
+            if ( count( $selected ) !== $quantity ) {
+                if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+                return new WP_Error( 'quantity_mismatch', 'Number of selected tickets does not match the quantity.' );
             }
         }
 
@@ -155,5 +169,67 @@ class Raffle_Tickets {
             "SELECT * FROM {$table} WHERE purchase_id = %d ORDER BY ticket_number ASC",
             $purchase_id
         ) );
+    }
+
+    /**
+     * Validate selected numbers server-side.
+     * Returns true if valid, or a WP_Error if invalid.
+     */
+    public static function validate_selected_numbers( $raffle_id, $selected_numbers_str, $quantity ) {
+        global $wpdb;
+
+        if ( empty( $selected_numbers_str ) ) {
+            return true; // Auto-generated numbers is fine
+        }
+
+        $numbers = array_filter( array_map( 'intval', explode( ',', $selected_numbers_str ) ) );
+        if ( count( $numbers ) !== $quantity ) {
+            return new WP_Error( 'invalid_quantity', 'The number of selected tickets does not match the quantity requested.' );
+        }
+
+        // Get raffle details
+        $raffle = $wpdb->get_row( $wpdb->prepare(
+            "SELECT total_tickets FROM {$wpdb->prefix}raffles WHERE id = %d",
+            $raffle_id
+        ) );
+
+        if ( ! $raffle ) {
+            return new WP_Error( 'invalid_raffle', 'Raffle not found.' );
+        }
+
+        $total_tickets = (int) $raffle->total_tickets;
+
+        // Check range
+        foreach ( $numbers as $num ) {
+            if ( $num < 1 || $num > $total_tickets ) {
+                return new WP_Error( 'out_of_range', sprintf( 'Selected number %d is out of range (1-%d).', $num, $total_tickets ) );
+            }
+        }
+
+        // Check unique among selected
+        if ( count( array_unique( $numbers ) ) !== count( $numbers ) ) {
+            return new WP_Error( 'duplicate_selection', 'Duplicate ticket numbers selected.' );
+        }
+
+        // Check if already sold
+        $taken = $wpdb->get_col( $wpdb->prepare(
+            "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE raffle_id = %d AND ticket_number IN (" . implode( ',', array_map( 'intval', $numbers ) ) . ")",
+            $raffle_id
+        ) );
+
+        if ( ! empty( $taken ) ) {
+            return new WP_Error( 'already_sold', sprintf( 'The following ticket numbers are already sold: %s.', implode( ', ', $taken ) ) );
+        }
+
+        // Check active reservations (excluding current session if applicable)
+        if ( class_exists( 'Raffle_Reservations' ) ) {
+            $reserved = Raffle_Reservations::get_reserved_numbers( $raffle_id );
+            $reserved_taken = array_intersect( $numbers, $reserved );
+            if ( ! empty( $reserved_taken ) ) {
+                return new WP_Error( 'reserved', sprintf( 'The following ticket numbers are currently reserved: %s.', implode( ', ', $reserved_taken ) ) );
+            }
+        }
+
+        return true;
     }
 }

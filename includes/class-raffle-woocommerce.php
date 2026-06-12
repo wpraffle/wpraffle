@@ -129,6 +129,11 @@ class Raffle_WooCommerce {
             wp_send_json_error( array( 'message' => 'This raffle is not currently active/live.' ) );
         }
 
+        // SEC-6 FIX: Enforce geo restrictions in order creation
+        if ( class_exists( 'Raffle_Geo' ) && ! Raffle_Geo::check_eligibility( $raffle ) ) {
+            wp_send_json_error( array( 'message' => 'This competition is not available in your region.' ) );
+        }
+
         // Validate max tickets per user
         $max_tickets = isset( $raffle->max_tickets_per_user ) ? (int) $raffle->max_tickets_per_user : 100;
         if ( $quantity < 1 || $quantity > $max_tickets ) {
@@ -148,6 +153,14 @@ class Raffle_WooCommerce {
         $available = $raffle->total_tickets - $raffle->sold_tickets;
         if ( $quantity > $available ) {
             wp_send_json_error( array( 'message' => 'Not enough tickets available. ' . $available . ' remaining.' ) );
+        }
+
+        // SEC-5 FIX: Validate selected_numbers server-side
+        if ( ! empty( $selected_numbers ) ) {
+            $validation = Raffle_Tickets::validate_selected_numbers( $raffle_id, $selected_numbers, $quantity );
+            if ( is_wp_error( $validation ) ) {
+                wp_send_json_error( array( 'message' => $validation->get_error_message() ) );
+            }
         }
 
         $total_amount = $quantity * $raffle->ticket_price;
@@ -223,6 +236,11 @@ class Raffle_WooCommerce {
             wp_send_json_error( array( 'message' => 'This raffle is not currently active/live.' ) );
         }
 
+        // SEC-6 FIX: Enforce geo restrictions in add to cart
+        if ( class_exists( 'Raffle_Geo' ) && ! Raffle_Geo::check_eligibility( $raffle ) ) {
+            wp_send_json_error( array( 'message' => 'This competition is not available in your region.' ) );
+        }
+
         // Validate max tickets per user
         $max_tickets = isset( $raffle->max_tickets_per_user ) ? (int) $raffle->max_tickets_per_user : 100;
         if ( $quantity < 1 || $quantity > $max_tickets ) {
@@ -241,6 +259,14 @@ class Raffle_WooCommerce {
         $available = $raffle->total_tickets - $raffle->sold_tickets;
         if ( $quantity > $available ) {
             wp_send_json_error( array( 'message' => 'Not enough tickets available. Only ' . $available . ' remaining.' ) );
+        }
+
+        // SEC-5 FIX: Validate selected_numbers server-side
+        if ( ! empty( $selected_numbers ) ) {
+            $validation = Raffle_Tickets::validate_selected_numbers( $raffle_id, $selected_numbers, $quantity );
+            if ( is_wp_error( $validation ) ) {
+                wp_send_json_error( array( 'message' => $validation->get_error_message() ) );
+            }
         }
 
         $product_id = (int) $raffle->wc_product_id;
@@ -548,7 +574,7 @@ class Raffle_WooCommerce {
     public function thankyou_raffle_tickets( $order_id ) {
         $order = wc_get_order( $order_id );
 
-        if ( ! $order || $order->get_meta( '_is_raffle_order' ) !== 'yes' ) {
+        if ( ! $order || $order->get_meta( '_has_raffle_items' ) !== 'yes' ) {
             return;
         }
 
@@ -910,6 +936,12 @@ class Raffle_WooCommerce {
                 continue;
             }
 
+            // SEC-6 FIX: Enforce geo restrictions in checkout process
+            if ( class_exists( 'Raffle_Geo' ) && ! Raffle_Geo::check_eligibility( $raffle ) ) {
+                wc_add_notice( sprintf( '"%s" is not available in your region.', $raffle->title ), 'error' );
+                continue;
+            }
+
             // Check max tickets per user
             $max_tickets = (int) $raffle->max_tickets_per_user;
             if ( $qty > $max_tickets ) {
@@ -922,6 +954,15 @@ class Raffle_WooCommerce {
             if ( $qty > $available ) {
                 wc_add_notice( sprintf( 'Only %d tickets remaining for "%s".', $available, $raffle->title ), 'error' );
                 continue;
+            }
+
+            // SEC-5 FIX: Validate selected_numbers server-side
+            if ( ! empty( $cart_item['selected_numbers'] ) ) {
+                $validation = Raffle_Tickets::validate_selected_numbers( $raffle_id, $cart_item['selected_numbers'], $qty );
+                if ( is_wp_error( $validation ) ) {
+                    wc_add_notice( sprintf( 'For "%s": %s', $raffle->title, $validation->get_error_message() ), 'error' );
+                    continue;
+                }
             }
 
             // Cumulative email check

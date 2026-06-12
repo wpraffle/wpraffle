@@ -1,16 +1,6 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Determine settings
-$jackpot_type = isset( $raffle->jackpot_type ) ? $raffle->jackpot_type : 'fixed';
-$jackpot_percent = isset( $raffle->jackpot_percent ) ? $raffle->jackpot_percent : 50;
-
-if ( $jackpot_type === 'progressive' ) {
-    $pot = ( $raffle->sold_tickets * $raffle->ticket_price ) * ( $jackpot_percent / 100 );
-    $prize_display = number_format( $pot, 2 ) . ' (Growing!)';
-} else {
-    $prize_display = number_format( $raffle->prize_value, 2 );
-}
-
 $ticket_selection = isset( $raffle->ticket_selection ) ? $raffle->ticket_selection : 'random';
 $live_draw_url = isset( $raffle->live_draw_url ) ? $raffle->live_draw_url : '';
 

@@ -11,7 +11,7 @@ class Raffle_Reservations {
     public static function reserve_tickets( $raffle_id, $ticket_numbers, $user_email, $session_id, $minutes = 15 ) {
         global $wpdb;
 
-        $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", current_time( 'timestamp' ) ) );
+        $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
 
         $wpdb->insert(
             $wpdb->prefix . 'raffle_reservations',

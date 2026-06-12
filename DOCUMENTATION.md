@@ -1,7 +1,7 @@
 # WPRaffle — Plugin Documentation
 
 **Plugin Name:** WPRaffle  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Author:** WPRaffle  
 **License:** GPL-2.0+  
 **Requires:** WordPress 6.0+, PHP 8.0+, WooCommerce 8.0+  
@@ -45,6 +45,10 @@
 32. [Cron Jobs](#cron-jobs)
 33. [File Structure](#file-structure)
 34. [Hooks & Filters](#hooks--filters)
+35. [Privacy & GDPR](#privacy--gdpr)
+36. [Rate Limiting](#rate-limiting)
+37. [Product Sync](#product-sync)
+38. [Shortcode Customisation](#shortcode-customisation)
 
 ---
 
@@ -137,6 +141,19 @@ Display all finished/completed raffles.
 Ticket lookup form — users enter their email to find all their tickets across all raffles.
 
 No attributes.
+
+### `[raffle_entry_list]`
+Display closed raffles with PDF entry list download buttons.
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `columns` | int | 2 | Grid columns (1–4) |
+| `layout` | string | grid | `grid` or `list` |
+| `button_text` | string | Download Entry List | Download button label |
+| `button_bg` | hex | #1e40af | Button background colour |
+| `button_color` | hex | #ffffff | Button text colour |
+| `button_radius` | int | 8 | Button border radius (px) |
+| `show_image` | yes/no | yes | Show prize image |
 
 ### `[raffle_live_draw raffle_id="X"]`
 Live animated draw page with spinning numbers and winner reveal.
@@ -364,19 +381,26 @@ Full form with sections:
 
 ## Settings
 
-Unified settings page at **Raffles → Settings** with 6 tabs:
+Unified settings page at **Raffles → Settings** with 7 tabs:
 
 ### General
 - Company name and address (for postal entry compliance)
 - Site logo URL
 - Currency code (GBP, USD, EUR, COP)
 - Default max tickets per user
+- Winners page tab visibility (Live Draw, Auto-Draw, Instant Wins)
 
 ### Pages
-- View status of auto-created pages
+- Page assignments — dropdown selectors for each feature page (Raffles, Past Raffles, Entry Lists, Live Draw)
 - Create missing pages individually
+- Edit / View links for assigned pages
+- My Raffles endpoint status
 - Full shortcode reference
 - Elementor widget reference
+- **Shortcode Customisation** — Toggle-based panels for configuring shortcode defaults:
+  - `[raffle_ended_list]` — columns, show/hide image, winner, video button, verified button, date, entries
+  - `[raffle_entry_list]` — layout, columns, button text, button colours, border radius, show image
+  - `[raffle_list]` — default status filter (active, finished, draft, all)
 
 ### Email
 - Sender name and email
@@ -386,10 +410,18 @@ Unified settings page at **Raffles → Settings** with 6 tabs:
 - Test email sender
 - Email types reference (5 automated email types)
 
-### Payment
-- WooCommerce handles all payment processing
-- Supports any WooCommerce payment gateway (Stripe, PayPal, etc.)
-- Raffle products automatically created and synced
+### Legal
+- **FAQ Management** — Dynamic editor with add/remove buttons
+- Individual question and answer fields
+- Automatic migration from legacy text-based FAQ
+- Placeholder reference table (`{{max_tickets}}`, `{{total_tickets}}`, etc.)
+
+### Sync
+- Raffle ↔ WooCommerce product sync status table
+- Detects: missing products, deleted products, status mismatches, price mismatches
+- **Sync All** — batch fix all issues
+- Individual per-raffle sync and product creation
+- Visual health indicator (green "All in sync" or yellow warning)
 
 ### Advanced
 - Auto-fix duplicates toggle
@@ -815,3 +847,137 @@ wpraffle/
 ### Filters
 - `pre_set_site_transient_update_plugins` — Inject plugin updates
 - `plugins_api` — Plugin info for update screen
+
+---
+
+## Privacy & GDPR
+
+WPRaffle integrates with the WordPress Privacy API (Tools → Export/Erase Personal Data) for GDPR compliance.
+
+### Personal Data Export
+Registered via `wp_privacy_personal_data_exporters` hook. Exports all data associated with a given email address across 5 tables:
+
+| Table | Data Exported |
+|-------|---------------|
+| `wp_raffle_purchases` | Name, email, quantity, amount, status, date, entry type |
+| `wp_raffle_tickets` | Ticket numbers, raffle associations |
+| `wp_raffle_instant_wins` | Prize names, status, won dates |
+| `wp_raffle_referrals` | Referral codes, bonus entries |
+| `wp_raffle_free_entries` | Free entry records, answers, status |
+
+### Personal Data Erasure
+Registered via `wp_privacy_personal_data_erasers` hook. For each email:
+- Purchases: buyer name anonymised, email cleared
+- Tickets: buyer email cleared
+- Instant wins: winner email cleared
+- Referrals: user and referred emails cleared
+- Free entries: name and email cleared
+
+### Implementation
+- File: `includes/class-raffle-privacy.php`
+- Hooked in `raffle-system.php` on `plugins_loaded`
+- Uses WordPress core privacy data exporter/eraser callbacks
+
+---
+
+## Rate Limiting
+
+Standalone rate limiting class using WordPress transients for storage.
+
+### Features
+- Per-IP, per-action rate limiting
+- Configurable window (seconds) and request limit
+- Uses WordPress transients (no additional database tables)
+- Automatic cleanup via transient expiry
+
+### Usage
+```php
+// Check if rate limited
+$limiter = new Raffle_Rate_Limiter();
+if ( $limiter->is_rate_limited( 'raffle_purchase', 5, 60 ) ) {
+    wp_send_json_error( array( 'message' => 'Rate limit exceeded.' ) );
+}
+```
+
+### Configuration
+- Configured in **Settings → Advanced** (requests per minute per IP)
+- Applied to: purchase AJAX, free entry submission, referral validation
+
+### Implementation
+- File: `includes/class-raffle-rate-limiter.php`
+- Uses `$_SERVER['REMOTE_ADDR']` (with `sanitize_text_field()`)
+- Transient key format: `wpraffle_rate_{action}_{ip_hash}`
+
+---
+
+## Product Sync
+
+Raffle ↔ WooCommerce product sync tool for detecting and fixing data mismatches.
+
+### What It Checks
+- **Missing product** — Raffle exists but has no WooCommerce product
+- **Deleted product** — Raffle references a product ID that no longer exists
+- **Status mismatch** — Raffle is active but product is draft (or vice versa)
+- **Price mismatch** — Product price differs from raffle ticket price
+- **Meta mismatch** — Product `_raffle_id` meta missing or incorrect
+
+### How to Use
+1. Go to **Raffles → Settings → Sync**
+2. Review the sync status table showing all raffles and their product state
+3. Use **Sync All** to batch-fix all issues
+4. Or use individual **Fix** / **Create Product** buttons per raffle
+
+### Sync Actions
+| Action | Description |
+|--------|-------------|
+| **Create Product** | Generates a new WooCommerce product for raffles missing one |
+| **Fix** | Syncs status, price, and meta for existing products |
+| **Sync All** | Batch processes all raffles with issues |
+
+### Implementation
+- Admin handler in `class-raffle-admin.php`
+- Product creation via `Raffle_WooCommerce` class
+- Nonce verification on all sync AJAX actions
+
+---
+
+## Shortcode Customisation
+
+Shortcode defaults can be configured from **Settings → Pages** in the **Shortcode Customisation** section. Each shortcode has a toggle panel — when enabled, stored settings override defaults.
+
+### Available Customisations
+
+#### `[raffle_ended_list]`
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `columns` | int | 3 | Grid columns (1–6) |
+| `show_image` | yes/no | yes | Show prize image |
+| `show_winner` | yes/no | yes | Show winner information |
+| `show_video_btn` | yes/no | yes | Show "Watch Draw" button |
+| `show_verified_btn` | yes/no | yes | Show "Verified Draw" button |
+| `show_date` | yes/no | yes | Show draw date badge |
+| `show_entries` | yes/no | yes | Show entry count |
+
+#### `[raffle_entry_list]`
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `layout` | grid/list | grid | Card layout style |
+| `columns` | int | 2 | Grid columns (1–4) |
+| `button_text` | text | Download Entry List | Download button label |
+| `button_bg` | hex | #1e40af | Button background colour |
+| `button_color` | hex | #ffffff | Button text colour |
+| `button_radius` | int | 8 | Button border radius (px) |
+| `show_image` | yes/no | yes | Show prize image |
+
+#### `[raffle_list]`
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `status` | text | active | Default status filter (active/finished/draft/all) |
+
+### Override Priority
+1. **Inline shortcode attributes** (highest priority) — e.g. `[raffle_ended_list columns="4"]`
+2. **Stored settings** from Shortcode Customisation
+3. **Plugin defaults** (lowest priority)
+
+### Storage
+Settings stored in `wpraffle_shortcode_settings` option as a serialised array.

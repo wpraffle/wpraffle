@@ -251,7 +251,79 @@ $accordion_id = 0;
     <?php endforeach; ?>
 </div>
 
+<!-- Privacy Controls: Export & Delete Data (GDPR) -->
+<div style="margin-top: 32px; padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px;">
+    <h4 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #1f2937;">Your Data & Privacy</h4>
+    <p style="margin: 0 0 16px 0; font-size: 13px; color: #6b7280; line-height: 1.5;">You have the right to export or delete your raffle data in accordance with GDPR regulations.</p>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button type="button" id="raffle-export-my-data-btn" style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #1e40af; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export My Data
+        </button>
+        <button type="button" id="raffle-delete-my-data-btn" style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #fff; color: #dc2626; border: 1px solid #fca5a5; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Request Data Deletion
+        </button>
+    </div>
+    <div id="raffle-privacy-status" style="margin-top: 12px; font-size: 13px; display: none;"></div>
+</div>
+
 <script>
+// Privacy controls
+(function() {
+    var privacyNonce = '<?php echo esc_js( wp_create_nonce( "raffle_my_data_nonce" ) ); ?>';
+
+    document.getElementById('raffle-export-my-data-btn').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true; btn.style.opacity = '0.6';
+        var statusEl = document.getElementById('raffle-privacy-status');
+        statusEl.style.display = 'block'; statusEl.style.color = '#1d4ed8'; statusEl.textContent = 'Exporting your data...';
+
+        jQuery.post(rafflePublic.ajax_url, {
+            action: 'raffle_export_my_data',
+            nonce: privacyNonce
+        }, function(res) {
+            btn.disabled = false; btn.style.opacity = '1';
+            if (res.success) {
+                var blob = new Blob([JSON.stringify(res.data, null, 2)], {type: 'application/json'});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = 'raffle-data-export.json'; a.click();
+                URL.revokeObjectURL(url);
+                statusEl.style.color = '#166534'; statusEl.textContent = 'Data exported successfully!';
+            } else {
+                statusEl.style.color = '#dc2626'; statusEl.textContent = res.data.message || 'Export failed.';
+            }
+        }).fail(function() {
+            btn.disabled = false; btn.style.opacity = '1';
+            statusEl.style.color = '#dc2626'; statusEl.textContent = 'Export failed. Please try again.';
+        });
+    });
+
+    document.getElementById('raffle-delete-my-data-btn').addEventListener('click', function() {
+        if (!confirm('Are you sure you want to delete your raffle data? Your personal information will be anonymized. This action cannot be undone.')) return;
+        var btn = this;
+        btn.disabled = true; btn.style.opacity = '0.6';
+        var statusEl = document.getElementById('raffle-privacy-status');
+        statusEl.style.display = 'block'; statusEl.style.color = '#dc2626'; statusEl.textContent = 'Processing deletion request...';
+
+        jQuery.post(rafflePublic.ajax_url, {
+            action: 'raffle_request_deletion',
+            nonce: privacyNonce
+        }, function(res) {
+            btn.disabled = false; btn.style.opacity = '1';
+            if (res.success) {
+                statusEl.style.color = '#166534'; statusEl.textContent = res.data.message;
+            } else {
+                statusEl.style.color = '#dc2626'; statusEl.textContent = res.data.message || 'Deletion failed.';
+            }
+        }).fail(function() {
+            btn.disabled = false; btn.style.opacity = '1';
+            statusEl.style.color = '#dc2626'; statusEl.textContent = 'Deletion failed. Please try again.';
+        });
+    });
+})();
+
 function myrToggle(btn) {
     var panel = btn.nextElementSibling;
     var isOpen = btn.classList.contains('myr-open');

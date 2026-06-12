@@ -19,15 +19,6 @@ if ( $product instanceof WC_Product ) {
     $link = '#';
 }
 
-// Prize display
-$jackpot_type    = isset( $raffle->jackpot_type ) ? $raffle->jackpot_type : 'fixed';
-$jackpot_percent = isset( $raffle->jackpot_percent ) ? $raffle->jackpot_percent : 50;
-if ( $jackpot_type === 'progressive' ) {
-    $pot = ( $raffle->sold_tickets * $raffle->ticket_price ) * ( $jackpot_percent / 100 );
-    $prize_display = wpr_currency_symbol() . number_format( $pot, 0 );
-} else {
-    $prize_display = wpr_currency_symbol() . number_format( $raffle->prize_value, 0 );
-}
 
 // Cash alternative
 $has_cash_alt  = ! empty( $raffle->enable_cash_alternative );
@@ -80,10 +71,6 @@ $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->
             </div>
         <?php endif; ?>
 
-        <!-- Prize overlay -->
-        <div class="rc-card__prize-overlay">
-            <span class="rc-card__prize-value"><?php echo esc_html( $prize_display ); ?></span>
-        </div>
     </div>
 
     <!-- Draw date bar -->

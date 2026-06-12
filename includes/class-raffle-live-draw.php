@@ -19,6 +19,11 @@ class Raffle_Live_Draw {
             wp_send_json_error( 'Unauthorized' );
         }
 
+        // SEC-2 FIX: Verify nonce to prevent CSRF
+        if ( ! isset( $_GET['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['nonce'] ) ), 'raffle_draw_nonce' ) ) {
+            wp_send_json_error( 'Security error' );
+        }
+
         $raffle_id = absint( $_GET['raffle_id'] ?? 0 );
         if ( ! $raffle_id ) {
             wp_send_json_error( 'Invalid raffle' );
@@ -99,8 +104,21 @@ class Raffle_Live_Draw {
                 'winners' => $results,
             ) );
         } else {
-            // Single winner - use existing draw logic
-            // This is handled by Raffle_Draw::handle_draw but we return the result for the animation
+            // SEC-3 FIX: Single winner — use transaction with FOR UPDATE lock like Raffle_Draw::handle_draw()
+            $wpdb->query( 'START TRANSACTION' );
+
+            // Lock the raffle row to prevent concurrent draws
+            $raffle_locked = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d FOR UPDATE",
+                $raffle_id
+            ) );
+
+            // Check if already drawn
+            if ( $raffle_locked->winner_ticket_id ) {
+                $wpdb->query( 'COMMIT' );
+                wp_send_json_error( 'This raffle already has a winner selected.' );
+            }
+
             $tickets = $wpdb->get_results( $wpdb->prepare(
                 "SELECT t.*, p.buyer_name
                  FROM {$wpdb->prefix}raffle_tickets t
@@ -110,12 +128,13 @@ class Raffle_Live_Draw {
             ) );
 
             if ( empty( $tickets ) ) {
+                $wpdb->query( 'ROLLBACK' );
                 wp_send_json_error( 'No tickets sold' );
             }
 
             $winner_index  = random_int( 0, count( $tickets ) - 1 );
             $winner_ticket = $tickets[ $winner_index ];
-            $total_digits  = strlen( (string) $raffle->total_tickets );
+            $total_digits  = strlen( (string) $raffle_locked->total_tickets );
 
             $wpdb->update(
                 $wpdb->prefix . 'raffles',
@@ -125,9 +144,28 @@ class Raffle_Live_Draw {
                 array( '%d' )
             );
 
+            $wpdb->query( 'COMMIT' );
+
             Raffle_Audit::log( $raffle_id, 'live_draw_completed', array(
                 'ticket' => $winner_ticket->ticket_number,
             ), 'admin' );
+
+            // Send winner notification email
+            $winner_purchase = $wpdb->get_row( $wpdb->prepare(
+                "SELECT p.buyer_name, p.buyer_email
+                 FROM {$wpdb->prefix}raffle_purchases p
+                 JOIN {$wpdb->prefix}raffle_tickets t ON t.purchase_id = p.id
+                 WHERE t.id = %d",
+                $winner_ticket->id
+            ) );
+            if ( $winner_purchase && class_exists( 'Raffle_Email' ) ) {
+                Raffle_Email::send_winner_notification(
+                    $winner_purchase->buyer_email,
+                    $winner_purchase->buyer_name,
+                    $raffle_locked,
+                    $winner_ticket->ticket_number
+                );
+            }
 
             wp_send_json_success( array(
                 'multi'  => false,

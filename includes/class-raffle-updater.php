@@ -119,6 +119,10 @@ class Raffle_Updater {
         if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
+        // SEC-10 FIX: Verify nonce to prevent CSRF
+        if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'wpraffle_check_updates' ) ) {
+            return;
+        }
 
         $this->refresh_version_cache();
 
@@ -232,10 +236,15 @@ class Raffle_Updater {
         // Ensure correct folder name
         $desired = dirname( RAFFLE_SYSTEM_PATH ) . '/wpraffle';
         if ( $result['destination'] !== $desired ) {
-            rename( $result['destination'], $desired );
-            $result['destination'] = $desired;
+            $renamed = rename( $result['destination'], $desired );
+            if ( $renamed ) {
+                $result['destination'] = $desired;
+            } else {
+                return new WP_Error( 'rename_failed', 'Could not rename plugin folder to "wpraffle". Please rename manually.' );
+            }
         }
 
+        // BUG-3 FIX: Return $result (the modified array) not $response (a boolean)
         return $result;
     }
 }

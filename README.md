@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
   <img src="https://img.shields.io/badge/PHP-8.0%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
   <img src="https://img.shields.io/badge/WooCommerce-8.0%2B-96588A?style=flat-square&logo=woocommerce&logoColor=white" alt="WooCommerce">
@@ -11,10 +11,6 @@
 <p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
   Built on WooCommerce with full ticket management, live draws, instant wins, and UK compliance features.
-</p>
-
-<p align="center">
-  The readme & documentation pages have been auto generated so may be slightly incorrect, I will correct any errors over time. Also this is a constantly updated project so any features not fully built out like Elementor Widgets I will fix in future updates, so make sure to have updates enabled.
 </p>
 
 ---
@@ -51,6 +47,9 @@
 - 🧹 **Input sanitization & output escaping** throughout
 - 📐 **Prepared SQL statements** — No raw queries
 - ⏱️ **Rate limiting** — Configurable per-minute per-IP
+- 🔐 **Privacy & GDPR** — Personal data export/erasure via WordPress Privacy API
+- 🔄 **Product Sync** — Detect and fix WooCommerce product mismatches
+- 🎨 **Shortcode Customisation** — Configure shortcode defaults from settings UI
 
 ### Developer
 - 🧩 **Elementor Widgets** — 18 custom widgets for visual page building
@@ -221,10 +220,11 @@ wpraffle/
 
 | Tab | Description |
 |-----|-------------|
-| **General** | Company name, address, currency, default limits |
-| **Pages** | Auto-created pages status, shortcode reference |
+| **General** | Company name, address, currency, default limits, winners page tabs |
+| **Pages** | Page assignments, shortcode reference, shortcode customisation |
 | **Email** | Sender details, branding, accent colour, test sender |
-| **Payment** | WooCommerce gateway configuration (Stripe, PayPal, etc.) |
+| **Legal** | FAQ management with dynamic editor, placeholder reference |
+| **Sync** | Raffle ↔ WooCommerce product sync, health checks |
 | **Advanced** | Auto-fix, rate limiting, audit log, cron overview |
 | **Updates** | GitHub auto-updates, version check |
 

@@ -40,7 +40,7 @@
                                         </td>
                                     </tr>
                                     <tr>
-                                        <th scope="row"><label for="prize_value">Prize Value ($) *</label></th>
+                                        <th scope="row"><label for="prize_value">Prize Value (<?php echo esc_html( wpr_currency_symbol() ); ?>) *</label></th>
                                         <td>
                                             <input name="prize_value" type="number" id="prize_value" class="regular-text" step="0.01" min="0" required
                                                    value="<?php echo $raffle ? esc_attr( $raffle->prize_value ) : ''; ?>"
@@ -48,7 +48,7 @@
                                         </td>
                                     </tr>
                                     <tr>
-                                        <th scope="row"><label for="ticket_price">Price per Ticket ($) *</label></th>
+                                        <th scope="row"><label for="ticket_price">Price per Ticket (<?php echo esc_html( wpr_currency_symbol() ); ?>) *</label></th>
                                         <td>
                                             <input name="ticket_price" type="number" id="ticket_price" class="regular-text" step="0.01" min="0" required
                                                    value="<?php echo $raffle ? esc_attr( $raffle->ticket_price ) : ''; ?>"
@@ -145,7 +145,7 @@
                                         </td>
                                     </tr>
                                     <tr>
-                                        <th scope="row"><label for="cash_alternative_amount">Cash Alternative Amount ($)</label></th>
+                                        <th scope="row"><label for="cash_alternative_amount">Cash Alternative Amount (<?php echo esc_html( wpr_currency_symbol() ); ?>)</label></th>
                                         <td>
                                             <input name="cash_alternative_amount" type="number" id="cash_alternative_amount" class="regular-text" step="0.01" min="0"
                                                    value="<?php echo $raffle ? esc_attr( $raffle->cash_alternative_amount ) : '0'; ?>"

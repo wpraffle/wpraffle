@@ -152,6 +152,9 @@ class Raffle_Templates {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
+        if ( ! isset( $_REQUEST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_REQUEST['nonce'] ) ), 'raffle_template_nonce' ) ) {
+            wp_send_json_error( 'Security error' );
+        }
         wp_send_json_success( self::get_templates() );
     }
 
@@ -161,6 +164,9 @@ class Raffle_Templates {
     public function ajax_delete_template() {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( 'Unauthorized' );
+        }
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'raffle_template_nonce' ) ) {
+            wp_send_json_error( 'Security error' );
         }
         $id = absint( $_POST['template_id'] ?? 0 );
         if ( ! $id ) {
@@ -177,6 +183,9 @@ class Raffle_Templates {
     public function ajax_apply_template() {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( 'Unauthorized' );
+        }
+        if ( ! isset( $_GET['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['nonce'] ) ), 'raffle_template_nonce' ) ) {
+            wp_send_json_error( 'Security error' );
         }
         $id = absint( $_GET['template_id'] ?? 0 );
         $template = self::get_template( $id );

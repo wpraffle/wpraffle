@@ -16,7 +16,7 @@ class Raffle_Audit {
         $table = $wpdb->prefix . 'raffle_audit_log';
 
         // Check the table exists before inserting
-        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+        if ( $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) ) !== $table ) {
             return false;
         }
 
@@ -115,11 +115,12 @@ class Raffle_Audit {
                 LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
                 WHERE {$where_clause}
                 ORDER BY a.created_at DESC
-                LIMIT {$limit} OFFSET {$offset}";
+                LIMIT %d OFFSET %d";
 
-        if ( ! empty( $params ) ) {
-            $sql = $wpdb->prepare( $sql, $params );
-        }
+        // SEC-9 FIX: Always use $wpdb->prepare() including LIMIT/OFFSET
+        $params[] = $limit;
+        $params[] = $offset;
+        $sql = $wpdb->prepare( $sql, $params );
 
         return $wpdb->get_results( $sql );
     }

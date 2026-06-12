@@ -58,13 +58,13 @@
             .html(
               "<h3>Winner selected!</h3>" +
                 "<p><strong>Name:</strong> " +
-                response.data.buyer_name +
+                $("<span>").text(response.data.buyer_name).html() +
                 "</p>" +
                 "<p><strong>Ticket:</strong> #" +
-                response.data.ticket_number +
+                $("<span>").text(response.data.ticket_number).html() +
                 "</p>" +
                 "<p><strong>Email:</strong> " +
-                response.data.buyer_email +
+                $("<span>").text(response.data.buyer_email).html() +
                 "</p>",
             );
         } else {
@@ -153,11 +153,11 @@
         btn.prop("disabled", false).text("Fix Duplicates");
         if (response.success) {
           btn.hide();
-          $("#duplicates-result").html(
-            '<div class="raffle-duplicates-fixed">' +
-              response.data.message +
-              "</div>",
-          );
+            $("#duplicates-result").html(
+              '<div class="raffle-duplicates-fixed">' +
+                $("<span>").text(response.data.message).html() +
+                "</div>",
+            );
         } else {
           alert(response.data.message);
         }
@@ -319,7 +319,7 @@
       action: "raffle_save_template",
       raffle_id: raffleId,
       template_name: templateName,
-      nonce: raffleAdmin.draw_nonce,
+      nonce: raffleAdmin.template_nonce,
     }, function (response) {
       if (response.success) {
         btn.text("✓ Saved!").addClass("button-primary");

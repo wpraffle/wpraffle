@@ -18,8 +18,16 @@ class Raffle_Admin {
         add_action( 'admin_post_wpraffle_save_update_settings', array( $this, 'save_update_settings' ) );
         add_action( 'admin_post_wpraffle_create_page', array( $this, 'handle_create_page' ) );
         add_action( 'admin_post_wpraffle_save_pages', array( $this, 'save_pages' ) );
+        add_action( 'admin_post_wpraffle_save_shortcode_settings', array( $this, 'save_shortcode_settings' ) );
 
-        // Schedule draw reminder cron if not already scheduled
+        // BUG-2 FIX: Schedule draw reminder cron inside admin_init hook (not constructor)
+        add_action( 'admin_init', array( $this, 'schedule_reminder_cron' ) );
+    }
+
+    /**
+     * BUG-2 FIX: Schedule cron inside a proper hook.
+     */
+    public function schedule_reminder_cron() {
         if ( ! wp_next_scheduled( 'raffle_draw_reminder_cron' ) ) {
             wp_schedule_event( time(), 'hourly', 'raffle_draw_reminder_cron' );
         }
@@ -44,9 +52,13 @@ class Raffle_Admin {
         }
 
         // v3 migration: add reminder_sent column
-        $col_v3 = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'reminder_sent'" );
-        if ( empty( $col_v3 ) ) {
-            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN reminder_sent tinyint(1) NOT NULL DEFAULT 0" );
+        // SEC-16 FIX: Add version flag to avoid SHOW COLUMNS on every page load
+        if ( ! get_option( 'raffle_system_db_migrated_v3' ) ) {
+            $col_v3 = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'reminder_sent'" );
+            if ( empty( $col_v3 ) ) {
+                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN reminder_sent tinyint(1) NOT NULL DEFAULT 0" );
+            }
+            update_option( 'raffle_system_db_migrated_v3', 1 );
         }
 
         // v4 migration: new feature columns + tables
@@ -85,28 +97,33 @@ class Raffle_Admin {
                 KEY raffle_id (raffle_id)
             ) {$charset}" );
 
+            // BUG-1 FIX: Use user_email instead of user_id to match activator schema and code usage
             $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_referrals (
                 id bigint(20) NOT NULL AUTO_INCREMENT,
                 raffle_id bigint(20) NOT NULL,
-                user_id bigint(20) DEFAULT NULL,
-                referral_code varchar(32) NOT NULL,
+                user_email varchar(255) NOT NULL,
+                referral_code varchar(50) NOT NULL,
                 referred_email varchar(255) DEFAULT NULL,
                 bonus_entries int(11) NOT NULL DEFAULT 0,
                 created_at datetime DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
-                UNIQUE KEY referral_code (referral_code),
+                UNIQUE KEY unique_user_raffle (raffle_id, user_email),
+                UNIQUE KEY unique_referral_code (referral_code),
                 KEY raffle_id (raffle_id)
             ) {$charset}" );
 
             $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_reservations (
                 id bigint(20) NOT NULL AUTO_INCREMENT,
                 raffle_id bigint(20) NOT NULL,
-                session_id varchar(128) NOT NULL,
                 ticket_numbers text NOT NULL,
-                reserved_at datetime DEFAULT CURRENT_TIMESTAMP,
+                user_email varchar(255) NOT NULL,
+                session_id varchar(128) NOT NULL,
                 expires_at datetime NOT NULL,
+                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
-                KEY session_raffle (session_id, raffle_id)
+                KEY raffle_id (raffle_id),
+                KEY session_id (session_id),
+                KEY expires_at (expires_at)
             ) {$charset}" );
 
             $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_audit_log (
@@ -129,15 +146,19 @@ class Raffle_Admin {
                 PRIMARY KEY (id)
             ) {$charset}" );
 
+            // BUG-6 FIX: Match schema to actual insert statements (buyer_name, buyer_email, status columns)
             $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_free_entries (
                 id bigint(20) NOT NULL AUTO_INCREMENT,
                 raffle_id bigint(20) NOT NULL,
-                user_email varchar(255) NOT NULL,
-                ticket_number int(11) NOT NULL,
-                answer_index int(11) NOT NULL,
+                buyer_name varchar(255) NOT NULL,
+                buyer_email varchar(255) NOT NULL,
+                answer_index int(11) NOT NULL DEFAULT 0,
+                ticket_number int(11) NOT NULL DEFAULT 0,
+                status varchar(20) NOT NULL DEFAULT 'pending',
                 created_at datetime DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
-                KEY raffle_email (raffle_id, user_email)
+                KEY raffle_id (raffle_id),
+                KEY buyer_email (buyer_email)
             ) {$charset}" );
 
             // Add new columns to purchases and tickets tables
@@ -161,6 +182,18 @@ class Raffle_Admin {
             );
             foreach ( $ticket_cols as $col => $sql ) {
                 $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$tickets_table} LIKE '{$col}'" );
+                if ( empty( $exists ) ) {
+                    $wpdb->query( $sql );
+                }
+            }
+
+            $reservations_table = $wpdb->prefix . 'raffle_reservations';
+            $res_cols = array(
+                'user_email' => "ALTER TABLE {$reservations_table} ADD COLUMN user_email varchar(255) NOT NULL",
+                'created_at' => "ALTER TABLE {$reservations_table} ADD COLUMN created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            );
+            foreach ( $res_cols as $col => $sql ) {
+                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$reservations_table} LIKE '{$col}'" );
                 if ( empty( $exists ) ) {
                     $wpdb->query( $sql );
                 }
@@ -271,6 +304,7 @@ class Raffle_Admin {
             'ajax_url'   => admin_url( 'admin-ajax.php' ),
             'draw_nonce' => wp_create_nonce( 'raffle_draw_nonce' ),
             'clone_nonce' => wp_create_nonce( 'raffle_clone_nonce' ),
+            'template_nonce' => wp_create_nonce( 'raffle_template_nonce' ),
         ) );
 
         // Dashboard page — Chart.js + dashboard.js (hook is toplevel_page_raffle-system)
@@ -466,6 +500,26 @@ class Raffle_Admin {
             wp_die( 'Error saving raffle. Please check the error logs for details.' );
         }
 
+        // BUG-6 FIX: Save prizes if multi-winner is enabled
+        $target_id = $raffle_id ? $raffle_id : ( $new_raffle_id ?? 0 );
+        if ( $target_id && class_exists( 'Raffle_Prizes' ) ) {
+            $prize_names = $_POST['prize_name'] ?? array();
+            $prize_values = $_POST['prize_value'] ?? array();
+            $prizes = array();
+            if ( is_array( $prize_names ) ) {
+                foreach ( $prize_names as $i => $name ) {
+                    if ( ! empty( $name ) ) {
+                        $prizes[] = array(
+                            'prize_name'  => sanitize_text_field( $name ),
+                            'prize_value' => floatval( $prize_values[$i] ?? 0 ),
+                            'prize_image' => '', 
+                        );
+                    }
+                }
+            }
+            Raffle_Prizes::save_prizes( $target_id, $prizes );
+        }
+
         // Audit log
         if ( class_exists( 'Raffle_Audit' ) ) {
             $action = $raffle_id ? 'admin_update' : 'admin_create';
@@ -600,6 +654,8 @@ class Raffle_Admin {
             'currency_code'             => sanitize_text_field( wp_unslash( $_POST['currency_code'] ?? 'GBP' ) ),
             'logo_url'                  => esc_url_raw( wp_unslash( $_POST['logo_url'] ?? '' ) ),
             'max_tickets_default'       => absint( $_POST['max_tickets_default'] ?? 100 ),
+            'winners_show_live_draw'    => isset( $_POST['winners_show_live_draw'] ) ? 1 : 0,
+            'winners_show_auto_draw'    => isset( $_POST['winners_show_auto_draw'] ) ? 1 : 0,
             'winners_show_instant_wins' => isset( $_POST['winners_show_instant_wins'] ) ? 1 : 0,
         );
         update_option( 'wpraffle_general_settings', $settings );
@@ -625,8 +681,9 @@ class Raffle_Admin {
             'rules_template' => wp_kses_post( wp_unslash( $_POST['rules_template'] ?? '' ) ),
             'faq_template'   => wp_kses_post( wp_unslash( $_POST['faq_template'] ?? '' ) ),
             'faq_items'      => (function() {
-                $questions = $_POST['faq_questions'] ?? array();
-                $answers   = $_POST['faq_answers'] ?? array();
+                // SEC-18 FIX: Explicitly cast to arrays to prevent errors if not array
+                $questions = (array) ( $_POST['faq_questions'] ?? array() );
+                $answers   = (array) ( $_POST['faq_answers'] ?? array() );
                 $items = array();
                 for ( $i = 0; $i < max( count( $questions ), count( $answers ) ); $i++ ) {
                     $q = sanitize_text_field( wp_unslash( $questions[ $i ] ?? '' ) );
@@ -727,6 +784,50 @@ class Raffle_Admin {
         }
 
         update_option( 'wpraffle_pages', $pages );
+        $this->redirect_settings( 'pages' );
+    }
+
+    public function save_shortcode_settings() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Unauthorised.' );
+        }
+        if ( ! isset( $_POST['wpraffle_sc_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpraffle_sc_nonce'] ) ), 'wpraffle_save_shortcode_settings' ) ) {
+            wp_die( 'Security check failed.' );
+        }
+
+        $shortcodes = array( 'raffle_ended_list', 'raffle_entry_list', 'raffle_list' );
+        $fields_map = array(
+            'raffle_ended_list' => array( 'columns', 'show_image', 'show_winner', 'show_video_btn', 'show_verified_btn', 'show_date', 'show_entries' ),
+            'raffle_entry_list' => array( 'layout', 'columns', 'button_text', 'button_bg', 'button_color', 'button_radius', 'show_image' ),
+            'raffle_list'       => array( 'status' ),
+        );
+        $sanitize_map = array(
+            'columns' => 'absint', 'show_image' => 'sanitize_text_field', 'show_winner' => 'sanitize_text_field',
+            'show_video_btn' => 'sanitize_text_field', 'show_verified_btn' => 'sanitize_text_field',
+            'show_date' => 'sanitize_text_field', 'show_entries' => 'sanitize_text_field',
+            'layout' => 'sanitize_text_field', 'button_text' => 'sanitize_text_field',
+            'button_bg' => 'sanitize_hex_color', 'button_color' => 'sanitize_hex_color',
+            'button_radius' => 'absint', 'status' => 'sanitize_text_field',
+        );
+
+        $settings = array();
+        foreach ( $shortcodes as $sc ) {
+            $sc_data = array();
+            $sc_data['enabled'] = isset( $_POST[ 'sc_' . $sc . '_enabled' ] ) ? 1 : 0;
+
+            if ( isset( $fields_map[ $sc ] ) ) {
+                foreach ( $fields_map[ $sc ] as $field ) {
+                    $post_key = 'sc_' . $sc . '_' . $field;
+                    if ( isset( $_POST[ $post_key ] ) ) {
+                        $sanitizer = isset( $sanitize_map[ $field ] ) ? $sanitize_map[ $field ] : 'sanitize_text_field';
+                        $sc_data[ $field ] = call_user_func( $sanitizer, wp_unslash( $_POST[ $post_key ] ) );
+                    }
+                }
+            }
+            $settings[ $sc ] = $sc_data;
+        }
+
+        update_option( 'wpraffle_shortcode_settings', $settings );
         $this->redirect_settings( 'pages' );
     }
 

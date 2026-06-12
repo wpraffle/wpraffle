@@ -44,6 +44,8 @@ require_once RAFFLE_SYSTEM_PATH . 'public/class-raffle-public.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-dashboard-widgets.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-elementor.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-updater.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-privacy.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-rate-limiter.php';
 
 // Activation
 register_activation_hook( __FILE__, array( 'Raffle_Activator', 'activate' ) );
@@ -97,9 +99,12 @@ add_filter( 'parent_file', function( $parent_file ) {
 
 // Feature 9: Cleanup expired reservations periodically
 add_action( 'raffle_cleanup_reservations', array( 'Raffle_Reservations', 'cleanup_expired' ) );
-if ( ! wp_next_scheduled( 'raffle_cleanup_reservations' ) ) {
-    wp_schedule_event( time(), 'hourly', 'raffle_cleanup_reservations' );
-}
+// BUG-2 FIX: Schedule cron inside plugins_loaded (not at file include time)
+add_action( 'plugins_loaded', function() {
+    if ( ! wp_next_scheduled( 'raffle_cleanup_reservations' ) ) {
+        wp_schedule_event( time(), 'hourly', 'raffle_cleanup_reservations' );
+    }
+}, 5 );
 
 // Init
 add_action( 'plugins_loaded', function () {
@@ -119,6 +124,10 @@ add_action( 'plugins_loaded', function () {
     new Raffle_Templates();
     new Raffle_Live_Draw();
     new Raffle_Updater();
+
+    // Initialize Privacy & Rate Limiter
+    Raffle_Privacy::init();
+    Raffle_Rate_Limiter::register_ajax();
 } );
 
 // Activation notice: show auto-created pages
@@ -162,13 +171,50 @@ function raffle_system_handle_auto_draws() {
     $now = current_time( 'mysql' );
 
     $raffles = $wpdb->get_results( $wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}raffles WHERE status = 'active' AND draw_type = 'auto' AND draw_date <= %s",
+        "SELECT id, title FROM {$wpdb->prefix}raffles WHERE status = 'active' AND draw_type = 'auto' AND draw_date <= %s",
         $now
     ) );
 
-    if ( ! empty( $raffles ) ) {
-        foreach ( $raffles as $raffle ) {
-            Raffle_Draw::handle_draw( $raffle->id );
+    if ( empty( $raffles ) ) {
+        return;
+    }
+
+    foreach ( $raffles as $raffle ) {
+        // Generate pre-draw fairness proof (SHA-256 HMAC of raffle_id + timestamp + WP salt)
+        $pre_seed  = wp_generate_password( 32, false );
+        $pre_proof = hash_hmac( 'sha256', $raffle->id . '|' . microtime( true ) . '|' . $pre_seed, wp_salt( 'auth' ) );
+
+        // Log the pre-draw commitment
+        if ( class_exists( 'Raffle_Audit' ) ) {
+            Raffle_Audit::log( $raffle->id, 'auto_draw_start', array(
+                'title'     => $raffle->title,
+                'pre_seed'  => $pre_seed,
+                'pre_proof' => $pre_proof,
+            ), 'cron' );
+        }
+
+        // Execute the draw
+        $result = Raffle_Draw::handle_draw( $raffle->id );
+
+        // Generate post-draw fairness proof
+        $post_proof = hash_hmac( 'sha256', $raffle->id . '|' . $pre_seed . '|' . wp_salt( 'auth' ), 'wpraffle_draw_verification' );
+
+        // Store fairness proof on the raffle for public verification
+        $wpdb->update(
+            $wpdb->prefix . 'raffles',
+            array( 'verified_result' => $post_proof ),
+            array( 'id' => $raffle->id ),
+            array( '%s' ),
+            array( '%d' )
+        );
+
+        // Log the completion
+        if ( class_exists( 'Raffle_Audit' ) ) {
+            Raffle_Audit::log( $raffle->id, 'auto_draw_complete', array(
+                'title'     => $raffle->title,
+                'post_proof' => $post_proof,
+                'result'    => is_wp_error( $result ) ? $result->get_error_message() : 'success',
+            ), $pre_proof );
         }
     }
 }

@@ -150,10 +150,14 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Winners Page — Show Instant Wins</th>
+                    <th scope="row">Winners Page — Tab Visibility</th>
                     <td>
-                        <label><input type="checkbox" name="winners_show_instant_wins" value="1" <?php checked( $general['winners_show_instant_wins'] ?? 1, 1 ); ?>> Show instant win prizes on the winners/ended raffles page</label>
-                        <p class="description">When enabled, instant win prizes are displayed on each ended competition card. Can also be overridden per-shortcode with <code>show_instant="no"</code>.</p>
+                        <fieldset>
+                            <label style="display:block;margin-bottom:8px;"><input type="checkbox" name="winners_show_live_draw" value="1" <?php checked( $general['winners_show_live_draw'] ?? 1, 1 ); ?>> <strong>Live Draw</strong> — manually drawn competitions</label>
+                            <label style="display:block;margin-bottom:8px;"><input type="checkbox" name="winners_show_auto_draw" value="1" <?php checked( $general['winners_show_auto_draw'] ?? 1, 1 ); ?>> <strong>Auto-Draw</strong> — automatically drawn competitions</label>
+                            <label style="display:block;margin-bottom:8px;"><input type="checkbox" name="winners_show_instant_wins" value="1" <?php checked( $general['winners_show_instant_wins'] ?? 1, 1 ); ?>> <strong>Instant Wins</strong> — all instant win prizes grouped by date</label>
+                        </fieldset>
+                        <p class="description">Control which tabs appear on the winners page. At least one tab must be enabled. Uses the <code>[raffle_entry_list]</code> shortcode.</p>
                     </td>
                 </tr>
                 <tr>
@@ -180,13 +184,13 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
             <h2 class="rs-card-title">Page Assignments</h2>
             <p class="description" style="margin-bottom:16px;">Select which WordPress pages are used for each raffle feature. You can pick an existing page or create a new one.</p>
 
-            <table class="widefat striped" style="max-width:700px;">
+            <table class="widefat striped" style="width:100%;">
                 <thead>
                     <tr>
-                        <th>Feature</th>
-                        <th>Shortcode / Type</th>
+                        <th style="width:18%;">Feature</th>
+                        <th style="width:22%;">Shortcode / Type</th>
                         <th>Assigned Page</th>
-                        <th>Actions</th>
+                        <th style="width:20%;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -249,9 +253,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
     <div class="rs-card" style="margin-bottom:20px;">
         <h2 class="rs-card-title">Shortcode Reference</h2>
         <p class="description" style="margin-bottom:16px;">Use these shortcodes in any page or post to display raffle content.</p>
-        <table class="widefat striped" style="max-width:700px;">
+        <table class="widefat striped" style="width:100%;">
             <thead>
-                <tr><th>Shortcode</th><th>Description</th><th>Attributes</th></tr>
+                <tr><th style="width:20%;">Shortcode</th><th>Description</th><th style="width:35%;">Attributes</th></tr>
             </thead>
             <tbody>
                 <tr>
@@ -308,9 +312,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
     <div class="rs-card">
         <h2 class="rs-card-title">Elementor Widgets</h2>
         <p class="description" style="margin-bottom:16px;">If Elementor is active, these custom widgets are available for building raffle pages:</p>
-        <table class="widefat striped" style="max-width:700px;">
+        <table class="widefat striped" style="width:100%;">
             <thead>
-                <tr><th>Widget</th><th>Description</th></tr>
+                <tr><th style="width:25%;">Widget</th><th>Description</th></tr>
             </thead>
             <tbody>
                 <tr><td>Raffle Title</td><td>Raffle title with styling options</td></tr>
@@ -332,6 +336,174 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
             </tbody>
         </table>
     </div>
+
+    <!-- Shortcode Customisation -->
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Shortcode Customisation</h2>
+        <p class="description" style="margin-bottom:16px;">Override default shortcode attributes from here instead of editing pages. Enable the toggle, then adjust the fields. Inline shortcode attributes will still override these settings.</p>
+
+        <?php
+        $sc_settings = wp_parse_args( get_option( 'wpraffle_shortcode_settings', array() ), array(
+            'raffle_ended_list' => array(),
+            'raffle_entry_list' => array(),
+            'raffle_list'       => array(),
+        ) );
+
+        // Define configurable shortcodes and their fields
+        $shortcodes_config = array(
+            'raffle_ended_list' => array(
+                'label'   => 'Winners / Ended Raffles',
+                'code'    => '[raffle_ended_list]',
+                'fields'  => array(
+                    'columns'          => array( 'label' => 'Grid Columns',       'type' => 'number', 'default' => 3,    'min' => 1, 'max' => 6 ),
+                    'show_image'       => array( 'label' => 'Prize Image',        'type' => 'yesno',  'default' => 'yes' ),
+                    'show_winner'      => array( 'label' => 'Winner Box',         'type' => 'yesno',  'default' => 'yes' ),
+                    'show_video_btn'   => array( 'label' => 'Watch Draw Button',  'type' => 'yesno',  'default' => 'yes' ),
+                    'show_verified_btn'=> array( 'label' => 'Verified Draw Button','type' => 'yesno',  'default' => 'yes' ),
+                    'show_date'        => array( 'label' => 'Draw Date Badge',    'type' => 'yesno',  'default' => 'yes' ),
+                    'show_entries'     => array( 'label' => 'Entry Count',        'type' => 'yesno',  'default' => 'yes' ),
+                ),
+            ),
+            'raffle_entry_list' => array(
+                'label'   => 'Entry List Downloads',
+                'code'    => '[raffle_entry_list]',
+                'fields'  => array(
+                    'layout'        => array( 'label' => 'Layout',              'type' => 'select', 'default' => 'grid', 'options' => array( 'grid' => 'Grid', 'list' => 'List' ) ),
+                    'columns'       => array( 'label' => 'Grid Columns',        'type' => 'number', 'default' => 2,     'min' => 1, 'max' => 4 ),
+                    'button_text'   => array( 'label' => 'Button Text',         'type' => 'text',   'default' => 'Download Entry List' ),
+                    'button_bg'     => array( 'label' => 'Button Background',   'type' => 'color',  'default' => '#1e40af' ),
+                    'button_color'  => array( 'label' => 'Button Text Colour',  'type' => 'color',  'default' => '#ffffff' ),
+                    'button_radius' => array( 'label' => 'Button Border Radius','type' => 'number', 'default' => 8,     'min' => 0, 'max' => 50 ),
+                    'show_image'    => array( 'label' => 'Prize Image',         'type' => 'yesno',  'default' => 'yes' ),
+                ),
+            ),
+            'raffle_list' => array(
+                'label'   => 'Raffle List / Shop',
+                'code'    => '[raffle_list]',
+                'fields'  => array(
+                    'status' => array( 'label' => 'Default Status Filter', 'type' => 'select', 'default' => 'active', 'options' => array( 'active' => 'Active (Live)', 'finished' => 'Finished', 'draft' => 'Draft', 'all' => 'All' ) ),
+                ),
+            ),
+        );
+
+        // Render in a form
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'wpraffle_save_shortcode_settings', 'wpraffle_sc_nonce' ); ?>
+            <input type="hidden" name="action" value="wpraffle_save_shortcode_settings">
+
+            <?php foreach ( $shortcodes_config as $sc_key => $sc_cfg ) :
+                $sc_vals = isset( $sc_settings[ $sc_key ] ) ? $sc_settings[ $sc_key ] : array();
+                $enabled = ! empty( $sc_vals['enabled'] );
+            ?>
+            <div class="rs-card" style="margin-bottom:16px;border:1px solid <?php echo $enabled ? '#6c5ce7' : '#e5e7eb'; ?>;border-radius:12px;overflow:hidden;">
+                <!-- Header / Toggle -->
+                <div class="wpraffle-sc-toggle" data-target="sc-panel-<?php echo esc_attr( $sc_key ); ?>" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;background:<?php echo $enabled ? '#f5f3ff' : '#f9fafb'; ?>;border-bottom:1px solid <?php echo $enabled ? '#e0e7ff' : '#e5e7eb'; ?>;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="font-weight:700;font-size:15px;color:#1f2937;"><?php echo esc_html( $sc_cfg['label'] ); ?></span>
+                        <code style="font-size:12px;background:#f3f4f6;padding:2px 8px;border-radius:4px;color:#6b7280;"><?php echo esc_html( $sc_cfg['code'] ); ?></code>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="font-size:12px;color:<?php echo $enabled ? '#6c5ce7' : '#9ca3af'; ?>;font-weight:600;"><?php echo $enabled ? 'Customised' : 'Default'; ?></span>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;margin:0;">
+                            <input type="checkbox" name="sc_<?php echo esc_attr( $sc_key ); ?>_enabled" value="1" <?php checked( $enabled ); ?> style="opacity:0;width:0;height:0;" class="wpraffle-sc-switch">
+                            <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:<?php echo $enabled ? '#6c5ce7' : '#d1d5db'; ?>;border-radius:24px;transition:.3s;"></span>
+                            <span style="position:absolute;height:18px;width:18px;left:<?php echo $enabled ? '22px' : '3px'; ?>;bottom:3px;background:#fff;border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Settings Panel -->
+                <div class="wpraffle-sc-panel" id="sc-panel-<?php echo esc_attr( $sc_key ); ?>" style="<?php echo $enabled ? '' : 'display:none;'; ?>padding:20px;">
+                    <table class="form-table" style="margin:0;">
+                        <?php foreach ( $sc_cfg['fields'] as $field_key => $field ) :
+                            $val = isset( $sc_vals[ $field_key ] ) ? $sc_vals[ $field_key ] : $field['default'];
+                        ?>
+                        <tr>
+                            <th scope="row" style="width:200px;padding:10px 0;">
+                                <label><?php echo esc_html( $field['label'] ); ?></label>
+                            </th>
+                            <td style="padding:10px 0;">
+                                <?php if ( $field['type'] === 'yesno' ) : ?>
+                                    <select name="sc_<?php echo esc_attr( $sc_key ); ?>_<?php echo esc_attr( $field_key ); ?>">
+                                        <option value="yes" <?php selected( $val, 'yes' ); ?>>Yes</option>
+                                        <option value="no" <?php selected( $val, 'no' ); ?>>No</option>
+                                    </select>
+                                <?php elseif ( $field['type'] === 'number' ) : ?>
+                                    <input type="number" name="sc_<?php echo esc_attr( $sc_key ); ?>_<?php echo esc_attr( $field_key ); ?>" value="<?php echo esc_attr( $val ); ?>" min="<?php echo esc_attr( $field['min'] ?? 0 ); ?>" max="<?php echo esc_attr( $field['max'] ?? 100 ); ?>" class="small-text">
+                                    <span style="color:#9ca3af;font-size:12px;margin-left:6px;">default: <?php echo esc_html( $field['default'] ); ?></span>
+                                <?php elseif ( $field['type'] === 'color' ) : ?>
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <input type="color" name="sc_<?php echo esc_attr( $sc_key ); ?>_<?php echo esc_attr( $field_key ); ?>" value="<?php echo esc_attr( $val ); ?>" style="width:40px;height:32px;border:1px solid #ddd;border-radius:6px;cursor:pointer;padding:2px;">
+                                        <input type="text" value="<?php echo esc_attr( $val ); ?>" class="small-text" style="font-family:monospace;" readonly>
+                                    </div>
+                                <?php elseif ( $field['type'] === 'select' ) : ?>
+                                    <select name="sc_<?php echo esc_attr( $sc_key ); ?>_<?php echo esc_attr( $field_key ); ?>">
+                                        <?php foreach ( $field['options'] as $opt_val => $opt_label ) : ?>
+                                            <option value="<?php echo esc_attr( $opt_val ); ?>" <?php selected( $val, $opt_val ); ?>><?php echo esc_html( $opt_label ); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php elseif ( $field['type'] === 'text' ) : ?>
+                                    <input type="text" name="sc_<?php echo esc_attr( $sc_key ); ?>_<?php echo esc_attr( $field_key ); ?>" value="<?php echo esc_attr( $val ); ?>" class="regular-text">
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </table>
+                </div>
+            </div>
+            <?php endforeach; ?>
+
+            <?php submit_button( 'Save Shortcode Settings', 'primary' ); ?>
+        </form>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Shortcode toggle panels
+        document.querySelectorAll('.wpraffle-sc-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                // Don't toggle if clicking the switch itself
+                if (e.target.closest('.wpraffle-sc-switch')) return;
+                var targetId = toggle.getAttribute('data-target');
+                var panel = document.getElementById(targetId);
+                if (panel) {
+                    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                }
+            });
+        });
+
+        // Toggle switch UI + panel visibility
+        document.querySelectorAll('.wpraffle-sc-switch').forEach(function(sw) {
+            sw.addEventListener('change', function() {
+                var wrapper = sw.closest('.rs-card');
+                var panel = wrapper.querySelector('.wpraffle-sc-panel');
+                var header = wrapper.querySelector('.wpraffle-sc-toggle');
+                var indicator = header.querySelector('span[style*="font-weight:600"]');
+                var track = sw.nextElementSibling;
+                var knob = track.nextElementSibling;
+
+                if (sw.checked) {
+                    panel.style.display = 'block';
+                    header.style.background = '#f5f3ff';
+                    header.style.borderBottomColor = '#e0e7ff';
+                    wrapper.style.borderColor = '#6c5ce7';
+                    track.style.background = '#6c5ce7';
+                    knob.style.left = '22px';
+                    if (indicator) { indicator.textContent = 'Customised'; indicator.style.color = '#6c5ce7'; }
+                } else {
+                    panel.style.display = 'none';
+                    header.style.background = '#f9fafb';
+                    header.style.borderBottomColor = '#e5e7eb';
+                    wrapper.style.borderColor = '#e5e7eb';
+                    track.style.background = '#d1d5db';
+                    knob.style.left = '3px';
+                    if (indicator) { indicator.textContent = 'Default'; indicator.style.color = '#9ca3af'; }
+                }
+            });
+        });
+    });
+    </script>
 
     <!-- ════════════════════ EMAIL TAB ════════════════════ -->
     <?php elseif ( $tab === 'email' ) : ?>

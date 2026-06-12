@@ -68,8 +68,9 @@ class Raffle_Draw {
 
         // Multi-winner support
         if ( ! empty( $raffle->multi_winner ) && (int) $raffle->number_of_winners > 1 ) {
-            $wpdb->query( 'COMMIT' );
+            // SEC-13 FIX: Keep transaction open during multi-winner draw (don't release the lock early)
             $results = Raffle_Prizes::draw_multiple_winners( $raffle_id, (int) $raffle->number_of_winners );
+            $wpdb->query( 'COMMIT' );
             if ( $is_ajax ) {
                 if ( is_wp_error( $results ) ) {
                     wp_send_json_error( array( 'message' => $results->get_error_message() ) );

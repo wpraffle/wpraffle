@@ -53,7 +53,8 @@ class Raffle_Geo {
     }
 
     /**
-     * IP geolocation lookup (uses free ip-api.com).
+     * IP geolocation lookup (uses ipapi.co over HTTPS).
+     * SEC-7 FIX: Switched from HTTP ip-api.com to HTTPS ipapi.co.
      */
     private static function geo_lookup( $ip ) {
         $cached = get_transient( 'raffle_geo_' . md5( $ip ) );
@@ -61,22 +62,24 @@ class Raffle_Geo {
             return $cached;
         }
 
-        $response = wp_remote_get( 'http://ip-api.com/json/' . $ip . '?fields=countryCode', array(
+        $response = wp_remote_get( 'https://ipapi.co/' . rawurlencode( $ip ) . '/country/', array(
             'timeout' => 3,
+            'headers' => array( 'User-Agent' => 'WPRaffle/' . ( defined( 'RAFFLE_SYSTEM_VERSION' ) ? RAFFLE_SYSTEM_VERSION : '1.0' ) ),
         ) );
 
         if ( is_wp_error( $response ) ) {
             return false;
         }
 
-        $body = json_decode( wp_remote_retrieve_body( $response ), true );
-        $country = $body['countryCode'] ?? false;
+        $country = trim( wp_remote_retrieve_body( $response ) );
 
-        if ( $country ) {
+        // ipapi.co returns 2-letter country code or error JSON
+        if ( $country && strlen( $country ) === 2 && ctype_alpha( $country ) ) {
             set_transient( 'raffle_geo_' . md5( $ip ), $country, WEEK_IN_SECONDS );
+            return $country;
         }
 
-        return $country;
+        return false;
     }
 
     /**
