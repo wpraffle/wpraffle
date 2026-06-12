@@ -15,7 +15,7 @@
 
 <p align="center">
   All readme, documentation & release info is AI generated - Shoot me! So apologies if it's not perfect.<br>
-  I will evventually replace it with a proper documentation but only so many hours in the day.
+  I will eventually replace it with a proper documentation but only so many hours in the day.
 </p>
 
 ---
@@ -59,7 +59,7 @@
 ### Developer
 - 🧩 **Elementor Widgets** — 18 custom widgets for visual page building
 - 📐 **Shortcodes** — Display raffles, lists, lookup, and live draws anywhere
-- 🔄 **GitHub Auto-Updates** — Push updates from GitHub releases
+- 🔄 **GitHub Auto-Updates** — Auto updates from GitHub releases
 - 🪝 **Hooks & Filters** — Extensible via WordPress actions and filters
 
 ---
