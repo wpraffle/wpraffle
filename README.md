@@ -13,6 +13,11 @@
   Built on WooCommerce with full ticket management, live draws, instant wins, and UK compliance features.
 </p>
 
+<p align="center">
+  All readme, documentation & release info is AI generated - Shoot me! So apologies if it's not perfect.<br>
+  I will evventually replace it with a proper documentation but only so many hours in the day.
+</p>
+
 ---
 
 ## ✨ Features
