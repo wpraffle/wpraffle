@@ -47,7 +47,7 @@ class WPRaffle_PDF {
         foreach ( $tickets as $t ) {
             $rows[] = array(
                 str_pad( $t->ticket_number, $total_digits, '0', STR_PAD_LEFT ),
-                $t->buyer_name,
+                self::anonymise_name( $t->buyer_name ),
                 ucfirst( $t->entry_type ),
                 $t->purchase_date,
             );
@@ -61,6 +61,18 @@ class WPRaffle_PDF {
     /**
      * Build the full PDF document.
      */
+    private static function anonymise_name( $name ) {
+        $name = trim( (string) $name );
+        if ( $name === '' ) {
+            return '-';
+        }
+        $parts = array_filter( explode( ' ', $name ) );
+        $initials = array_map( function ( $part ) {
+            return strtoupper( mb_substr( $part, 0, 1 ) );
+        }, $parts );
+        return implode( '.', $initials );
+    }
+
     private function build( $title, $subtitle, $headers, $rows, $company ) {
         $usable = self::PW - self::ML - self::MR;
         $col_w  = array( $usable * 0.18, $usable * 0.40, $usable * 0.15, $usable * 0.27 );

@@ -155,6 +155,49 @@ class Raffle_Tickets {
             $wpdb->query( 'COMMIT' );
         }
 
+        // Recalculate charity raised total if this raffle has a charity.
+        // Uses the shared resolver so the write works whether raffles.charity_id
+        // holds a DB row id or a CPT post id. If we can't resolve to a DB row
+        // (e.g. tables missing), no-op gracefully — the shortcode renders from
+        // the live compute and the hourly cron catches up.
+        $raffle_charity_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT charity_id FROM {$table_raffles} WHERE id = %d",
+            $raffle_id
+        ) );
+        if ( $raffle_charity_id && class_exists( 'Raffle_Charity' ) ) {
+            $live = Raffle_Charity::calculate_total_raised_for_charity( $raffle_charity_id );
+
+            // Resolve to a DB row id to persist total_raised.
+            $charities_table = $wpdb->prefix . 'raffle_charities';
+            $table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $charities_table ) ) === $charities_table;
+            if ( $table_exists ) {
+                // First try direct lookup, then resolve via CPT post slug.
+                $db_id = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT id FROM {$charities_table} WHERE id = %d",
+                    absint( $raffle_charity_id )
+                ) );
+                if ( ! $db_id ) {
+                    $post = get_post( absint( $raffle_charity_id ) );
+                    if ( $post && $post->post_type === 'raffle_charity' ) {
+                        $slug = $post->post_name ?: sanitize_title( $post->post_title );
+                        $db_id = (int) $wpdb->get_var( $wpdb->prepare(
+                            "SELECT id FROM {$charities_table} WHERE slug = %s",
+                            $slug
+                        ) );
+                    }
+                }
+                if ( $db_id ) {
+                    $wpdb->update(
+                        $charities_table,
+                        array( 'total_raised' => $live ),
+                        array( 'id' => $db_id ),
+                        array( '%f' ),
+                        array( '%d' )
+                    );
+                }
+            }
+        }
+
         return $selected;
     }
 
@@ -211,11 +254,11 @@ class Raffle_Tickets {
             return new WP_Error( 'duplicate_selection', 'Duplicate ticket numbers selected.' );
         }
 
-        // Check if already sold
-        $taken = $wpdb->get_col( $wpdb->prepare(
-            "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE raffle_id = %d AND ticket_number IN (" . implode( ',', array_map( 'intval', $numbers ) ) . ")",
-            $raffle_id
-        ) );
+        // Check if already sold. Build the IN-list from %d placeholders rather
+        // than concatenating intval'd literals (defence in depth).
+        $placeholders = implode( ',', array_fill( 0, count( $numbers ), '%d' ) );
+        $params       = array_merge( array( "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE raffle_id = %d AND ticket_number IN ({$placeholders})" ), array( $raffle_id ), array_map( 'intval', $numbers ) );
+        $taken        = $wpdb->get_col( call_user_func_array( array( $wpdb, 'prepare' ), $params ) );
 
         if ( ! empty( $taken ) ) {
             return new WP_Error( 'already_sold', sprintf( 'The following ticket numbers are already sold: %s.', implode( ', ', $taken ) ) );

@@ -393,4 +393,63 @@ HTML;
             self::get_headers( $s )
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 7. Data-deletion confirmation (GDPR two-step)
+    // ─────────────────────────────────────────────────────────────────────
+
+    public static function send_deletion_confirm( $email, $name, $confirm_url ) {
+        $s   = self::get_settings();
+        $col = $s['accent_color'];
+
+        $body = self::section_heading( 'Confirm your data deletion request' )
+            . self::muted_p( sprintf(
+                'Hi <strong>%s</strong>, you requested deletion of your raffle data on <strong>%s</strong>.',
+                esc_html( $name ),
+                esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) )
+            ) )
+            . self::muted_p( 'Click the button below within <strong>24 hours</strong> to confirm. Purchase records are retained for regulatory compliance, but your personal information (name, email) will be anonymised.' )
+            . self::cta_button( $confirm_url, 'Confirm Data Deletion', $col )
+            . self::muted_p( 'If you did not request this, you can safely ignore this email — no data will be changed.' );
+
+        return wp_mail(
+            $email,
+            'Confirm your WPRaffle data deletion',
+            self::wrap( $body, 'Confirm your data deletion request' ),
+            self::get_headers( $s )
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 8. Consolation coupon (sent to non-winning entrants after a draw)
+    // ─────────────────────────────────────────────────────────────────────
+
+    public static function send_consolation_coupon( $email, $name, $raffle, $coupon_code, $discount ) {
+        $s   = self::get_settings();
+        $col = $s['accent_color'];
+
+        $shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/shop' );
+
+        $body = self::section_heading( 'Better luck next time — here\'s a little something' )
+            . self::muted_p( sprintf(
+                'Hi <strong>%s</strong>, the draw for <strong>%s</strong> has taken place and unfortunately your ticket wasn\'t selected this time.',
+                esc_html( $name ),
+                esc_html( $raffle->title )
+            ) )
+            . self::box(
+                '<p style="margin:0;font-size:15px;color:#475569;">' . esc_html__( 'As a thank-you for entering, here is a coupon for your next competition:', 'wpraffle' ) . '</p>'
+                . '<p style="margin:8px 0 0;font-size:24px;font-weight:800;color:' . esc_attr( $col ) . ';">' . esc_html( $discount ) . ' off</p>'
+                . '<p style="margin:4px 0 0;font-size:13px;color:#64748b;">' . esc_html__( 'Use code at checkout:', 'wpraffle' ) . '</p>'
+                . '<p style="margin:2px 0 0;font-size:20px;font-weight:700;letter-spacing:2px;color:#0f172a;">' . esc_html( $coupon_code ) . '</p>'
+            )
+            . self::cta_button( $shop_url, 'Browse Competitions', $col )
+            . self::muted_p( esc_html__( 'Limited to one use, tied to your email address. Expiry applies.', 'wpraffle' ) );
+
+        return wp_mail(
+            $email,
+            sprintf( __( 'Your %s consolation coupon', 'wpraffle' ), $discount ),
+            self::wrap( $body, 'A thank-you from ' . $raffle->title ),
+            self::get_headers( $s )
+        );
+    }
 }

@@ -31,8 +31,14 @@ class Raffle_Instant_Wins {
         $table_instant = $wpdb->prefix . 'raffle_instant_wins';
         $table_raffles = $wpdb->prefix . 'raffles';
 
-        $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d", $raffle_id ) );
+        // Wrap lookup + insert in a transaction with a FOR UPDATE lock on the
+        // raffle row so two concurrent admin requests (or a double-click)
+        // can't both pass the "already an instant win?" check and insert
+        // duplicate rows for the same ticket number.
+        $wpdb->query( 'START TRANSACTION' );
+        $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d FOR UPDATE", $raffle_id ) );
         if ( ! $raffle ) {
+            $wpdb->query( 'ROLLBACK' );
             wp_send_json_error( array( 'message' => 'Raffle not found.' ) );
         }
 
@@ -52,22 +58,25 @@ class Raffle_Instant_Wins {
             }
 
             if ( empty( $available ) ) {
+                $wpdb->query( 'ROLLBACK' );
                 wp_send_json_error( array( 'message' => 'No available tickets left for instant wins.' ) );
             }
 
-            $ticket_num = $available[ array_rand( $available ) ];
+            $ticket_num = $available[ random_int( 0, count( $available ) - 1 ) ];
         } else {
             $ticket_num = absint( $ticket_num );
             if ( $ticket_num < 1 || $ticket_num > $raffle->total_tickets ) {
+                $wpdb->query( 'ROLLBACK' );
                 wp_send_json_error( array( 'message' => 'Invalid ticket number.' ) );
             }
-            
+
             // Check if it's already an instant win or sold
             $exists = $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$table_instant} WHERE raffle_id = %d AND ticket_number = %d",
                 $raffle_id, $ticket_num
             ) );
             if ( $exists ) {
+                $wpdb->query( 'ROLLBACK' );
                 wp_send_json_error( array( 'message' => 'Ticket is already an instant win.' ) );
             }
         }
@@ -94,13 +103,15 @@ class Raffle_Instant_Wins {
 
                 if ( empty( $available ) ) {
                     if ( $added > 0 ) {
-                        // Some were added already
+                        // Some were added already — commit what we have.
+                        $wpdb->query( 'COMMIT' );
                         wp_send_json_success( array( 'message' => $added . ' instant win(s) added. No more available tickets.' ) );
                     }
+                    $wpdb->query( 'ROLLBACK' );
                     wp_send_json_error( array( 'message' => 'No available tickets left for instant wins.' ) );
                 }
 
-                $current_ticket = $available[ array_rand( $available ) ];
+                $current_ticket = $available[ random_int( 0, count( $available ) - 1 ) ];
             }
 
             $result = $wpdb->insert( $table_instant, array(
@@ -116,9 +127,11 @@ class Raffle_Instant_Wins {
         }
 
         if ( $added === 0 ) {
+            $wpdb->query( 'ROLLBACK' );
             wp_send_json_error( array( 'message' => 'Database error.' ) );
         }
 
+        $wpdb->query( 'COMMIT' );
         wp_send_json_success( array( 'message' => $added . ' instant win(s) added.' ) );
     }
 

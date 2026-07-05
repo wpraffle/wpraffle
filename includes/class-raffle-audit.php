@@ -195,6 +195,11 @@ class Raffle_Audit {
      * Export logs as CSV for authority requests.
      */
     public static function export_csv( $args = array() ) {
+        // SEC-A11 FIX: Verify admin access before exporting audit data
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Unauthorized.', 'Forbidden', array( 'response' => 403 ) );
+        }
+
         $logs = self::get_logs( array_merge( $args, array( 'limit' => 10000 ) ) );
 
         $filename = 'raffle-audit-log-' . date( 'Y-m-d-His' ) . '.csv';

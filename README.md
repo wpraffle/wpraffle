@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
   <img src="https://img.shields.io/badge/PHP-8.0%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
   <img src="https://img.shields.io/badge/WooCommerce-8.0%2B-96588A?style=flat-square&logo=woocommerce&logoColor=white" alt="WooCommerce">
@@ -10,12 +10,13 @@
 
 <p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
-  Built on WooCommerce with full ticket management, live draws, instant wins, and UK compliance features.
+  Built on WooCommerce with full ticket management, live draws, instant wins, charity fundraising, responsible-gambling controls, and UK compliance features.
 </p>
 
 <p align="center">
-  All readme, documentation & release info is AI generated - Shoot me! So apologies if it's not perfect.<br>
-  I will eventually replace it with a proper documentation but only so many hours in the day.
+  📖 <a href="https://docs.wpraffle.dev">Full documentation</a> ·
+  📦 <a href="../../releases">Releases</a> ·
+  📝 <a href="./CHANGELOG.md">Changelog</a>
 </p>
 
 ---
@@ -36,7 +37,30 @@
 - ❓ **Skill Questions** — Multiple-choice questions required before purchase (UK Gambling Act compliance)
 - 🆓 **Free / Postal Entry** — Alternative entry route for compliance
 - 🌍 **Geo-Restriction** — Restrict entry by country via IP geolocation
-- 🔗 **Referral System** — Unique referral codes with bonus entries
+- 🔗 **Referral System** — Unique referral codes with bonus entries (paid-purchase verified)
+
+### Engagement & Conversion (new in v1.2)
+- 🎫 **Ticket Bundles** — Quantity bundles with custom pricing, savings %, and badges
+- 🔢 **Number Picker Grid** — Visual grid where buyers pick their own ticket numbers, with Lucky Dip
+- 🎁 **Consolation Coupons** — Auto-issue WooCommerce coupons to non-winning entrants after the draw
+- 📣 **Virality / Share** — Per-user referral links + share buttons (WhatsApp, Facebook, X, copy-link)
+- ⏰ **Scarcity / Urgency** — Live stock polling, "X people viewing now" social proof, low-stock alerts
+
+### Charity & Fundraising (new in v1.2)
+- ❤️ **Charity Registry** — CPT-based charity directory with `[raffle_charities]` shortcode
+- 💰 **Live Totals** — Public grid updates every 60s as tickets sell; allocations snapshotted at draw
+- 🧾 **Disbursement Workflow** — Operator-only CSV export and mark-disbursed flow
+
+### Responsible Gambling (enforced in v1.2)
+- 🛡️ **Spend Limits** — Day/week/month limits with a 24h cool-off on increases
+- 🚫 **Self-Exclusion** — Including email-based guest exclusion; cannot be lifted early
+- 🔒 **Operator Locks** — Per-account locks with reason + audit
+- ⚙️ **Server-Side Enforcement** — All six purchase gates; client UI is advisory only
+
+### Styling (overhauled in v1.2)
+- 🎨 **Five Theme Presets** — Diamonds / Golf / Car / Retro / Elite, each driving radius, shadow, button shape, and typography (not just hue)
+- 🪄 **CSS Custom Properties** — Override any `--wpr-*` token in your theme
+- 🖼️ **Icon Pack** — Single SVG sprite with brand/social icons (WhatsApp, Facebook, X, copy-link)
 
 ### Admin
 - 📊 **Analytics Dashboard** — Revenue charts, sales trends, activity feed
@@ -51,15 +75,16 @@
 - 🛡️ **WordPress nonces** on all forms and AJAX (CSRF protection)
 - 🧹 **Input sanitization & output escaping** throughout
 - 📐 **Prepared SQL statements** — No raw queries
-- ⏱️ **Rate limiting** — Configurable per-minute per-IP
-- 🔐 **Privacy & GDPR** — Personal data export/erasure via WordPress Privacy API
+- ⏱️ **Rate limiting** — Configurable per-minute per-IP, proxy-aware (trusted-proxy allowlist)
+- 🔐 **Privacy & GDPR** — Personal data export/erasure via WordPress Privacy API; two-step deletion
+- 💸 **Money integrity** — `FOR UPDATE` locks, `GET_LOCK` advisory locks, transactions on every credit/debit
 - 🔄 **Product Sync** — Detect and fix WooCommerce product mismatches
 - 🎨 **Shortcode Customisation** — Configure shortcode defaults from settings UI
 
 ### Developer
 - 🧩 **Elementor Widgets** — 18 custom widgets for visual page building
 - 📐 **Shortcodes** — Display raffles, lists, lookup, and live draws anywhere
-- 🔄 **GitHub Auto-Updates** — Auto updates from GitHub releases
+- 🔄 **GitHub Auto-Updates** — Push updates from GitHub releases
 - 🪝 **Hooks & Filters** — Extensible via WordPress actions and filters
 
 ---
@@ -83,10 +108,10 @@
 3. Upload the `.zip` and click **Install Now**
 4. Activate the plugin
 5. WPRaffle will automatically:
-   - Create all required database tables (10 tables)
+   - Create all required database tables (15 tables)
    - Create a WooCommerce shadow product
    - Create pages with shortcodes (Raffles, Past Raffles, Live Draw)
-   - Schedule cron jobs for auto-draw, reminders, and cleanup
+   - Schedule cron jobs for auto-draw, reminders, charity refresh, and cleanup
 6. Configure settings at **Raffles → Settings**
 
 ### Manual Install
@@ -120,6 +145,8 @@ git clone https://github.com/wpraffle/wpraffle.git
 | `[raffle_lookup]` | Ticket lookup form by email |
 | `[raffle_live_draw raffle_id="X"]` | Live animated draw page |
 | `[raffle_entry_list raffle_id="X"]` | Entry/ticket list for a raffle |
+| `[raffle_charities columns="3"]` | Charity directory grid with live totals *(new v1.2)* |
+| `[raffle_refer raffle_id="X"]` | Referral card with share buttons + earned bonus count *(new v1.2)* |
 
 ---
 
@@ -235,7 +262,7 @@ wpraffle/
 
 ### Database Tables
 
-The plugin creates **10 custom tables**:
+The plugin creates **15 custom tables**:
 
 | Table | Purpose |
 |-------|---------|
@@ -249,6 +276,11 @@ The plugin creates **10 custom tables**:
 | `wp_raffle_audit_log` | Audit trail |
 | `wp_raffle_templates` | Reusable templates |
 | `wp_raffle_free_entries` | Free/postal entries |
+| `wp_raffle_charities` | Charity registry (mirrors the CPT) *(v1.2)* |
+| `wp_raffle_charity_allocations` | Immutable draw-time charity allocations *(v1.2)* |
+| `wp_raffle_credits` | Append-only site-credit ledger *(v1.2)* |
+| `wp_raffle_payouts` | Idempotent wallet payout ledger *(v1.2)* |
+| `wp_raffle_rg_settings` | Responsible-gambling per-user settings *(v1.2)* |
 
 ---
 
@@ -275,7 +307,7 @@ WPRaffle implements multi-layer security:
 
 WPRaffle supports GitHub-based auto-updates:
 
-1. Tag a release on GitHub (e.g. `v1.1.0`)
+1. Tag a release on GitHub (e.g. `v1.2.0`)
 2. Upload the `.zip` as a release asset
 3. Users see the update within 12 hours (or immediately via manual check)
 4. Configure in **Raffles → Settings → Updates**
@@ -290,4 +322,10 @@ This project is licensed under [GPL-2.0+](https://www.gnu.org/licenses/gpl-2.0.h
 
 ## 📖 Full Documentation
 
-See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation covering all features, database schema, hooks, AJAX endpoints, and more.
+The full documentation lives at **<https://docs.wpraffle.dev>** and covers every feature,
+the database schema, hooks & filters, AJAX endpoints, cron jobs, security model, and more.
+
+The source for the docs site is in the
+[`wpraffle-docs` repo](https://github.com/wpraffle/wpraffle-docs). See
+[`CHANGELOG.md`](./CHANGELOG.md) for a per-version changelog and
+[`RELEASE.md`](./RELEASE.md) for the latest release notes.

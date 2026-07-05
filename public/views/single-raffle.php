@@ -25,7 +25,7 @@ if ( function_exists( 'wp_is_block_theme' ) && wp_is_block_theme() ) {
             block_template_part( 'header' );
         }
         ?>
-        <main class="wp-block-group" style="padding: 40px 0; background: #f8f9fd; min-height: 60vh;">
+        <main class="wp-block-group" style="padding: 40px 0; background: var(--wpr-bg-subtle); min-height: 60vh;">
             <?php
             while ( have_posts() ) :
                 the_post();
@@ -86,7 +86,7 @@ if ( function_exists( 'wp_is_block_theme' ) && wp_is_block_theme() ) {
                 wp_enqueue_script( 'raffle-public' );
                 wp_enqueue_style( 'raffle-public' );
                 
-                echo '<div class="raffle-single-page-wrapper" style="padding: 40px 0; background: #f8f9fd; min-height: 60vh;">';
+                echo '<div class="raffle-single-page-wrapper" style="padding: 40px 0; background: var(--wpr-bg-subtle); min-height: 60vh;">';
                 include RAFFLE_SYSTEM_PATH . 'public/views/raffle-display.php';
                 echo '</div>';
             } else {

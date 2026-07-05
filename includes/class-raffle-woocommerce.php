@@ -27,6 +27,8 @@ class Raffle_WooCommerce {
 
         // Cart Integration Hooks
         add_action( 'woocommerce_before_calculate_totals', array( $this, 'set_cart_item_price' ), 20, 1 );
+        // Show charity badge on single product page
+        add_action( 'woocommerce_single_product_summary', array( $this, 'show_charity_badge' ), 15 );
         add_filter( 'woocommerce_get_item_data', array( $this, 'display_cart_item_meta' ), 10, 2 );
         add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'add_order_item_meta' ), 10, 4 );
 
@@ -75,12 +77,63 @@ class Raffle_WooCommerce {
     }
 
     public function add_my_raffles_menu_item( $items ) {
-        $items['my-raffles'] = 'My Raffles';
-        return $items;
+        $new_items = array();
+        foreach ( $items as $key => $label ) {
+            // Insert My Raffles right after Dashboard, before Orders
+            if ( 'dashboard' === $key ) {
+                $new_items[ $key ] = $label;
+                $new_items['my-raffles'] = 'My Raffles';
+            } elseif ( ! isset( $new_items['my-raffles'] ) && 'orders' === $key ) {
+                // If there's no dashboard (some setups), insert before orders
+                $new_items['my-raffles'] = 'My Raffles';
+                $new_items[ $key ] = $label;
+            } else {
+                $new_items[ $key ] = $label;
+            }
+        }
+        // If we still haven't added it (no dashboard or orders key), prepend
+        if ( ! isset( $new_items['my-raffles'] ) ) {
+            $new_items = array_merge( array( 'my-raffles' => 'My Raffles' ), $new_items );
+        }
+        return $new_items;
     }
 
     public function my_raffles_endpoint_content() {
-        require_once RAFFLE_SYSTEM_PATH . 'public/views/my-raffles.php';
+        // Output icon CSS so SVGs render correctly in all tabs.
+        echo '<style>.wpr-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;width:18px;height:18px}.wpr-icon--xs{width:12px;height:12px}.wpr-icon--sm{width:14px;height:14px}.wpr-icon--md{width:18px;height:18px}.wpr-icon--lg{width:22px;height:22px}.wpr-icon--xl{width:28px;height:28px}</style>';
+
+        // Unified My Raffles page — now shows internal tabs for Tickets, Wins, RG, GDPR.
+        $sub = isset( $_GET['sub'] ) ? sanitize_text_field( wp_unslash( $_GET['sub'] ) ) : '';
+        $raffle_tabs = array(
+            ''                   => 'Tickets',
+            'wins'               => 'Wins',
+            'responsible-gambling' => 'Responsible Gambling',
+            'data-privacy'       => 'Data & Privacy',
+        );
+
+        echo '<div class="wpraffle-account-tabs" style="margin-bottom:20px;border-bottom:2px solid var(--wpr-border-color);display:flex;gap:0;">';
+        $base_url = wc_get_endpoint_url( 'my-raffles', '', wc_get_page_permalink( 'myaccount' ) );
+        foreach ( $raffle_tabs as $key => $label ) {
+            $active = ( $sub === $key ) ? 'border-bottom:3px solid var(--wpr-accent);color:var(--wpr-accent);font-weight:700;' : 'color:var(--wpr-text-muted);';
+            $url = $key === '' ? $base_url : add_query_arg( 'sub', $key, $base_url );
+            echo '<a href="' . esc_url( $url ) . '" style="padding:10px 16px;text-decoration:none;font-size:14px;' . $active . 'margin-bottom:-2px;">' . esc_html( $label ) . '</a>';
+        }
+        echo '</div>';
+
+        switch ( $sub ) {
+            case 'wins':
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/wins.php';
+                break;
+            case 'responsible-gambling':
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/responsible-gambling.php';
+                break;
+            case 'data-privacy':
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/gdpr.php';
+                break;
+            default:
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/tickets.php';
+                break;
+        }
     }
 
     /**
@@ -107,6 +160,7 @@ class Raffle_WooCommerce {
         $buyer_name  = isset( $_POST['buyer_name'] ) ? sanitize_text_field( wp_unslash( $_POST['buyer_name'] ) ) : '';
         $buyer_email = isset( $_POST['buyer_email'] ) ? sanitize_email( wp_unslash( $_POST['buyer_email'] ) ) : '';
         $selected_numbers = isset( $_POST['selected_numbers'] ) ? sanitize_text_field( wp_unslash( $_POST['selected_numbers'] ) ) : '';
+        $bundle_price     = isset( $_POST['bundle_price'] ) ? (float) $_POST['bundle_price'] : 0.0;
 
         if ( ! $raffle_id || ! $quantity || ! $buyer_name || ! $buyer_email ) {
             wp_send_json_error( array( 'message' => 'All fields are required.' ) );
@@ -163,7 +217,33 @@ class Raffle_WooCommerce {
             }
         }
 
-        $total_amount = $quantity * $raffle->ticket_price;
+        // Validate bundle price server-side (same pattern as ajax_add_to_cart).
+        $bundle_unit_price = 0.0;
+        if ( $bundle_price > 0 && function_exists( 'wpraffle_normalise_packages' ) ) {
+            $configured = wpraffle_normalise_packages( $raffle->packages, (float) $raffle->ticket_price );
+            foreach ( $configured as $b ) {
+                if ( (int) $b['qty'] === $quantity && (float) $b['price'] > 0 ) {
+                    if ( abs( (float) $b['price'] - $bundle_price ) < 0.01 ) {
+                        $bundle_unit_price = (float) $b['price'] / $quantity;
+                        break;
+                    }
+                }
+            }
+            if ( $bundle_unit_price <= 0 ) {
+                wp_send_json_error( array( 'message' => 'This bundle is no longer available.' ) );
+            }
+        }
+
+        $unit_price  = $bundle_unit_price > 0 ? $bundle_unit_price : (float) $raffle->ticket_price;
+        $total_amount = $quantity * $unit_price;
+
+        // Responsible-gambling gate: enforce self-exclusion, operator locks,
+        // and spend limits (keyed on user_id for logged-in buyers, on email
+        // for guests) before any cart entry is created.
+        $rg = apply_filters( 'raffle_pre_purchase_check', true, get_current_user_id(), (float) $total_amount, $buyer_email );
+        if ( is_wp_error( $rg ) ) {
+            wp_send_json_error( array( 'message' => $rg->get_error_message() ) );
+        }
 
         $product_id = (int) $raffle->wc_product_id;
         if ( ! $product_id || ! get_post( $product_id ) ) {
@@ -177,13 +257,14 @@ class Raffle_WooCommerce {
         // WC()->cart->empty_cart();
 
         $cart_item_data = array(
-            'raffle_id'        => $raffle_id,
-            'raffle_quantity'  => $quantity,
-            'raffle_price'     => $total_amount,
-            'raffle_title'     => $raffle->title,
-            'buyer_name'       => $buyer_name,
-            'buyer_email'      => $buyer_email,
-            'selected_numbers' => $selected_numbers,
+            'raffle_id'         => $raffle_id,
+            'raffle_quantity'   => $quantity,
+            'raffle_price'      => $total_amount,
+            'raffle_unit_price' => $unit_price,
+            'raffle_title'      => $raffle->title,
+            'buyer_name'        => $buyer_name,
+            'buyer_email'       => $buyer_email,
+            'selected_numbers'  => $selected_numbers,
         );
 
         WC()->cart->add_to_cart( $product_id, 1, 0, array(), $cart_item_data );
@@ -219,6 +300,7 @@ class Raffle_WooCommerce {
         $quantity         = isset( $_POST['quantity'] ) ? absint( $_POST['quantity'] ) : 0;
         $selected_numbers = isset( $_POST['selected_numbers'] ) ? sanitize_text_field( wp_unslash( $_POST['selected_numbers'] ) ) : '';
         $answer_index     = isset( $_POST['answer_index'] ) ? (int) $_POST['answer_index'] : -1;
+        $bundle_price     = isset( $_POST['bundle_price'] ) ? (float) $_POST['bundle_price'] : 0.0;
 
         if ( ! $raffle_id || ! $quantity ) {
             wp_send_json_error( array( 'message' => 'Raffle ID and quantity are required.' ) );
@@ -269,14 +351,53 @@ class Raffle_WooCommerce {
             }
         }
 
+        // Responsible-gambling gate. buyer_email falls back to the logged-in
+        // user's email (cart path has no POSTed email); guests are checked by
+        // email once they provide one at checkout.
+        $rg_user_id   = get_current_user_id();
+        $rg_buyer_eml = $rg_user_id ? (string) wp_get_current_user()->user_email : '';
+        $rg_amount    = $quantity * (float) $raffle->ticket_price;
+        $rg = apply_filters( 'raffle_pre_purchase_check', true, $rg_user_id, $rg_amount, $rg_buyer_eml );
+        if ( is_wp_error( $rg ) ) {
+            wp_send_json_error( array( 'message' => $rg->get_error_message() ) );
+        }
+
         $product_id = (int) $raffle->wc_product_id;
         if ( ! $product_id || ! get_post( $product_id ) ) {
             wp_send_json_error( array( 'message' => 'System error: WooCommerce product is not configured.' ) );
         }
 
+        // Validate the bundle price server-side. The client may claim a
+        // bundle_price (a fixed total for this quantity) but it MUST match a
+        // bundle the operator configured for this raffle — otherwise reject
+        // and fall back to standard pricing.
+        $bundle_unit_price = 0.0;
+        if ( $bundle_price > 0 && function_exists( 'wpraffle_normalise_packages' ) ) {
+            $configured = wpraffle_normalise_packages( $raffle->packages, (float) $raffle->ticket_price );
+            foreach ( $configured as $b ) {
+                if ( (int) $b['qty'] === $quantity && (float) $b['price'] > 0 ) {
+                    if ( abs( (float) $b['price'] - $bundle_price ) < 0.01 ) {
+                        $bundle_unit_price = (float) $b['price'] / $quantity;
+                        break;
+                    }
+                }
+            }
+            if ( $bundle_unit_price <= 0 ) {
+                wp_send_json_error( array( 'message' => 'This bundle is no longer available.' ) );
+            }
+        }
+
+        // Cart item data — include buyer_email (logged-in) and raffle_price
+        // so the cumulative per-user limit + price fallback checks fire
+        // correctly downstream (enforce_cart_quantity_limits / validate_checkout).
+        $unit_price  = $bundle_unit_price > 0 ? $bundle_unit_price : (float) $raffle->ticket_price;
+        $total_price = $quantity * $unit_price;
         $cart_item_data = array(
             'raffle_id'        => $raffle_id,
             'raffle_quantity'  => $quantity,
+            'raffle_price'     => $total_price,
+            'raffle_unit_price'=> $unit_price,
+            'buyer_email'      => $rg_buyer_eml,
             'selected_numbers' => $selected_numbers,
             'answer_index'     => $answer_index,
         );
@@ -300,9 +421,49 @@ class Raffle_WooCommerce {
         }
 
         foreach ( $cart_obj->get_cart() as $key => $value ) {
-            if ( isset( $value['raffle_price'] ) ) {
-                $value['data']->set_price( $value['raffle_price'] );
-                $value['data']->set_name( 'Raffle Tickets — ' . $value['raffle_title'] . ' (x' . $value['raffle_quantity'] . ')' );
+            if ( isset( $value['raffle_id'] ) ) {
+                // SEC-A5 FIX: Always recalculate price from the database
+                // instead of trusting the session-stored raffle_price value
+                global $wpdb;
+                $raffle = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT ticket_price FROM {$wpdb->prefix}raffles WHERE id = %d",
+                    (int) $value['raffle_id']
+                ) );
+                if ( $raffle ) {
+                    $qty = isset( $value['raffle_quantity'] ) ? (int) $value['raffle_quantity'] : 1;
+                    // If this cart item came from a validated bundle, re-verify
+                    // the bundle still exists and its price still matches the
+                    // operator-configured value (defence-in-depth — the client
+                    // can't tamper because we look it up from the DB again).
+                    $unit_price = (float) $raffle->ticket_price;
+                    if ( ! empty( $value['raffle_unit_price'] ) && function_exists( 'wpraffle_normalise_packages' ) ) {
+                        $configured = wpraffle_normalise_packages( '', (float) $raffle->ticket_price );
+                        // Re-fetch the full raffle row for packages JSON.
+                        $full_raffle = $wpdb->get_row( $wpdb->prepare( "SELECT ticket_price, packages FROM {$wpdb->prefix}raffles WHERE id = %d", (int) $value['raffle_id'] ) );
+                        if ( $full_raffle ) {
+                            $configured = wpraffle_normalise_packages( $full_raffle->packages, (float) $full_raffle->ticket_price );
+                            foreach ( $configured as $b ) {
+                                if ( (int) $b['qty'] === $qty && (float) $b['price'] > 0 ) {
+                                    $expected_unit = (float) $b['price'] / $qty;
+                                    if ( abs( $expected_unit - (float) $value['raffle_unit_price'] ) < 0.01 ) {
+                                        $unit_price = $expected_unit;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    $value['data']->set_price( $unit_price );
+                } else {
+                    // Raffle no longer exists — DO NOT honour the client-stored
+                    // raffle_price (it lives in WC session data and can be
+                    // tampered). Zero the price; enforce_cart_quantity_limits
+                    // will remove the stale item from the cart.
+                    $value['data']->set_price( 0 );
+                }
+                if ( isset( $value['raffle_title'] ) && isset( $value['raffle_quantity'] ) ) {
+                    $value['data']->set_name( 'Raffle Tickets — ' . $value['raffle_title'] . ' (x' . $value['raffle_quantity'] . ')' );
+                }
             }
         }
     }
@@ -495,6 +656,28 @@ class Raffle_WooCommerce {
                 continue;
             }
 
+            // Responsible-gambling gate (final defense-in-depth at payment
+            // completion). If RG blocks this buyer, refund the line and skip
+            // ticket generation rather than issuing tickets to an excluded /
+            // locked / over-limit buyer.
+            $rg_user_id = (int) $order->get_user_id();
+            $rg_amount  = (float) $item->get_total();
+            $rg = apply_filters( 'raffle_pre_purchase_check', true, $rg_user_id, $rg_amount, $buyer_email );
+            if ( is_wp_error( $rg ) ) {
+                $order->add_order_note( sprintf(
+                    'RG: Blocked ticket generation for raffle #%d (%s). Refunding line.',
+                    $raffle_id, $rg->get_error_code()
+                ) );
+                if ( class_exists( 'Raffle_Audit' ) ) {
+                    Raffle_Audit::log( $raffle_id, 'rg_block_at_payment', array(
+                        'order'   => $order_id,
+                        'reason'  => $rg->get_error_code(),
+                        'message' => $rg->get_error_message(),
+                    ), 'system' );
+                }
+                continue;
+            }
+
             // Create purchase record now since we are in standard cart flow
             $wpdb->insert( $table_purchases, array(
                 'raffle_id'      => $raffle_id,
@@ -530,6 +713,26 @@ class Raffle_WooCommerce {
             }
 
             $wpdb->query( 'COMMIT' );
+
+            // Virality: if a referral code was captured in the wpraffle_ref
+            // cookie (set by the ?ref= query param), attribute the bonus to
+            // the referrer now that this buyer has a genuine paid purchase.
+            // track_referral re-verifies the paid-purchase gate server-side.
+            if ( class_exists( 'Raffle_Referrals' ) && ! empty( $_COOKIE['wpraffle_ref'] ) ) {
+                $ref_code = preg_replace( '/[^A-Za-z0-9\-]/', '', sanitize_text_field( wp_unslash( $_COOKIE['wpraffle_ref'] ) ) );
+                if ( $ref_code && get_transient( 'wpraffle_ref_done_' . $raffle_id . '_' . md5( strtolower( $buyer_email ) ) ) === false ) {
+                    $ref_result = Raffle_Referrals::track_referral( $raffle_id, $ref_code, $buyer_email );
+                    // Mark done for 24h so we don't retry on every order item.
+                    set_transient( 'wpraffle_ref_done_' . $raffle_id . '_' . md5( strtolower( $buyer_email ) ), 1, DAY_IN_SECONDS );
+                    if ( class_exists( 'Raffle_Audit' ) ) {
+                        Raffle_Audit::log( $raffle_id, 'referral_attributed', array(
+                            'code'    => $ref_code,
+                            'buyer'   => $buyer_email,
+                            'outcome' => is_wp_error( $ref_result ) ? $ref_result->get_error_code() : 'ok',
+                        ), 'system' );
+                    }
+                }
+            }
 
             // Audit log for WC purchase
             if ( class_exists( 'Raffle_Audit' ) ) {
@@ -895,7 +1098,7 @@ class Raffle_WooCommerce {
                 $actual   = (float) $cart_item['data']->get_price() * (int) $cart_item['quantity'];
                 if ( abs( $expected - $actual ) > 0.01 ) {
                     // Force the correct price
-                    $cart_item['data']->set_price( $expected );
+                    $cart_item['data']->set_price( (float) $raffle->ticket_price );
                     return wc_price( $expected );
                 }
             }
@@ -981,6 +1184,17 @@ class Raffle_WooCommerce {
                     $remaining = max( 0, $max_tickets - $existing );
                     wc_add_notice( sprintf( 'You can only purchase %d more ticket(s) for "%s" (limit: %d per user).', $remaining, $raffle->title, $max_tickets ), 'error' );
                 }
+            }
+
+            // Responsible-gambling gate at checkout (final pre-payment check).
+            // user_id from the order/customer; email from cart item or the
+            // POSTed billing email so guests are protected too.
+            $rg_user_id = get_current_user_id();
+            $rg_email   = $check_email;
+            $rg_amount  = $qty * (float) $raffle->ticket_price;
+            $rg = apply_filters( 'raffle_pre_purchase_check', true, $rg_user_id, $rg_amount, $rg_email );
+            if ( is_wp_error( $rg ) ) {
+                wc_add_notice( sprintf( 'For "%s": %s', $raffle->title, $rg->get_error_message() ), 'error' );
             }
         }
     }
@@ -1412,6 +1626,14 @@ class Raffle_WooCommerce {
         global $wpdb;
         $table = $wpdb->prefix . 'raffles';
 
+        // SEC-A2 FIX: Independent capability + nonce verification
+        if ( ! current_user_can( 'edit_product', $product_id ) ) {
+            return;
+        }
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+            return;
+        }
+
         // Check if the product type is raffle
         $product_type = isset( $_POST['product-type'] ) ? sanitize_text_field( wp_unslash( $_POST['product-type'] ) ) : '';
         if ( 'raffle' !== $product_type ) {
@@ -1460,10 +1682,14 @@ class Raffle_WooCommerce {
         $postal_instructions = isset( $_POST['_raffle_postal_instructions'] ) ? wp_kses_post( wp_unslash( $_POST['_raffle_postal_instructions'] ) ) : '';
 
         // Sync WooCommerce product post_status to draft if status is draft to match native WC behavior
+        // SEC-L1: Use wp_update_post() instead of a raw UPDATE on wp_posts so that
+        // post-status transition hooks (and security plugins watching them) fire.
         $wc_status = $status === 'draft' ? 'draft' : 'publish';
         if ( get_post_status( $product_id ) !== $wc_status ) {
-            $wpdb->update( $wpdb->posts, array( 'post_status' => $wc_status ), array( 'ID' => $product_id ) );
-            clean_post_cache( $product_id );
+            wp_update_post( array(
+                'ID'          => $product_id,
+                'post_status' => $wc_status,
+            ) );
         }
 
         // Update product meta for standard WC compatibility
@@ -1547,18 +1773,70 @@ class Raffle_WooCommerce {
             update_post_meta( $product_id, '_raffle_id', $raffle_id );
         }
     }
+    public function show_charity_badge() {
+        global $product;
+        if ( ! $product ) return;
+        $raffle_id = get_post_meta( $product->get_id(), '_raffle_id', true );
+        if ( ! $raffle_id || ! class_exists( 'Raffle_Charity' ) ) return;
+
+        $charity_info = Raffle_Charity::get_raffle_charity( $raffle_id );
+        if ( ! $charity_info ) return;
+
+        $c = $charity_info['charity'];
+        $pct = $charity_info['percent'];
+        global $wpdb;
+        $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT sold_tickets, ticket_price, prize_value FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+        $raised = $raffle ? Raffle_Charity::get_live_raised_estimate( $raffle ) : 0;
+
+        echo '<details class="wpr-charity-details-dropdown" style="margin: 15px 0; border: 1px solid var(--wpr-accent-border, #a7f3d0); border-radius: 12px; background: var(--wpr-accent-bg, #ecfdf5); overflow: hidden; font-family: inherit; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">';
+        echo '<summary style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; list-style: none; outline: none; font-weight: 700; color: var(--wpr-accent-text, #065f46); font-size: 14px; user-select: none;">';
+        echo '<div style="display: flex; align-items: center; gap: 8px;">';
+        echo '<svg class="wpr-icon wpr-icon--sm" style="color: var(--wpr-accent, #059669); flex-shrink: 0;"><use href="#wpr-gift"></use></svg>';
+        echo '<span>' . esc_html( $pct ) . '% to ' . esc_html( $c->name ) . '</span>';
+        if ( $raised > 0 ) {
+            echo '<span style="font-size: 12px; color: var(--wpr-accent-text-dark, #047857); font-weight: 600; margin-left: 6px;">(' . esc_html( wpr_price( $raised, 0 ) ) . ' raised so far)</span>';
+        }
+        echo '</div>';
+        echo '<svg class="wpr-icon wpr-icon--xs wpr-dropdown-arrow" style="transition: transform 0.2s; flex-shrink: 0;"><use href="#wpr-chevron-down"></use></svg>';
+        echo '</summary>';
+        
+        echo '<div style="padding: 16px; border-top: 1px solid var(--wpr-accent-border, #a7f3d0); background: var(--wpr-bg-surface, #ffffff); display: flex; flex-direction: column; gap: 12px; text-align: left;">';
+        echo '<div style="display: flex; gap: 12px; align-items: flex-start;">';
+        if ( ! empty( $c->logo_url ) ) {
+            echo '<img src="' . esc_url( $c->logo_url ) . '" alt="' . esc_attr( $c->name ) . '" style="width: 50px; height: 50px; object-fit: contain; border-radius: 8px; border: 1px solid var(--wpr-border-color, #e5e7eb); padding: 4px; background: #fff; flex-shrink: 0;">';
+        }
+        echo '<div style="flex-grow: 1;">';
+        echo '<h4 style="margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--wpr-text-primary, #1f2937);">' . esc_html( $c->name ) . '</h4>';
+        if ( ! empty( $c->registration_number ) ) {
+            echo '<div style="font-size: 11px; color: var(--wpr-text-muted, #6b7280); font-weight: 600;">Registered Charity No. ' . esc_html( $c->registration_number ) . '</div>';
+        }
+        echo '</div>';
+        echo '</div>';
+        
+        if ( ! empty( $c->description ) ) {
+            echo '<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--wpr-text-secondary, #4b5563);">' . esc_html( $c->description ) . '</p>';
+        }
+        
+        if ( ! empty( $c->website ) ) {
+            echo '<div style="margin-top: 4px;">';
+            echo '<a href="' . esc_url( $c->website ) . '" target="_blank" rel="noopener noreferrer" class="button alt" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; background: var(--wpr-accent, #6c5ce7); color: #fff;">Visit Website →</a>';
+            echo '</div>';
+        }
+        echo '</div>';
+        echo '</details>';
+    }
+
 }
 
 /**
  * Define WC_Product_Raffle class globally on plugins_loaded to extend WC_Product.
  */
 add_action( 'plugins_loaded', function() {
-    if ( class_exists( 'WC_Product' ) && ! class_exists( 'WC_Product_Raffle' ) ) {
-        class WC_Product_Raffle extends WC_Product {
-            public function get_type() {
-                return 'raffle';
+    if ( ! class_exists( 'WC_Product_Raffle' ) ) {
+        class WC_Product_Raffle extends WC_Product_Simple {
+            public function __construct( $product = 0 ) {
+                parent::__construct( $product );
             }
         }
     }
-} );
-
+}, 20 );

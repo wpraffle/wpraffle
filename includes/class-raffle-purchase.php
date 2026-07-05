@@ -55,7 +55,9 @@ class Raffle_Purchase {
             wp_send_json_error( array( 'message' => sprintf( 'You can purchase between 1 and %d tickets.', $max_tickets ) ) );
         }
 
-        // Cumulative per-user ticket limit: check total tickets already purchased by this email
+        // Cumulative per-user ticket limit: pre-check (re-verified inside the
+        // transaction below to close the TOCTOU window between this SELECT and
+        // the START TRANSACTION).
         $existing_tickets = (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT COALESCE(SUM(quantity), 0) FROM {$table_purchases} WHERE raffle_id = %d AND buyer_email = %s AND payment_status IN ('completed','pending')",
             $raffle_id, $buyer_email
@@ -63,6 +65,13 @@ class Raffle_Purchase {
         if ( ( $existing_tickets + $quantity ) > $max_tickets ) {
             $remaining_allowance = max( 0, $max_tickets - $existing_tickets );
             wp_send_json_error( array( 'message' => sprintf( 'You can only purchase %d more tickets for this raffle (limit: %d per user).', $remaining_allowance, $max_tickets ) ) );
+        }
+
+        // Responsible-gambling gate (defense-in-depth on the non-WC path).
+        $rg_amount = (float) ( $quantity * $raffle->ticket_price );
+        $rg = apply_filters( 'raffle_pre_purchase_check', true, get_current_user_id(), $rg_amount, $buyer_email );
+        if ( is_wp_error( $rg ) ) {
+            wp_send_json_error( array( 'message' => $rg->get_error_message() ) );
         }
 
         // Validate skill question
@@ -102,8 +111,28 @@ class Raffle_Purchase {
         }
         set_transient( $rate_key, '1', 30 );
 
-        // ATOMIC TRANSACTION: purchase + tickets are created together or not at all
-        $wpdb->query( 'START TRANSACTION' );
+        // ATOMIC TRANSACTION: purchase + tickets are created together or not at all.
+        // Acquire a MySQL advisory lock keyed on the buyer email so two
+        // concurrent purchases by the same buyer can't both pass the
+        // cumulative-limit check and exceed max_tickets_per_user (TOCTOU).
+        $lock_name = 'wpraffle_purchase_' . md5( strtolower( $buyer_email ) );
+        $lock_acquired = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 10)', $lock_name ) );
+        if ( $lock_acquired !== 1 ) {
+            wp_send_json_error( array( 'message' => 'Another purchase is being processed. Please try again shortly.' ) );
+        }
+
+        try {
+            $wpdb->query( 'START TRANSACTION' );
+
+            // Re-verify the cumulative limit inside the lock.
+            $existing_in_lock = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(quantity), 0) FROM {$table_purchases} WHERE raffle_id = %d AND buyer_email = %s AND payment_status IN ('completed','pending')",
+                $raffle_id, $buyer_email
+            ) );
+            if ( ( $existing_in_lock + $quantity ) > $max_tickets ) {
+                $wpdb->query( 'ROLLBACK' );
+                throw new RuntimeException( sprintf( 'You can only purchase %d more tickets for this raffle (limit: %d per user).', max( 0, $max_tickets - $existing_in_lock ), $max_tickets ) );
+            }
 
         // Direct purchase (for testing or free raffles)
         $inserted = $wpdb->insert( $table_purchases, array(
@@ -123,18 +152,26 @@ class Raffle_Purchase {
             wp_send_json_error( array( 'message' => 'Error registering purchase. Please try again.' ) );
         }
 
-        // Generate tickets (transaction managed by the caller)
-        $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, $quantity, $buyer_email, false );
+            // Generate tickets (transaction managed by the caller)
+            $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, $quantity, $buyer_email, false );
 
-        if ( is_wp_error( $tickets ) ) {
-            $wpdb->query( 'ROLLBACK' );
-            wp_send_json_error( array( 'message' => $tickets->get_error_message() ) );
+            if ( is_wp_error( $tickets ) ) {
+                $wpdb->query( 'ROLLBACK' );
+                throw new RuntimeException( $tickets->get_error_message() );
+            }
+
+            // Check for instant wins (inside transaction so FOR UPDATE lock is effective)
+            $instant_wins = Raffle_Instant_Wins::check_for_instant_wins( $raffle_id, $purchase_id, $tickets, $buyer_email );
+
+            $wpdb->query( 'COMMIT' );
+        } catch ( RuntimeException $e ) {
+            if ( $wpdb->check_database_connection() ) {
+                $wpdb->query( 'ROLLBACK' );
+            }
+            $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+            wp_send_json_error( array( 'message' => $e->getMessage() ) );
         }
-
-        // Check for instant wins (inside transaction so FOR UPDATE lock is effective)
-        $instant_wins = Raffle_Instant_Wins::check_for_instant_wins( $raffle_id, $purchase_id, $tickets, $buyer_email );
-
-        $wpdb->query( 'COMMIT' );
+        $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
 
         // Audit log
         if ( class_exists( 'Raffle_Audit' ) ) {

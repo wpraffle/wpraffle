@@ -31,15 +31,21 @@ $is_list = ( $layout === 'list' );
 
         <?php if ( $is_list ) : ?>
         <!-- LIST LAYOUT -->
-        <div class="raffle-entry-list-card" style="background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px; padding: 16px 20px; flex-wrap: wrap;">
+        <div class="raffle-entry-list-card" style="background: var(--wpr-bg-surface); border: 1px solid var(--wpr-border-color); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px; padding: 16px 20px; flex-wrap: wrap;">
 
-            <?php if ( $show_image && $r->prize_image ) : ?>
-            <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
+            <?php if ( $show_image ) : ?>
+                <?php if ( ! empty( $r->prize_image ) ) : ?>
+                    <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
+                <?php else : ?>
+                    <div class="raffle-image-placeholder-list" style="width: 64px; height: 64px; background: linear-gradient(135deg, var(--wpr-accent-bg) 0%, var(--wpr-border-color) 100%); display: flex; align-items: center; justify-content: center; color: var(--wpr-accent); border-radius: 8px; flex-shrink: 0;">
+                        <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm', 'Competition Prize' ); ?>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
 
             <div style="flex: 1; min-width: 180px;">
-                <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 700; color: #1f2937; line-height: 1.3;"><?php echo esc_html( $r->title ); ?></h3>
-                <div style="font-size: 12px; color: #6b7280;">
+                <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 700; color: var(--wpr-text-primary); line-height: 1.3;"><?php echo esc_html( $r->title ); ?></h3>
+                <div style="font-size: 12px; color: var(--wpr-text-muted);">
                     <?php echo esc_html( $r->sold_tickets ); ?> / <?php echo esc_html( $r->total_tickets ); ?> entries
                     <?php if ( $r->draw_date ) : ?>
                         &bull; <?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?>
@@ -48,10 +54,10 @@ $is_list = ( $layout === 'list' );
             </div>
 
             <?php if ( $winner_info ) : ?>
-            <div style="display: flex; align-items: center; gap: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 6px 12px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; background: var(--wpr-success-bg); border: 1px solid var(--wpr-success-bg); border-radius: 8px; padding: 6px 12px; flex-shrink: 0;">
                 <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
-                <span style="font-size: 13px; font-weight: 700; color: #166534;"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
-                <span style="font-size: 11px; color: #6b7280;">#<span style="font-family: monospace; background: #dcfce7; color: #166534; padding: 1px 5px; border-radius: 3px; font-weight: bold;"><?php echo esc_html( $formatted_winner_num ); ?></span></span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                <span style="font-size: 11px; color: var(--wpr-text-muted);">#<span style="font-family: monospace; background: var(--wpr-success-bg); color: var(--wpr-success-text); padding: 1px 5px; border-radius: 3px; font-weight: bold;"><?php echo esc_html( $formatted_winner_num ); ?></span></span>
             </div>
             <?php endif; ?>
 
@@ -67,35 +73,46 @@ $is_list = ( $layout === 'list' );
 
         <?php else : ?>
         <!-- GRID LAYOUT -->
-        <div class="raffle-entry-list-card" style="background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
+        <div class="raffle-entry-list-card" style="background: var(--wpr-bg-surface); border: 1px solid var(--wpr-border-color); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
 
-            <?php if ( $show_image && $r->prize_image ) : ?>
-            <div style="position: relative; overflow: hidden;">
-                <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width: 100%; height: 180px; object-fit: cover;">
-                <?php if ( $r->draw_date ) : ?>
-                <div style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">
-                    <?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?>
-                </div>
+            <?php if ( $show_image ) : ?>
+                <?php if ( ! empty( $r->prize_image ) ) : ?>
+                    <div style="position: relative; overflow: hidden;">
+                        <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width: 100%; height: 180px; object-fit: cover;">
+                        <?php if ( $r->draw_date ) : ?>
+                        <div style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: var(--wpr-text-inverse); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                            <?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                <?php else : ?>
+                    <div class="raffle-image-placeholder" style="width: 100%; height: 180px; background: linear-gradient(135deg, var(--wpr-accent-bg) 0%, var(--wpr-border-color) 100%); display: flex; align-items: center; justify-content: center; color: var(--wpr-accent); position: relative;">
+                        <?php echo wpr_get_icon( 'gift', 'wpr-icon--lg', 'Competition Prize' ); ?>
+                        <?php if ( $r->draw_date ) : ?>
+                        <div style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: var(--wpr-text-inverse); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                            <?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
                 <?php endif; ?>
-            </div>
             <?php endif; ?>
 
             <div style="padding: 20px; display: flex; flex-direction: column; gap: 12px; flex: 1;">
 
                 <!-- Title & Entry Count -->
                 <div>
-                    <h3 style="margin: 0 0 4px 0; font-size: 17px; font-weight: 700; color: #1f2937; line-height: 1.3;"><?php echo esc_html( $r->title ); ?></h3>
-                    <div style="font-size: 13px; color: #6b7280;">
+                    <h3 style="margin: 0 0 4px 0; font-size: 17px; font-weight: 700; color: var(--wpr-text-primary); line-height: 1.3;"><?php echo esc_html( $r->title ); ?></h3>
+                    <div style="font-size: 13px; color: var(--wpr-text-muted);">
                         <?php echo esc_html( $r->sold_tickets ); ?> / <?php echo esc_html( $r->total_tickets ); ?> entries
                     </div>
                 </div>
 
                 <?php if ( $winner_info ) : ?>
                 <!-- Winner -->
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;">
+                <div style="background: var(--wpr-success-bg); border: 1px solid var(--wpr-success-bg); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;">
                     <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
-                    <span style="font-size: 14px; font-weight: 700; color: #166534;"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
-                    <span style="font-size: 12px; color: #6b7280;">Ticket: <span style="font-family: monospace; background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px; font-weight: bold;"><?php echo esc_html( $formatted_winner_num ); ?></span></span>
+                    <span style="font-size: 14px; font-weight: 700; color: var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                    <span style="font-size: 12px; color: var(--wpr-text-muted);">Ticket: <span style="font-family: monospace; background: var(--wpr-success-bg); color: var(--wpr-success-text); padding: 2px 6px; border-radius: 4px; font-weight: bold;"><?php echo esc_html( $formatted_winner_num ); ?></span></span>
                 </div>
                 <?php endif; ?>
 

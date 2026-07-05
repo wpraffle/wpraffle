@@ -153,13 +153,12 @@
                     <td>Display a dedicated page showing all ended/finished competitions, total entries, winners, instant wins, and draw verification links.</td>
                     <td>
                         <code>columns</code> — Grid columns <em>(default: 3)</em><br>
-                        <code>show_image</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_winner</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_instant</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_video_btn</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_verified_btn</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_date</code> — <code>yes</code> / <code>no</code><br>
-                        <code>show_entries</code> — <code>yes</code> / <code>no</code>
+                        <code>show_image</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em><br>
+                        <code>show_winner</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em><br>
+                        <code>show_video_btn</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em><br>
+                        <code>show_verified_btn</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em><br>
+                        <code>show_date</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em><br>
+                        <code>show_entries</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em>
                     </td>
                 </tr>
                 <tr>
@@ -179,13 +178,35 @@
                         <code>layout</code> — <code>grid</code> / <code>list</code> <em>(default: grid)</em><br>
                         <code>columns</code> — Grid columns <em>(default: 2, only used when layout=grid)</em><br>
                         <code>button_text</code> — Button label <em>(default: "Download Entry List")</em><br>
-                        <code>button_bg</code> — Button background colour <em>(default: #1e40af)</em><br>
-                        <code>button_color</code> — Button text colour <em>(default: #ffffff)</em><br>
+                        <code>button_bg</code> — Button background colour <em>(default: var(--wpr-accent))</em><br>
+                        <code>button_color</code> — Button text colour <em>(default: var(--wpr-text-inverse))</em><br>
                         <code>button_radius</code> — Button border radius <em>(default: 8)</em><br>
-                        <code>show_image</code> — <code>yes</code> / <code>no</code>
+                        <code>show_image</code> — <code>yes</code> / <code>no</code> <em>(default: yes)</em>
                     </td>
                 </tr>
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Charity shortcode documentation (feature expansion) -->
+<div class="card" style="margin-top: 20px; max-width: 100%;">
+    <h2 class="title">Charity &amp; Wallet Shortcodes</h2>
+    <p class="description" style="margin-bottom:16px;">Additional shortcodes introduced in the feature expansion.</p>
+    <table class="widefat striped">
+        <thead>
+            <tr>
+                <th style="width:220px;">Shortcode</th>
+                <th>Description</th>
+                <th style="width:300px;">Attributes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>[raffle_charities]</code></td>
+                <td>Display a directory of all active charities with logos, descriptions, registration numbers, and total raised through competitions. Each card links to the charity website.</td>
+                <td><code>columns</code> — Grid columns <em>(default: 3)</em></td>
+            </tr>
+        </tbody>
+    </table>
 </div>

@@ -7,6 +7,11 @@ class Raffle_Geo {
 
     /**
      * Check if a user can access a raffle based on geo restrictions.
+     *
+     * SEC-M1: For geo-restricted competitions (a legal/compliance control),
+     * we FAIL CLOSED when the user's country cannot be determined. Returning
+     * true on lookup failure allowed users in blocked regions to bypass the
+     * restriction whenever the geo-lookup API was unavailable.
      */
     public static function check_eligibility( $raffle ) {
         if ( ! $raffle || ! $raffle->geo_restricted ) {
@@ -21,8 +26,8 @@ class Raffle_Geo {
         $user_country = self::get_user_country();
 
         if ( ! $user_country ) {
-            // If we can't determine country, allow access (fail open)
-            return true;
+            // Cannot confidently locate the user — deny for restricted raffles.
+            return false;
         }
 
         return in_array( $user_country, $allowed_countries, true );
@@ -30,6 +35,11 @@ class Raffle_Geo {
 
     /**
      * Get user's country code from IP or WooCommerce billing address.
+     *
+     * SEC-M1: Use the shared wpraffle_get_client_ip() helper so that
+     * CloudFlare/Nginx proxy headers (X-Forwarded-For, CF-Connecting-IP) are
+     * honoured consistently with the purchase + rate-limiter logic. Reading
+     * REMOTE_ADDR directly geolocated the proxy, not the end user.
      */
     public static function get_user_country() {
         // Try WooCommerce billing country first (logged in users)
@@ -43,9 +53,9 @@ class Raffle_Geo {
             }
         }
 
-        // Try IP geolocation
-        $ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '' ) );
-        if ( empty( $ip ) || $ip === '127.0.0.1' ) {
+        // Try IP geolocation using the shared, proxy-aware client IP helper.
+        $ip = function_exists( 'wpraffle_get_client_ip' ) ? wpraffle_get_client_ip() : '';
+        if ( empty( $ip ) || $ip === '0.0.0.0' ) {
             return false;
         }
 

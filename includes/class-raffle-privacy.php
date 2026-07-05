@@ -37,6 +37,7 @@ class Raffle_Privacy {
         // AJAX endpoints for My Raffles page
         add_action( 'wp_ajax_raffle_export_my_data', array( __CLASS__, 'ajax_export_my_data' ) );
         add_action( 'wp_ajax_raffle_request_deletion', array( __CLASS__, 'ajax_request_deletion' ) );
+        add_action( 'wp_ajax_raffle_confirm_deletion', array( __CLASS__, 'ajax_confirm_deletion' ) );
     }
 
     /**
@@ -147,7 +148,7 @@ class Raffle_Privacy {
 
         // ── Referrals ──
         $referrals = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$tables['referrals']} WHERE referrer_email = %s OR referred_email = %s ORDER BY created_at DESC LIMIT 500",
+            "SELECT * FROM {$tables['referrals']} WHERE user_email = %s OR referred_email = %s ORDER BY created_at DESC LIMIT 500",
             $email, $email
         ) );
 
@@ -157,10 +158,10 @@ class Raffle_Privacy {
                 'group_label' => 'Raffle Referrals',
                 'item_id'     => 'raffle-referral-' . $ref->id,
                 'data'        => array(
-                    array( 'name' => 'Referrer Email', 'value' => $ref->referrer_email ),
+                    array( 'name' => 'Referrer Email', 'value' => $ref->user_email ),
                     array( 'name' => 'Referred Email', 'value' => $ref->referred_email ),
                     array( 'name' => 'Referral Code', 'value' => $ref->referral_code ),
-                    array( 'name' => 'Status', 'value' => $ref->status ),
+                    array( 'name' => 'Bonus Entries', 'value' => $ref->bonus_entries ),
                     array( 'name' => 'Date', 'value' => $ref->created_at ),
                 ),
             );
@@ -257,8 +258,8 @@ class Raffle_Privacy {
         // ── Anonymize referrals ──
         $wpdb->update(
             $tables['referrals'],
-            array( 'referrer_email' => $new_email ),
-            array( 'referrer_email' => $email ),
+            array( 'user_email' => $new_email ),
+            array( 'user_email' => $email ),
             array( '%s' ),
             array( '%s' )
         );
@@ -393,7 +394,7 @@ class Raffle_Privacy {
 
             // Referrals
             $refs = $wpdb->get_results( $wpdb->prepare(
-                "SELECT referral_code, status, created_at FROM {$wpdb->prefix}raffle_referrals WHERE referrer_email = %s OR referred_email = %s ORDER BY created_at DESC",
+                "SELECT referral_code, bonus_entries, created_at FROM {$wpdb->prefix}raffle_referrals WHERE user_email = %s OR referred_email = %s ORDER BY created_at DESC",
                 $em, $em
             ) );
 
@@ -401,7 +402,7 @@ class Raffle_Privacy {
                 $export['data'][] = array(
                     'type'          => 'referral',
                     'referral_code' => $ref->referral_code,
-                    'status'        => $ref->status,
+                    'bonus_entries' => $ref->bonus_entries,
                     'date'          => $ref->created_at,
                 );
             }
@@ -417,9 +418,15 @@ class Raffle_Privacy {
 
     /**
      * AJAX: Request account data deletion.
+     *
+     * S5 FIX: No longer anonymises immediately. Generates a single-use token,
+     * stores it in a 24h transient, and emails a confirmation link to the
+     * account owner. The actual erasure happens in ajax_confirm_deletion() —
+     * this two-step flow means a stolen session cookie can't irreversibly
+     * destroy PII with a single request.
      */
     public static function ajax_request_deletion() {
-        if ( ! current_user_can( 'read' ) ) {
+        if ( ! is_user_logged_in() ) {
             wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
         }
 
@@ -432,12 +439,81 @@ class Raffle_Privacy {
             wp_send_json_error( array( 'message' => 'No email address found.' ) );
         }
 
-        // Perform anonymization directly (user-initiated)
+        // Single-use token valid for 24 hours.
+        $token = wp_generate_password( 32, false );
+        set_transient(
+            'wpraffle_del_' . $user_id,
+            array(
+                'token'    => wp_hash( $token ),
+                'email'    => $email,
+                'created'  => time(),
+            ),
+            24 * HOUR_IN_SECONDS
+        );
+
+        $confirm_url = add_query_arg(
+            array(
+                'raffle_confirm_delete' => '1',
+                'uid'                   => $user_id,
+                'token'                 => $token,
+            ),
+            wc_get_account_endpoint_url( 'gdpr' )
+        );
+
+        if ( class_exists( 'Raffle_Email' ) ) {
+            Raffle_Email::send_deletion_confirm( $email, wp_get_current_user()->display_name, $confirm_url );
+        }
+
+        if ( class_exists( 'Raffle_Audit' ) ) {
+            Raffle_Audit::log( 0, 'data_deletion_requested', "User #{$user_id} requested deletion; confirmation email sent to {$email}.", 'system' );
+        }
+
+        wp_send_json_success( array(
+            'message' => 'A confirmation link has been emailed to you. Click it within 24 hours to complete deletion.',
+        ) );
+    }
+
+    /**
+     * AJAX: Confirm account data deletion (called after the user clicks the
+     * emailed link and re-confirms). Validates the token + 24h window, then
+     * runs the actual erasure.
+     */
+    public static function ajax_confirm_deletion() {
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
+        }
+
+        check_ajax_referer( 'raffle_my_data_nonce', 'nonce' );
+
+        $user_id = get_current_user_id();
+        $token   = isset( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
+
+        if ( ! $token ) {
+            wp_send_json_error( array( 'message' => 'Invalid confirmation token.' ) );
+        }
+
+        $pending = get_transient( 'wpraffle_del_' . $user_id );
+        if ( ! $pending || ! is_array( $pending ) || empty( $pending['token'] ) ) {
+            wp_send_json_error( array( 'message' => 'No pending deletion request. Please request deletion again.' ) );
+        }
+
+        if ( ! hash_equals( $pending['token'], wp_hash( $token ) ) ) {
+            wp_send_json_error( array( 'message' => 'Invalid or expired confirmation token.' ) );
+        }
+
+        // 24h window check (defence-in-depth — transient TTL also enforces it).
+        if ( empty( $pending['created'] ) || ( time() - (int) $pending['created'] ) > 24 * HOUR_IN_SECONDS ) {
+            delete_transient( 'wpraffle_del_' . $user_id );
+            wp_send_json_error( array( 'message' => 'Confirmation link expired. Please request deletion again.' ) );
+        }
+
+        $email = $pending['email'];
+        delete_transient( 'wpraffle_del_' . $user_id );
+
         $result = self::erase_data( $email );
 
-        // Audit log
         if ( class_exists( 'Raffle_Audit' ) ) {
-            Raffle_Audit::log( 0, 'data_deletion', "User #{$user_id} requested and completed data deletion. Records anonymized.", 'system' );
+            Raffle_Audit::log( 0, 'data_deletion', "User #{$user_id} confirmed and completed data deletion. Records anonymized.", 'system' );
         }
 
         wp_send_json_success( array(

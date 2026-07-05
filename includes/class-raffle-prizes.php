@@ -82,6 +82,15 @@ class Raffle_Prizes {
     /**
      * Perform multi-winner draw. Returns array of winners.
      */
+    private static function get_raffle_for_email( $raffle_id ) {
+        global $wpdb;
+        $raffle = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
+            absint( $raffle_id )
+        ) );
+        return $raffle ? $raffle : (object) array( 'id' => $raffle_id );
+    }
+
     public static function draw_multiple_winners( $raffle_id, $num_winners ) {
         global $wpdb;
 
@@ -156,7 +165,7 @@ class Raffle_Prizes {
                 Raffle_Email::send_winner_notification(
                     $winner->buyer_email,
                     $winner->buyer_name,
-                    (object) array( 'id' => $raffle_id ),
+                    self::get_raffle_for_email( $raffle_id ),
                     $winner->ticket_number
                 );
             }

@@ -50,11 +50,16 @@ class Raffle_Live_Draw {
         $total_digits = strlen( (string) $raffle->total_tickets );
 
         $pool = array_map( function( $t ) use ( $total_digits ) {
+            // SEC-A7 FIX: Robust email masking — show first char + domain initial only
+            $email_parts = explode( '@', $t->buyer_email );
+            $local = $email_parts[0] ?? '';
+            $domain = $email_parts[1] ?? '';
+            $masked_email = substr( $local, 0, 1 ) . str_repeat( '*', max( 3, strlen( $local ) - 1 ) ) . '@' . substr( $domain, 0, 1 ) . '***';
             return array(
                 'id'     => $t->id,
                 'number' => str_pad( $t->ticket_number, $total_digits, '0', STR_PAD_LEFT ),
                 'name'   => $t->buyer_name,
-                'email'  => substr( $t->buyer_email, 0, 3 ) . '***', // partially masked
+                'email'  => $masked_email,
             );
         }, $tickets );
 

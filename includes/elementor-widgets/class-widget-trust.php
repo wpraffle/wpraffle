@@ -14,10 +14,10 @@ class Raffle_Widget_Trust extends \Elementor\Widget_Base {
     }
     protected function render() {
         $s = $this->get_settings_for_display();
-        echo '<div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;">';
-        if ( $s['show_secure'] === 'yes' ) echo '<span style="font-size:12px;font-weight:700;color:#6b7280;">&#128274; Secure Purchase</span>';
-        if ( $s['show_confirmation'] === 'yes' ) echo '<span style="font-size:12px;font-weight:700;color:#6b7280;">&#128231; Email Confirmation</span>';
-        if ( $s['show_random'] === 'yes' ) echo '<span style="font-size:12px;font-weight:700;color:#6b7280;">&#127922; Random Draw</span>';
+        echo '<div style="display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;">';
+        if ( $s['show_secure'] === 'yes' ) echo '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--wpr-text-muted,#6b7280);">' . wpr_get_icon( 'lock', 'wpr-icon--sm' ) . ' Secure Purchase</span>';
+        if ( $s['show_confirmation'] === 'yes' ) echo '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--wpr-text-muted,#6b7280);">' . wpr_get_icon( 'mail', 'wpr-icon--sm' ) . ' Email Confirmation</span>';
+        if ( $s['show_random'] === 'yes' ) echo '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--wpr-text-muted,#6b7280);">' . wpr_get_icon( 'zap', 'wpr-icon--sm' ) . ' Random Draw</span>';
         echo '</div>';
     }
 }

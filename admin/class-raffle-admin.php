@@ -16,12 +16,14 @@ class Raffle_Admin {
         add_action( 'admin_post_wpraffle_save_legal_settings', array( $this, 'save_legal_settings' ) );
         add_action( 'admin_post_wpraffle_save_advanced_settings', array( $this, 'save_advanced_settings' ) );
         add_action( 'admin_post_wpraffle_save_update_settings', array( $this, 'save_update_settings' ) );
+        add_action( 'admin_post_wpraffle_save_styling_settings', array( $this, 'save_styling_settings' ) );
         add_action( 'admin_post_wpraffle_create_page', array( $this, 'handle_create_page' ) );
         add_action( 'admin_post_wpraffle_save_pages', array( $this, 'save_pages' ) );
         add_action( 'admin_post_wpraffle_save_shortcode_settings', array( $this, 'save_shortcode_settings' ) );
 
         // BUG-2 FIX: Schedule draw reminder cron inside admin_init hook (not constructor)
         add_action( 'admin_init', array( $this, 'schedule_reminder_cron' ) );
+        add_action( 'admin_init', array( $this, 'handle_template_delete' ) );
     }
 
     /**
@@ -260,7 +262,26 @@ class Raffle_Admin {
             array( $this, 'render_form_page' )
         );
 
-        // 4. Audit Log
+        // 4. Templates
+        add_submenu_page(
+            'raffle-system',
+            'Templates',
+            'Templates',
+            'manage_options',
+            'raffle-templates',
+            array( $this, 'render_templates_page' )
+        );
+
+        // 5. Charities (links to the raffle_charity CPT list)
+        add_submenu_page(
+            'raffle-system',
+            'Charities',
+            'Charities',
+            'manage_options',
+            'edit.php?post_type=raffle_charity'
+        );
+
+        // 5. Audit Log
         add_submenu_page(
             'raffle-system',
             'Audit Log',
@@ -270,7 +291,7 @@ class Raffle_Admin {
             array( $this, 'render_audit_page' )
         );
 
-        // 5. Settings
+        // 6. Settings
         add_submenu_page(
             'raffle-system',
             'Settings',
@@ -279,6 +300,8 @@ class Raffle_Admin {
             'wpraffle-settings',
             array( $this, 'render_settings_page' )
         );
+
+
 
     }
 
@@ -364,6 +387,10 @@ class Raffle_Admin {
             'referral_bonus_entries'  => (int) ( $_POST['referral_bonus_entries'] ?? 1 ),
             'draw_video_url'          => esc_url_raw( wp_unslash( $_POST['draw_video_url'] ?? '' ) ),
             'verified_result'         => sanitize_textarea_field( wp_unslash( $_POST['verified_result'] ?? '' ) ),
+            // Feature expansion: charity fields
+            'charity_id'              => isset( $_POST['charity_id'] ) && $_POST['charity_id'] ? absint( $_POST['charity_id'] ) : null,
+            'charity_mode'            => sanitize_text_field( wp_unslash( $_POST['charity_mode'] ?? 'none' ) ),
+            'charity_percent'         => absint( $_POST['charity_percent'] ?? 100 ),
         );
 
         // Convert empty start_date to NULL for DB compatibility
@@ -388,10 +415,57 @@ class Raffle_Admin {
             }
         }
 
-        // Packages
-        $packages_raw = sanitize_text_field( wp_unslash( $_POST['packages'] ?? '' ) );
-        $packages     = array_values( array_filter( array_map( 'absint', explode( ',', $packages_raw ) ) ) );
-        $data['packages'] = wp_json_encode( $packages );
+        // Packages — accept either comma-separated ints (legacy) or a JSON
+        // array of bundle objects ([{"qty":5,"price":25,...}]). When bundles
+        // are enabled we store the JSON shape so the public UI can render
+        // price/savings; otherwise we normalise to bare ints for back-compat.
+        $packages_raw    = trim( wp_unslash( $_POST['packages'] ?? '' ) );
+        $enable_bundles  = ! empty( $_POST['enable_bundles'] );
+        $data['enable_bundles'] = $enable_bundles ? 1 : 0;
+
+        // Number picker grid toggle (off by default for back-compat).
+        $data['enable_number_grid'] = ! empty( $_POST['enable_number_grid'] ) ? 1 : 0;
+
+        // Engagement & Marketing feature flags (all off by default).
+        $data['enable_consolation_coupon'] = ! empty( $_POST['enable_consolation_coupon'] ) ? 1 : 0;
+        $data['enable_scarcity']           = ! empty( $_POST['enable_scarcity'] ) ? 1 : 0;
+        $data['enable_viewers_now']        = ! empty( $_POST['enable_viewers_now'] ) ? 1 : 0;
+        $data['enable_share']              = ! empty( $_POST['enable_share'] ) ? 1 : 0;
+
+        // Consolation coupon config.
+        if ( $data['enable_consolation_coupon'] ) {
+            $data['consolation_config'] = wp_json_encode( array(
+                'type'        => ( $_POST['consolation_type'] ?? 'percent' ) === 'fixed' ? 'fixed' : 'percent',
+                'amount'      => (float) ( $_POST['consolation_amount'] ?? 10 ),
+                'expiry_days' => max( 1, (int) ( $_POST['consolation_expiry_days'] ?? 30 ) ),
+            ) );
+        } else {
+            $data['consolation_config'] = '';
+        }
+
+        if ( $enable_bundles && $packages_raw !== '' && $packages_raw[0] === '[' ) {
+            // JSON bundle syntax — sanitise each object's scalar fields.
+            $decoded = json_decode( $packages_raw, true );
+            $clean   = array();
+            if ( is_array( $decoded ) ) {
+                foreach ( $decoded as $b ) {
+                    if ( ! is_array( $b ) || empty( $b['qty'] ) ) {
+                        continue;
+                    }
+                    $clean[] = array(
+                        'qty'   => absint( $b['qty'] ),
+                        'price' => isset( $b['price'] ) ? (float) $b['price'] : 0.0,
+                        'label' => isset( $b['label'] ) ? sanitize_text_field( $b['label'] ) : '',
+                        'badge' => isset( $b['badge'] ) ? sanitize_text_field( $b['badge'] ) : '',
+                    );
+                }
+            }
+            $data['packages'] = wp_json_encode( $clean );
+        } else {
+            // Legacy comma-separated ints.
+            $packages_ints    = array_values( array_filter( array_map( 'absint', explode( ',', $packages_raw ) ) ) );
+            $data['packages'] = wp_json_encode( $packages_ints );
+        }
 
         // Answers
         $answers = array(
@@ -412,7 +486,7 @@ class Raffle_Admin {
                 'post_content' => $data['description'],
                 'post_status'  => $wc_status,
                 'post_type'    => 'product',
-                'post_author'  => 1,
+                'post_author'  => get_current_user_id() ?: 1,
             );
 
             $existing_product_id = 0;
@@ -527,6 +601,33 @@ class Raffle_Admin {
             Raffle_Audit::log( $rid, $action, "Raffle '{$data['title']}' " . ( $raffle_id ? 'updated' : 'created' ) . " by admin. Status: {$data['status']}.", '' );
         }
 
+        // Restore instant wins from a template (only on new-raffle creation).
+        $template_post_id = isset( $_POST['template_id'] ) ? absint( $_POST['template_id'] ) : 0;
+        if ( ! $raffle_id && $template_post_id && ! empty( $new_raffle_id ) && class_exists( 'Raffle_Templates' ) ) {
+            $tpl = Raffle_Templates::get_template( $template_post_id );
+            if ( $tpl ) {
+                $tpl_config = json_decode( $tpl->config, true );
+                if ( is_array( $tpl_config ) && ! empty( $tpl_config['instant_wins'] ) ) {
+                    $iw_table = $wpdb->prefix . 'raffle_instant_wins';
+                    foreach ( $tpl_config['instant_wins'] as $iw ) {
+                        if ( empty( $iw['prize_name'] ) ) {
+                            continue;
+                        }
+                        $wpdb->insert(
+                            $iw_table,
+                            array(
+                                'raffle_id'     => $new_raffle_id,
+                                'ticket_number' => isset( $iw['ticket_number'] ) ? absint( $iw['ticket_number'] ) : 0,
+                                'prize_name'    => sanitize_text_field( $iw['prize_name'] ),
+                                'status'        => 'available',
+                            ),
+                            array( '%d', '%d', '%s', '%s' )
+                        );
+                    }
+                }
+            }
+        }
+
         wp_safe_redirect( admin_url( 'admin.php?page=raffle-list&message=saved' ) );
         exit;
     }
@@ -552,15 +653,86 @@ class Raffle_Admin {
         include RAFFLE_SYSTEM_PATH . 'admin/views/dashboard.php';
     }
 
+    /**
+     * Handle server-side template deletion via a nonced link on the Templates
+     * page (simpler + more WP-native than an AJAX round-trip).
+     */
+    public function handle_template_delete() {
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'raffle-templates' ) {
+            return;
+        }
+        if ( ! isset( $_GET['action'] ) || $_GET['action'] !== 'delete' ) {
+            return;
+        }
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to do that.', 'wpraffle' ) );
+        }
+        check_admin_referer( 'raffle_delete_template' );
+
+        $template_id = absint( $_GET['id'] ?? 0 );
+        if ( ! $template_id ) {
+            return;
+        }
+        global $wpdb;
+        $wpdb->delete( $wpdb->prefix . 'raffle_templates', array( 'id' => $template_id ), array( '%d' ) );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=raffle-templates&message=deleted' ) );
+        exit;
+    }
+
+    /**
+     * Render the Templates library page.
+     */
+    public function render_templates_page() {
+        $templates = class_exists( 'Raffle_Templates' ) ? Raffle_Templates::get_templates() : array();
+        include RAFFLE_SYSTEM_PATH . 'admin/views/templates.php';
+    }
+
     public function render_form_page() {
-        $raffle = null;
+        $raffle      = null;
+        $is_template = false;
+        $template    = null;
+
         if ( isset( $_GET['id'] ) ) {
             global $wpdb;
             $raffle = $wpdb->get_row( $wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
                 absint( $_GET['id'] )
             ) );
+        } elseif ( isset( $_GET['template_id'] ) ) {
+            // Pre-fill the form from a saved template. The template's config
+            // becomes a raffle-like object so the existing value-population
+            // pattern in the form view populates every field automatically.
+            $template_id = absint( $_GET['template_id'] );
+            $nonce_ok = isset( $_GET['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'raffle_apply_template' );
+
+            if ( $nonce_ok && $template_id && class_exists( 'Raffle_Templates' ) ) {
+                $template = Raffle_Templates::get_template( $template_id );
+                if ( $template ) {
+                    $config = json_decode( $template->config, true );
+                    if ( is_array( $config ) ) {
+                        // Clear raffle-specific fields so the operator must
+                        // fill them in for the new raffle.
+                        $config['id']          = 0;
+                        $config['title']       = '';
+                        $config['description'] = '';
+                        $config['prize_value'] = '';
+                        $config['prize_image'] = '';
+                        $config['start_date']  = '';
+                        $config['draw_date']   = '';
+                        $config['status']      = 'draft';
+                        $raffle                = (object) $config;
+                        $is_template           = true;
+                    }
+                }
+            }
+
+            if ( ! $is_template ) {
+                // Invalid template/nonce — fall through to a blank form.
+                $raffle = null;
+            }
         }
+
         include RAFFLE_SYSTEM_PATH . 'admin/views/raffle-form.php';
     }
 
@@ -708,6 +880,19 @@ class Raffle_Admin {
             'enable_audit'          => absint( $_POST['enable_audit'] ?? 1 ),
         );
         update_option( 'wpraffle_advanced_settings', $settings );
+
+        // Trusted-proxy allowlist (S3) — store comma-separated, validated to
+        // IP/CIDR-ish tokens only.
+        $raw_proxies = isset( $_POST['trusted_proxies'] ) ? sanitize_text_field( wp_unslash( $_POST['trusted_proxies'] ) ) : '';
+        $tokens = array_filter( array_map( 'trim', explode( ',', $raw_proxies ) ) );
+        $clean  = array();
+        foreach ( $tokens as $t ) {
+            if ( preg_match( '/^[0-9a-fA-F.:\/]+$/', $t ) ) {
+                $clean[] = $t;
+            }
+        }
+        update_option( 'wpraffle_trusted_proxies', implode( ', ', $clean ) );
+
         $this->redirect_settings( 'advanced' );
     }
 
@@ -742,6 +927,7 @@ class Raffle_Admin {
             'entry_list'  => array( 'title' => 'Entry Lists',  'content' => '[raffle_entry_list]' ),
             'live_draw'   => array( 'title' => 'Live Draw',    'content' => '[raffle_live_draw]' ),
             'my_raffles'  => array( 'title' => 'My Raffles',   'content' => '' ),
+            'charities'   => array( 'title' => 'Charities',    'content' => '[raffle_charities]' ),
         );
 
         if ( ! isset( $configs[ $key ] ) ) {
@@ -775,7 +961,7 @@ class Raffle_Admin {
             wp_die( 'Security check failed.' );
         }
 
-        $keys = array( 'raffles', 'ended', 'entry_list', 'live_draw', 'my_raffles' );
+        $keys = array( 'raffles', 'ended', 'entry_list', 'live_draw', 'my_raffles', 'charities' );
         $pages = get_option( 'wpraffle_pages', array() );
 
         foreach ( $keys as $key ) {
@@ -852,6 +1038,24 @@ class Raffle_Admin {
     private function redirect_settings( $tab ) {
         wp_safe_redirect( admin_url( 'admin.php?page=wpraffle-settings&tab=' . $tab . '&saved=1' ) );
         exit;
+    }
+
+    public function save_styling_settings() {
+        $this->verify_settings_nonce();
+
+        $color_keys = array( 'custom_accent', 'custom_accent_dark', 'custom_text', 'custom_bg' );
+        $settings = array(
+            'preset'                 => sanitize_text_field( wp_unslash( $_POST['preset'] ?? 'default' ) ),
+            'disable_custom_styling' => isset( $_POST['disable_custom_styling'] ) ? '1' : '0',
+        );
+        foreach ( $color_keys as $key ) {
+            $raw = isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : '';
+            // Only store a valid hex colour; empty/invalid = empty string (use preset).
+            $settings[ $key ] = $raw ? ( sanitize_hex_color( $raw ) ?: '' ) : '';
+        }
+
+        update_option( 'wpraffle_styling_settings', $settings );
+        $this->redirect_settings( 'styling' );
     }
 
     public function handle_test_email() {

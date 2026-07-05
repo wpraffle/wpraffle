@@ -31,12 +31,12 @@ $iw_count = (int) $wpdb->get_var( $wpdb->prepare(
     $raffle->id
 ) );
 
-// Progress bar color
-$bar_color = '#dc2626'; // red
-if ( $progress >= 75 ) {
-    $bar_color = '#dc2626';
-} elseif ( $progress >= 40 ) {
-    $bar_color = '#f59e0b';
+// Progress bar color (urgency-based coloring: green -> amber -> red)
+$bar_color = 'var(--wpr-success)';
+if ( $progress >= 85 ) {
+    $bar_color = 'var(--wpr-danger)';
+} elseif ( $progress >= 50 ) {
+    $bar_color = 'var(--wpr-warning)';
 }
 
 // Draw date
@@ -129,6 +129,9 @@ $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->
         </div>
     </div>
 
-    <!-- CTA -->
+    <!-- Charity badge -->
+<?php if ( class_exists('Raffle_Charity' ) ) { $ci = Raffle_Charity::get_raffle_charity( $raffle->id ); if ( $ci ) { echo '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 0;margin-bottom:4px;font-size:11px;color:var(--wpr-accent-text-dark, var(--wpr-success-dark));font-weight:600;">'; echo '<svg class="wpr-icon wpr-icon--xs" style="flex-shrink:0;color:var(--wpr-accent);"><use href="#wpr-gift"></use></svg>'; echo esc_html( $ci['percent'] ) . '% to ' . esc_html( $ci['charity']->name ); echo '</div>'; } } ?>
+
+<!-- CTA -->
     <a href="<?php echo esc_url( $link ); ?>" class="rc-card__cta">VIEW COMPETITION</a>
 </div>

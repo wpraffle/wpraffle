@@ -1,15 +1,30 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
 
 <div class="wrap">
-    <h1 class="wp-heading-inline"><?php echo $raffle ? 'Edit Raffle' : 'Create New Raffle'; ?></h1>
+    <h1 class="wp-heading-inline"><?php echo $raffle ? ( $is_template ? 'Create Raffle from Template' : 'Edit Raffle' ) : 'Create New Raffle'; ?></h1>
     <a href="<?php echo esc_url( admin_url( 'admin.php?page=raffle-list' ) ); ?>" class="page-title-action">Back to List</a>
     <hr class="wp-header-end">
+
+    <?php if ( $is_template && $template ) : ?>
+    <div class="notice notice-info">
+        <p>
+            <?php wpr_icon( 'edit', 'wpr-icon--sm' ); ?>
+            <strong><?php esc_html_e( 'Creating from template:', 'wpraffle' ); ?></strong>
+            <?php echo esc_html( $template->name ); ?>
+            <br>
+            <?php esc_html_e( 'Configuration has been pre-filled. Add a title, prize details and dates, then publish. Instant wins from the template will be added when you save.', 'wpraffle' ); ?>
+        </p>
+    </div>
+    <?php endif; ?>
 
     <form method="post" action="" style="margin-top: 20px;">
         <?php wp_nonce_field( 'raffle_save', 'raffle_nonce' ); ?>
         <input type="hidden" name="raffle_form_submit" value="1">
-        <?php if ( $raffle ) : ?>
+        <?php if ( $raffle && ! $is_template ) : ?>
             <input type="hidden" name="raffle_id" value="<?php echo esc_attr( $raffle->id ); ?>">
+        <?php endif; ?>
+        <?php if ( $is_template && $template ) : ?>
+            <input type="hidden" name="template_id" value="<?php echo esc_attr( (int) $template->id ); ?>">
         <?php endif; ?>
 
         <div id="poststuff">
@@ -72,8 +87,20 @@
                                         <td>
                                             <input name="packages" type="text" id="packages" class="regular-text" required
                                                    placeholder="5,10,15,25"
-                                                   value="<?php echo $raffle ? esc_attr( implode( ',', json_decode( $raffle->packages, true ) ?: array() ) ) : '5,10,15,25'; ?>">
-                                            <p class="description">Comma-separated quantities. E.g: <strong>5, 10, 15, 25</strong>.</p>
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->packages ? $raffle->packages : implode( ',', json_decode( $raffle->packages, true ) ?: array() ) ) : '5,10,15,25'; ?>">
+                                            <p class="description">
+                                                <?php esc_html_e( 'Simple: comma-separated quantities (e.g. 5,10,15,25 — standard ticket price each).', 'wpraffle' ); ?><br>
+                                                <?php esc_html_e( 'Bundles (optional): JSON array with custom pricing —', 'wpraffle' ); ?>
+                                                <code>[{"qty":5,"price":25,"label":"5 for £25","badge":"Popular"},{"qty":10,"price":45}]</code>
+                                            </p>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;">
+                                                <input type="checkbox" name="enable_bundles" value="1" <?php checked( $raffle && ! empty( $raffle->enable_bundles ), true ); ?>>
+                                                <?php esc_html_e( 'Enable Bundle display (shows price + savings % on the entry buttons)', 'wpraffle' ); ?>
+                                            </label>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;margin-left:16px;">
+                                                <input type="checkbox" name="enable_number_grid" value="1" <?php checked( $raffle && ! empty( $raffle->enable_number_grid ), true ); ?>>
+                                                <?php esc_html_e( 'Show visual Number Picker Grid (lets buyers choose specific ticket numbers)', 'wpraffle' ); ?>
+                                            </label>
                                         </td>
                                     </tr>
                                     <tr>
@@ -251,6 +278,75 @@
                                         </td>
                                     </tr>
                                     <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Meta Box: Engagement & Marketing -->
+                    <div class="postbox">
+                        <div class="postbox-header">
+                            <h2 class="hndle"><?php wpr_icon( 'zap', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Engagement & Marketing', 'wpraffle' ); ?></h2>
+                            <button type="button" class="handlediv"><?php wpr_icon( 'chevron-down', 'wpr-icon--sm' ); ?></button>
+                        </div>
+                        <div class="inside">
+                            <table class="form-table">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Consolation Coupons', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="enable_consolation_coupon" value="1" <?php checked( $raffle && ! empty( $raffle->enable_consolation_coupon ), true ); ?>>
+                                                <?php esc_html_e( 'Email a WooCommerce coupon to every non-winning entrant after the draw.', 'wpraffle' ); ?>
+                                            </label>
+                                            <?php
+                                            $consolation_config = $raffle && $raffle->consolation_config ? json_decode( $raffle->consolation_config, true ) : array();
+                                            $consolation_config = wp_parse_args( $consolation_config, array( 'type' => 'percent', 'amount' => 10, 'expiry_days' => 30 ) );
+                                            ?>
+                                            <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">
+                                                <label><?php esc_html_e( 'Type:', 'wpraffle' ); ?>
+                                                    <select name="consolation_type">
+                                                        <option value="percent" <?php selected( $consolation_config['type'], 'percent' ); ?>><?php esc_html_e( 'Percentage', 'wpraffle' ); ?></option>
+                                                        <option value="fixed" <?php selected( $consolation_config['type'], 'fixed' ); ?>><?php esc_html_e( 'Fixed amount', 'wpraffle' ); ?></option>
+                                                    </select>
+                                                </label>
+                                                <label><?php esc_html_e( 'Amount:', 'wpraffle' ); ?>
+                                                    <input type="number" name="consolation_amount" class="small-text" min="0" step="0.01" value="<?php echo esc_attr( $consolation_config['amount'] ); ?>">
+                                                </label>
+                                                <label><?php esc_html_e( 'Expiry (days):', 'wpraffle' ); ?>
+                                                    <input type="number" name="consolation_expiry_days" class="small-text" min="1" value="<?php echo esc_attr( $consolation_config['expiry_days'] ); ?>">
+                                                </label>
+                                            </div>
+                                            <p class="description"><?php esc_html_e( 'Coupons are single-use, locked to each entrant\'s email, and issued once per draw.', 'wpraffle' ); ?></p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Live Scarcity', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="enable_scarcity" value="1" <?php checked( $raffle && ! empty( $raffle->enable_scarcity ), true ); ?>>
+                                                <?php esc_html_e( 'Animate the progress bar and show live "only N tickets left" updates.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Viewing Now', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="enable_viewers_now" value="1" <?php checked( $raffle && ! empty( $raffle->enable_viewers_now ), true ); ?>>
+                                                <?php esc_html_e( 'Show an "X people viewing this raffle" social-proof badge.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Share & Refer', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="enable_share" value="1" <?php checked( $raffle && ! empty( $raffle->enable_share ), true ); ?>>
+                                                <?php esc_html_e( 'Show social share buttons (WhatsApp, Facebook, X, copy-link) on the entry page.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -490,8 +586,55 @@
                         </div>
                     </div>
 
+
+                    <!-- Meta Box: Charity -->
+                    <div class="postbox">
+                        <div class="postbox-header">
+                            <h2 class="hndle"><svg class="wpr-icon wpr-icon--sm"><use href="#wpr-gift"></use></svg> Charity / Fundraising</h2>
+                        </div>
+                        <div class="inside">
+                            <table class="form-table" role="presentation">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row"><label for="charity_mode">Charity Mode</label></th>
+                                        <td>
+                                            <select name="charity_mode" id="charity_mode">
+                                                <option value="none" <?php echo ( $raffle && $raffle->charity_mode === 'none' ) ? 'selected' : ''; ?>>None (no charity)</option>
+                                                <option value="partial" <?php echo ( $raffle && $raffle->charity_mode === 'partial' ) ? 'selected' : ''; ?>>Partial (% of net proceeds)</option>
+                                                <option value="full" <?php echo ( $raffle && $raffle->charity_mode === 'full' ) ? 'selected' : ''; ?>>Full (100% of net proceeds)</option>
+                                            </select>
+                                            <p class="description">Pledge a portion of net proceeds (after prize cost) to a charity.</p>
+                                        </td>
+                                    </tr>
+                                    <tr id="charity-select-row" style="<?php echo ( $raffle && $raffle->charity_mode !== 'none' ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="charity_id">Select Charity</label></th>
+                                        <td>
+                                            <select name="charity_id" id="charity_id">
+                                                <option value="">— Select a charity —</option>
+                                                <?php if ( class_exists( 'Raffle_Charity' ) ) : ?>
+                                                    <?php foreach ( Raffle_Charity::get_active_charities() as $c ) : ?>
+                                                        <option value="<?php echo esc_attr( $c->id ); ?>" <?php echo ( $raffle && (int)$raffle->charity_id === (int)$c->id ) ? 'selected' : ''; ?>><?php echo esc_html( $c->name ); ?></option>
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
+                                            </select>
+                                            <p class="description">Manage charities in <a href="<?php echo esc_url( admin_url( 'edit.php?post_type=raffle_charity' ) ); ?>">Charities</a>.</p>
+                                        </td>
+                                    </tr>
+                                    <tr id="charity-percent-row" style="<?php echo ( $raffle && $raffle->charity_mode === 'partial' ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="charity_percent">Donation Percentage</label></th>
+                                        <td>
+                                            <input name="charity_percent" type="number" id="charity_percent" class="small-text" min="1" max="100"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->charity_percent ?? 100 ) : 100; ?>">%
+                                            <p class="description">Percentage of gross ticket sales donated to the charity.</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <!-- Meta Box: Templates & Clone -->
-                    <?php if ( $raffle ) : ?>
+                    <?php if ( $raffle && ! $is_template ) : ?>
                     <div class="postbox">
                         <div class="postbox-header">
                             <h2 class="hndle"><?php wpr_icon( 'edit', 'wpr-icon--sm' ); ?> Templates & Clone</h2>
@@ -624,3 +767,20 @@
         </div>
     </form>
 </div>
+<script>
+jQuery(function($){
+    // Charity mode toggle
+    $('#charity_mode').on('change', function(){
+        var mode = $(this).val();
+        if ( mode === 'none' ) {
+            $('#charity-select-row, #charity-percent-row').hide();
+        } else if ( mode === 'full' ) {
+            $('#charity-select-row').show();
+            $('#charity-percent-row').hide();
+        } else {
+            $('#charity-select-row').show();
+            $('#charity-percent-row').show();
+        }
+    });
+});
+</script>

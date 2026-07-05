@@ -73,6 +73,24 @@ class Raffle_Referrals {
             return new WP_Error( 'self_referral', 'Cannot refer yourself.' );
         }
 
+        // SEC-M2: Only award a bonus if the referred user has a genuine
+        // PAID purchase for this raffle. Free entries (entry_type='free') and
+        // referral bonuses (entry_type='referral') no longer satisfy the gate,
+        // which closes the farming chain where throwaway free-entries were
+        // used to mint unlimited referral bonuses.
+        $referred_has_purchase = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_purchases
+             WHERE raffle_id = %d AND buyer_email = %s AND payment_status = 'completed'
+               AND (entry_type = 'paid' OR entry_type = '' OR entry_type IS NULL)",
+            $raffle_id, $referred_email
+        ) );
+        if ( $referred_has_purchase < 1 ) {
+            return new WP_Error(
+                'referred_not_verified',
+                'Referral bonus is only awarded after the referred entrant has completed a paid purchase.'
+            );
+        }
+
         // Rate limiting: prevent duplicate referral tracking per email pair per raffle
         $rate_key = 'raffle_ref_' . md5( $raffle_id . '_' . $referral_code . '_' . $referred_email );
         if ( get_transient( $rate_key ) ) {
@@ -96,26 +114,30 @@ class Raffle_Referrals {
 
         $bonus_qty = (int) $raffle->referral_bonus_entries;
 
-        // Update referral stats
-        $wpdb->update(
-            $table,
-            array(
-                'referred_email' => sanitize_email( $referred_email ),
-                'bonus_entries'  => (int) $referral->bonus_entries + $bonus_qty,
-            ),
-            array( 'id' => $referral->id ),
-            array( '%s', '%d' ),
-            array( '%d' )
-        );
-
         // SEC-12 FIX: Actually generate bonus tickets for the referrer
+        // SEC-A4 FIX: Enforce cumulative per-user ticket limit on referral bonuses
         if ( $bonus_qty > 0 ) {
-            // Check ticket availability before creating
+            // Check cumulative ticket count for the referrer
+            $max_per_user = (int) ( $raffle->max_tickets_per_user ?? 100 );
+            $existing_total = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(quantity), 0) FROM {$wpdb->prefix}raffle_purchases WHERE raffle_id = %d AND buyer_email = %s AND payment_status IN ('completed','pending')",
+                $raffle_id, $referral->user_email
+            ) );
+
+            // Check ticket availability and enforce per-user cap
             $available = (int) $raffle->total_tickets - (int) $raffle->sold_tickets;
-            $bonus_qty = min( $bonus_qty, $available );
+            $remaining_allowance = max( 0, $max_per_user - $existing_total );
+            $bonus_qty = min( $bonus_qty, $available, $remaining_allowance );
 
             if ( $bonus_qty > 0 ) {
                 $wpdb->query( 'START TRANSACTION' );
+
+                // Lock the referral row so the bonus_entries increment below
+                // is atomic across concurrent track_referral calls.
+                $wpdb->get_row( $wpdb->prepare(
+                    "SELECT id FROM {$table} WHERE id = %d FOR UPDATE",
+                    $referral->id
+                ) );
 
                 // Create a purchase record for the bonus entries
                 $wpdb->insert(
@@ -135,17 +157,36 @@ class Raffle_Referrals {
                 );
                 $purchase_id = $wpdb->insert_id;
 
+                $committed = false;
                 if ( $purchase_id ) {
                     $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, $bonus_qty, $referral->user_email, false );
                     if ( is_wp_error( $tickets ) ) {
                         $wpdb->query( 'ROLLBACK' );
                     } else {
+                        // Atomic increment of bonus_entries (no read-modify-write).
+                        $wpdb->query( $wpdb->prepare(
+                            "UPDATE {$table} SET bonus_entries = bonus_entries + %d, referred_email = %s WHERE id = %d",
+                            $bonus_qty, sanitize_email( $referred_email ), $referral->id
+                        ) );
                         $wpdb->query( 'COMMIT' );
+                        $committed = true;
                     }
                 } else {
                     $wpdb->query( 'ROLLBACK' );
                 }
+
+                if ( ! $committed ) {
+                    // Set rate limit even on failure to avoid tight retry loops.
+                    set_transient( $rate_key, '1', HOUR_IN_SECONDS );
+                    return new WP_Error( 'bonus_failed', 'Could not award referral bonus. Please try again.' );
+                }
             }
+        } else {
+            // No bonus entries configured — just record the stat atomically.
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE {$table} SET referred_email = %s WHERE id = %d",
+                sanitize_email( $referred_email ), $referral->id
+            ) );
         }
 
         // Set rate limit to prevent duplicate tracking (24 hours)
@@ -154,11 +195,11 @@ class Raffle_Referrals {
         Raffle_Audit::log( $raffle_id, 'referral_tracked', array(
             'referral_code' => $referral_code,
             'referred'      => $referred_email,
-            'bonus'         => $raffle->referral_bonus_entries,
+            'bonus'         => $bonus_qty,
         ), $referred_email );
 
         return array(
-            'bonus_entries' => (int) $raffle->referral_bonus_entries,
+            'bonus_entries' => $bonus_qty,
             'referrer'      => $referral->user_email,
         );
     }
@@ -188,6 +229,15 @@ class Raffle_Referrals {
 
         if ( ! $raffle_id || ! $user_email ) {
             wp_send_json_error( 'Missing parameters' );
+        }
+
+        // SEC-M2: Rate-limit to prevent enumeration / bulk code minting.
+        if ( class_exists( 'Raffle_Rate_Limiter' ) ) {
+            $rate_id  = wpraffle_get_client_ip();
+            $rate_chk = Raffle_Rate_Limiter::check_or_error( 'referral', $rate_id );
+            if ( is_wp_error( $rate_chk ) ) {
+                wp_send_json_error( array( 'message' => $rate_chk->get_error_message() ) );
+            }
         }
 
         $code = self::get_referral_code( $raffle_id, $user_email );

@@ -18,19 +18,28 @@ $question_answers = array_filter( array_map( 'trim', $question_answers ) );
 $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle->postal_instructions ) 
     ? $raffle->postal_instructions 
     : "To enter this competition for free by post, please send your Name, Address, Email, Phone Number, and correct answer to the skill question on a postcard to: Paragon Competitions Ltd, 123 Main Street, London, EC1A 1BB. Postal entries must be received before the draw date to be eligible.";
+
+$bar_color = 'var(--wpr-success)';
+if ( $progress >= 85 ) {
+    $bar_color = 'var(--wpr-danger)';
+} elseif ( $progress >= 50 ) {
+    $bar_color = 'var(--wpr-warning)';
+}
 ?>
+
+
 
 <div class="raffle-container" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>">
 
     <?php 
     $r_computed_state = Raffle_Public::get_raffle_state( $raffle );
     if ( $r_computed_state === 'ended' ) : ?>
-        <div class="raffle-finished-banner" style="background: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
+        <div class="raffle-finished-banner" style="background: var(--wpr-danger-bg); border: 1px solid var(--wpr-danger-border); color: var(--wpr-danger-text); padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
             <?php echo wpr_get_icon( 'flag', 'wpr-icon--lg' ); ?>
             <span>This raffle has ended</span>
         </div>
     <?php elseif ( $r_computed_state === 'draft' ) : ?>
-        <div class="raffle-finished-banner" style="background: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
+        <div class="raffle-finished-banner" style="background: var(--wpr-warning-bg); border: 1px solid var(--wpr-warning-border); color: var(--wpr-warning-text); padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
             <?php echo wpr_get_icon( 'edit', 'wpr-icon--lg' ); ?>
             <span>PREVIEW: This raffle is in DRAFT / SCHEDULING mode</span>
         </div>
@@ -87,21 +96,88 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
             <!-- Title -->
             <h1 class="raffle-title-main"><?php echo esc_html( $raffle->title ); ?></h1>
 
+            <?php
+            // Charity badge — shows if this raffle has a charity attached
+            if ( class_exists( 'Raffle_Charity' ) ) {
+                $charity_info = Raffle_Charity::get_raffle_charity( $raffle->id );
+                if ( $charity_info ) {
+                    $c = $charity_info['charity'];
+                    $pct = $charity_info['percent'];
+                    $raised = Raffle_Charity::get_live_raised_estimate( $raffle );
+                    
+                    echo '<details class="wpr-charity-details-dropdown" style="margin: 15px 0; border: 1px solid var(--wpr-accent-border, #a7f3d0); border-radius: 12px; background: var(--wpr-accent-bg, #ecfdf5); overflow: hidden; font-family: inherit; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: left;">';
+                    echo '<summary style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; list-style: none; outline: none; font-weight: 700; color: var(--wpr-accent-text, #065f46); font-size: 14px; user-select: none;">';
+                    echo '<div style="display: flex; align-items: center; gap: 8px;">';
+                    echo '<svg class="wpr-icon wpr-icon--sm" style="color: var(--wpr-accent, #059669); flex-shrink: 0;"><use href="#wpr-gift"></use></svg>';
+                    echo '<span>' . esc_html( $pct ) . '% to ' . esc_html( $c->name ) . '</span>';
+                    if ( $raised > 0 ) {
+                        echo '<span style="font-size: 12px; color: var(--wpr-accent-text-dark, #047857); font-weight: 600; margin-left: 6px;">(' . esc_html( wpr_price( $raised, 0 ) ) . ' raised so far)</span>';
+                    }
+                    echo '</div>';
+                    echo '<svg class="wpr-icon wpr-icon--xs wpr-dropdown-arrow" style="transition: transform 0.2s; flex-shrink: 0;"><use href="#wpr-chevron-down"></use></svg>';
+                    echo '</summary>';
+                    
+                    echo '<div style="padding: 16px; border-top: 1px solid var(--wpr-accent-border, #a7f3d0); background: var(--wpr-bg-surface, #ffffff); display: flex; flex-direction: column; gap: 12px; text-align: left;">';
+                    echo '<div style="display: flex; gap: 12px; align-items: flex-start;">';
+                    if ( ! empty( $c->logo_url ) ) {
+                        echo '<img src="' . esc_url( $c->logo_url ) . '" alt="' . esc_attr( $c->name ) . '" style="width: 50px; height: 50px; object-fit: contain; border-radius: 8px; border: 1px solid var(--wpr-border-color, #e5e7eb); padding: 4px; background: #fff; flex-shrink: 0;">';
+                    }
+                    echo '<div style="flex-grow: 1;">';
+                    echo '<h4 style="margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--wpr-text-primary, #1f2937);">' . esc_html( $c->name ) . '</h4>';
+                    if ( ! empty( $c->registration_number ) ) {
+                        echo '<div style="font-size: 11px; color: var(--wpr-text-muted, #6b7280); font-weight: 600;">Registered Charity No. ' . esc_html( $c->registration_number ) . '</div>';
+                    }
+                    echo '</div>';
+                    echo '</div>';
+                    
+                    if ( ! empty( $c->description ) ) {
+                        echo '<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--wpr-text-secondary, #4b5563);">' . esc_html( $c->description ) . '</p>';
+                    }
+                    
+                    if ( ! empty( $c->website ) ) {
+                        echo '<div style="margin-top: 4px;">';
+                        echo '<a href="' . esc_url( $c->website ) . '" target="_blank" rel="noopener noreferrer" class="button alt" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; background: var(--wpr-accent, #6c5ce7); color: #fff;">Visit Website →</a>';
+                        echo '</div>';
+                    }
+                    echo '</div>';
+                    echo '</details>';
+                }
+            }
+            ?>
+
             <!-- Entry Price -->
             <div class="raffle-price-row">
                 <span class="raffle-price-value"><?php echo esc_html( wpr_price( $raffle->ticket_price ) ); ?></span>
                 <span class="raffle-price-label">PER ENTRY</span>
             </div>
 
+            <!-- Scarcity badges (Phase 2.5) -->
+            <?php if ( ! empty( $raffle->enable_viewers_now ) ) : ?>
+            <div class="raffle-viewers-now" id="raffle-viewers-now" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>" style="display:none;">
+                <?php echo wpr_get_icon( 'users', 'wpr-icon--sm' ); ?>
+                <span class="raffle-viewers-count"><?php esc_html_e( 'Several people', 'wpraffle' ); ?></span>
+                <?php esc_html_e( 'viewing now', 'wpraffle' ); ?>
+            </div>
+            <?php endif; ?>
+
             <!-- Progress Bar -->
-            <div class="raffle-progress-box-custom">
+            <div class="raffle-progress-box-custom<?php echo ! empty( $raffle->enable_scarcity ) ? ' raffle-scarcity-enabled' : ''; ?>" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>" data-total="<?php echo esc_attr( (int) $raffle->total_tickets ); ?>">
                 <div class="raffle-progress-meta-row">
-                    <span class="raffle-progress-label-percent">Sold: <?php echo esc_html( $progress ); ?>%</span>
-                    <span class="raffle-progress-label-numbers"><?php echo esc_html( $raffle->sold_tickets ); ?> of <?php echo esc_html( $raffle->total_tickets ); ?></span>
+                    <span class="raffle-progress-label-percent">Sold: <span class="raffle-progress-pct"><?php echo esc_html( $progress ); ?></span>%</span>
+                    <span class="raffle-progress-label-numbers"><span class="raffle-progress-sold"><?php echo esc_html( $raffle->sold_tickets ); ?></span> of <?php echo esc_html( $raffle->total_tickets ); ?></span>
                 </div>
                 <div class="raffle-progress-bar-wrap">
-                    <div class="raffle-progress-bar-inner" style="width: <?php echo esc_attr( $progress ); ?>%;"></div>
+                    <div class="raffle-progress-bar-inner" style="width: <?php echo esc_attr( $progress ); ?>%; background: <?php echo esc_attr( $bar_color ); ?>;"></div>
                 </div>
+                <?php if ( ! empty( $raffle->enable_scarcity ) && $remaining <= max( 5, round( $raffle->total_tickets * 0.05 ) ) && $remaining > 0 ) : ?>
+                <div class="raffle-scarcity-tag">
+                    <?php echo wpr_get_icon( 'flame', 'wpr-icon--sm' ); ?>
+                    <?php
+                    /* translators: %d: remaining tickets */
+                    echo esc_html( sprintf( _n( 'Only %d ticket left — selling fast!', 'Only %d tickets left — selling fast!', $remaining, 'wpraffle' ), $remaining ) );
+                    ?>
+                </div>
+                <?php endif; ?>
             </div>
 
             <!-- Tabs Selection -->
@@ -123,7 +199,7 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
                             <div class="raffle-question-options">
                                 <?php foreach ( $question_answers as $idx => $opt ) : ?>
                                     <label class="raffle-question-option-card">
-                                        <input type="radio" name="raffle_skill_answer" value="<?php echo $idx; ?>">
+                                        <input type="radio" name="raffle_skill_answer" value="<?php echo esc_attr( $idx ); ?>">
                                         <span class="raffle-question-option-dot"></span>
                                         <span class="raffle-question-option-text"><?php echo esc_html( $opt ); ?></span>
                                     </label>
@@ -135,25 +211,25 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
 
                     <?php if ( $r_computed_state === 'ended' ) : ?>
                         <!-- Ended State Results Card -->
-                        <div class="raffle-ended-results-card" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 25px; margin-top: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 20px;">
+                        <div class="raffle-ended-results-card" style="background: var(--wpr-bg-surface)fff; border: 1px solid var(--wpr-border-color); border-radius: 12px; padding: 25px; margin-top: 15px; box-shadow: 0 4px 6px var(--wpr-bg-overlay); display: flex; flex-direction: column; gap: 20px;">
                             
-                            <h4 style="margin: 0; font-size: 18px; font-weight: 700; color: #1f2937; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;"><?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm' ); ?> COMPETITION RESULTS</h4>
+                            <h4 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--wpr-text-primary); border-bottom: 1px solid var(--wpr-bg-muted); padding-bottom: 10px;"><?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm' ); ?> COMPETITION RESULTS</h4>
                             
                             <!-- Stats -->
                             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                                <div style="flex: 1; min-width: 120px; background: #fafafa; border: 1px solid #f3f4f6; padding: 12px; border-radius: 8px; text-align: center;">
-                                    <div style="font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Total Entries</div>
-                                    <div style="font-size: 18px; font-weight: 800; color: #1f2937; margin-top: 4px;"><?php echo esc_html( $raffle->sold_tickets ); ?> / <?php echo esc_html( $raffle->total_tickets ); ?></div>
+                                <div style="flex: 1; min-width: 120px; background: var(--wpr-bg-subtle); border: 1px solid var(--wpr-bg-muted); padding: 12px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 11px; color: var(--wpr-text-muted); font-weight: 600; text-transform: uppercase;">Total Entries</div>
+                                    <div style="font-size: 18px; font-weight: 800; color: var(--wpr-text-primary); margin-top: 4px;"><?php echo esc_html( $raffle->sold_tickets ); ?> / <?php echo esc_html( $raffle->total_tickets ); ?></div>
                                 </div>
-                                <div style="flex: 1; min-width: 120px; background: #fafafa; border: 1px solid #f3f4f6; padding: 12px; border-radius: 8px; text-align: center;">
-                                    <div style="font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Ticket Price</div>
-                                    <div style="font-size: 18px; font-weight: 800; color: #1f2937; margin-top: 4px;"><?php echo esc_html( wpr_price( $raffle->ticket_price ) ); ?></div>
+                                <div style="flex: 1; min-width: 120px; background: var(--wpr-bg-subtle); border: 1px solid var(--wpr-bg-muted); padding: 12px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 11px; color: var(--wpr-text-muted); font-weight: 600; text-transform: uppercase;">Ticket Price</div>
+                                    <div style="font-size: 18px; font-weight: 800; color: var(--wpr-text-primary); margin-top: 4px;"><?php echo esc_html( wpr_price( $raffle->ticket_price ) ); ?></div>
                                 </div>
                             </div>
 
                             <!-- Main Winner -->
-                            <div style="background: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 15px; text-align: center; border-left: 5px solid #4f46e5;">
-                                <div style="font-size: 12px; color: #4338ca; font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Main Draw Winner</div>
+                            <div style="background: var(--wpr-accent-border); border: 1px solid var(--wpr-info-border); border-radius: 8px; padding: 15px; text-align: center; border-left: 5px solid var(--wpr-accent-text);">
+                                <div style="font-size: 12px; color: var(--wpr-accent-dark); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Main Draw Winner</div>
                                 <?php 
                                 global $wpdb;
                                 $winner_info = null;
@@ -171,18 +247,18 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
                                     $total_digits = strlen( (string) $raffle->total_tickets );
                                     $formatted_num = str_pad( $winner_info->ticket_number, $total_digits, '0', STR_PAD_LEFT );
                                 ?>
-                                    <div style="font-size: 22px; font-weight: 800; color: #312e81;"><?php echo esc_html( $winner_initials ); ?></div>
-                                    <div style="font-size: 13px; color: #4338ca; margin-top: 4px;">
-                                        Winning Ticket: <strong style="font-family: monospace; background: #fff; padding: 2px 6px; border-radius: 4px; border: 1px solid #c7d2fe;"><?php echo esc_html( $formatted_num ); ?></strong>
+                                    <div style="font-size: 22px; font-weight: 800; color: var(--wpr-accent-text-dark);"><?php echo esc_html( $winner_initials ); ?></div>
+                                    <div style="font-size: 13px; color: var(--wpr-accent-dark); margin-top: 4px;">
+                                        Winning Ticket: <strong style="font-family: monospace; background: var(--wpr-bg-surface); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--wpr-info-border);"><?php echo esc_html( $formatted_num ); ?></strong>
                                     </div>
                                 <?php else : ?>
-                                    <div style="font-size: 14px; color: #4b5563; font-weight: 600;">Draw pending / no winner selected yet</div>
+                                    <div style="font-size: 14px; color: var(--wpr-text-secondary); font-weight: 600;">Draw pending / no winner selected yet</div>
                                 <?php endif; ?>
                             </div>
 
                             <!-- Instant Wins Grid -->
                             <div>
-                                <div style="font-size: 14px; font-weight: 700; color: #1f2937; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                                <div style="font-size: 14px; font-weight: 700; color: var(--wpr-text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
                                     <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> Claimed Instant Wins
                                 </div>
                                 <?php
@@ -201,19 +277,19 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
                                             $total_digits = strlen( (string) $raffle->total_tickets );
                                             $formatted_iw_num = str_pad( $iw->ticket_number, $total_digits, '0', STR_PAD_LEFT );
                                         ?>
-                                            <div style="display: flex; justify-content: space-between; align-items: center; background: #fafafa; border: 1px solid #f3f4f6; padding: 10px; border-radius: 8px; font-size: 13px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--wpr-bg-subtle); border: 1px solid var(--wpr-bg-muted); padding: 10px; border-radius: 8px; font-size: 13px;">
                                                 <div>
-                                                    <strong style="color: #374151;"><?php echo esc_html( $iw->prize_name ); ?></strong>
-                                                    <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">Ticket: #<?php echo esc_html( $formatted_iw_num ); ?></div>
+                                                    <strong style="color: var(--wpr-text-primary);"><?php echo esc_html( $iw->prize_name ); ?></strong>
+                                                    <div style="font-size: 11px; color: var(--wpr-text-light); margin-top: 2px;">Ticket: #<?php echo esc_html( $formatted_iw_num ); ?></div>
                                                 </div>
-                                                <span style="background: #d1fae5; color: #065f46; font-weight: 700; padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: uppercase;">
+                                                <span style="background: var(--wpr-success-bg); color: var(--wpr-success-text); font-weight: 700; padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: uppercase;">
                                                     <?php echo esc_html( $iw_initials ); ?>
                                                 </span>
                                             </div>
                                         <?php endforeach; ?>
                                     </div>
                                 <?php else : ?>
-                                    <div style="font-size: 13px; color: #9ca3af; font-style: italic; text-align: center; padding: 15px 0; border: 1px dashed #e5e7eb; border-radius: 8px;">
+                                    <div style="font-size: 13px; color: var(--wpr-text-light); font-style: italic; text-align: center; padding: 15px 0; border: 1px dashed var(--wpr-border-color); border-radius: 8px;">
                                         No instant wins were claimed in this competition.
                                     </div>
                                 <?php endif; ?>
@@ -228,7 +304,7 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
 
                             <!-- Verified Result -->
                             <?php if ( ! empty( $raffle->verified_result ) ) : ?>
-                                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">
+                                <div style="background: var(--wpr-info-bg); border: 1px solid var(--wpr-info-border); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--wpr-info-text); display: flex; align-items: flex-start; gap: 8px;">
                                     <span style="flex-shrink: 0;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'Verified' ); ?></span>
                                     <span><?php echo esc_html( $raffle->verified_result ); ?></span>
                                 </div>
@@ -237,38 +313,88 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
                         </div>
                     <?php elseif ( $r_computed_state === 'draft' ) : ?>
                         <!-- Draft State Coming Soon Notice -->
-                        <div style="background: #fafafa; border: 2px dashed #d1d5db; border-radius: 12px; padding: 30px; text-align: center; margin-top: 15px;">
+                        <div style="background: var(--wpr-bg-subtle); border: 2px dashed var(--wpr-border-strong); border-radius: 12px; padding: 30px; text-align: center; margin-top: 15px;">
                             <span style="font-size: 36px; display: block; margin-bottom: 10px;">⏳</span>
-                            <h4 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 700; color: #374151;">Coming Soon</h4>
-                            <p style="margin: 0; color: #6b7280; font-size: 14px;">This competition is not active yet. Check back soon for your chance to enter!</p>
+                            <h4 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 700; color: var(--wpr-text-primary);">Coming Soon</h4>
+                            <p style="margin: 0; color: var(--wpr-text-muted); font-size: 14px;">This competition is not active yet. Check back soon for your chance to enter!</p>
                             <?php if ( ! empty( $raffle->start_date ) ) : ?>
-                                <div style="margin-top: 15px; font-size: 14px; color: #4b5563; font-weight: 600;">
+                                <div style="margin-top: 15px; font-size: 14px; color: var(--wpr-text-secondary); font-weight: 600;">
                                     Scheduled start: <?php echo esc_html( date_i18n( 'jS F Y @ g:i a', strtotime( $raffle->start_date ) ) ); ?>
                                 </div>
                             <?php endif; ?>
                         </div>
                     <?php else : ?>
-                        <!-- Quick Select -->
+                        <!-- Quick Select / Ticket Bundles -->
                         <?php
-                        // Use admin-configured packages, filtered by availability and max per-user limit
-                        $display_packages = array_filter( $packages, function( $qty ) use ( $max_tickets, $remaining ) {
-                            return $qty >= 1 && $qty <= $max_tickets && $qty <= $remaining;
+                        $ticket_price = (float) $raffle->ticket_price;
+                        $bundles_enabled = ! empty( $raffle->enable_bundles );
+                        $normalised = wpraffle_normalise_packages( $raffle->packages, $ticket_price );
+                        // Filter by per-user cap and remaining tickets.
+                        $display_packages = array_filter( $normalised, function( $b ) use ( $max_tickets, $remaining ) {
+                            return $b['qty'] >= 1 && $b['qty'] <= $max_tickets && $b['qty'] <= $remaining;
                         } );
-                        // Fallback defaults if no packages configured or all filtered out
+                        // Fallback defaults if no packages configured or all filtered out.
                         if ( empty( $display_packages ) ) {
-                            $display_packages = array_filter( array( 5, 10, 15, 25 ), function( $qty ) use ( $max_tickets, $remaining ) {
-                                return $qty >= 1 && $qty <= $max_tickets && $qty <= $remaining;
-                            } );
+                            foreach ( array( 5, 10, 15, 25 ) as $fallback_qty ) {
+                                if ( $fallback_qty >= 1 && $fallback_qty <= $max_tickets && $fallback_qty <= $remaining ) {
+                                    $display_packages[] = array( 'qty' => $fallback_qty, 'price' => 0.0, 'label' => '', 'badge' => '' );
+                                }
+                            }
                         }
                         ?>
                         <?php if ( ! empty( $display_packages ) ) : ?>
                         <div class="raffle-quick-select-qty">
-                            <span class="raffle-qty-heading">QUICK SELECT QUANTITY</span>
-                            <div class="raffle-qty-pills-row">
-                                <?php foreach ( $display_packages as $pkg_qty ) : ?>
-                                    <button type="button" class="raffle-qty-pill" data-qty="<?php echo esc_attr( $pkg_qty ); ?>"><?php echo esc_html( $pkg_qty ); ?></button>
+                            <span class="raffle-qty-heading"><?php echo $bundles_enabled ? esc_html__( 'CHOOSE YOUR BUNDLE', 'wpraffle' ) : esc_html__( 'QUICK SELECT QUANTITY', 'wpraffle' ); ?></span>
+                            <div class="raffle-qty-pills-row <?php echo $bundles_enabled ? 'raffle-bundles-row' : ''; ?>">
+                                <?php foreach ( $display_packages as $bundle ) :
+                                    $b_qty   = (int) $bundle['qty'];
+                                    $b_price = (float) $bundle['price'];
+                                    $standard = $b_qty * $ticket_price;
+                                    if ( $b_price > 0 && $standard > $b_price ) {
+                                        $savings_pct = round( 100 - ( ( $b_price / $standard ) * 100 ) );
+                                    } else {
+                                        $savings_pct = 0;
+                                    }
+                                    $data_attrs = 'data-qty="' . esc_attr( $b_qty ) . '"';
+                                    if ( $bundles_enabled && $b_price > 0 ) {
+                                        $data_attrs .= ' data-bundle-price="' . esc_attr( $b_price ) . '"';
+                                    }
+                                ?>
+                                    <button type="button" class="raffle-qty-pill <?php echo $bundles_enabled ? 'raffle-bundle-pill' : ''; ?>" <?php echo $data_attrs; // phpcs:ignore WordPress.Security.EscapeOutput ?>>
+                                        <?php if ( ! empty( $bundle['badge'] ) ) : ?>
+                                            <span class="raffle-bundle-badge"><?php echo esc_html( $bundle['badge'] ); ?></span>
+                                        <?php elseif ( $savings_pct > 0 ) : ?>
+                                            <span class="raffle-bundle-badge"><?php echo esc_html( sprintf( __( 'Save %d%%', 'wpraffle' ), $savings_pct ) ); ?></span>
+                                        <?php endif; ?>
+                                        <span class="raffle-bundle-qty"><?php echo esc_html( $bundle['label'] ? $bundle['label'] : sprintf( _n( '%d Ticket', '%d Tickets', $b_qty, 'wpraffle' ), $b_qty ) ); ?></span>
+                                        <?php if ( $b_price > 0 ) : ?>
+                                            <span class="raffle-bundle-price"><?php echo esc_html( wpr_price( $b_price ) ); ?></span>
+                                        <?php endif; ?>
+                                    </button>
                                 <?php endforeach; ?>
                             </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ( ! empty( $raffle->enable_number_grid ) ) : ?>
+                        <!-- Number Picker Grid -->
+                        <div class="raffle-number-grid-section" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>" data-total="<?php echo esc_attr( $raffle->total_tickets ); ?>">
+                            <div class="raffle-number-grid-header">
+                                <span class="raffle-qty-heading"><?php esc_html_e( 'PICK YOUR NUMBERS', 'wpraffle' ); ?></span>
+                                <button type="button" class="rs-btn rs-btn-secondary raffle-number-grid-luckydip">
+                                    <?php echo wpr_get_icon( 'zap', 'wpr-icon--sm' ); ?>
+                                    <?php esc_html_e( 'Lucky Dip', 'wpraffle' ); ?>
+                                </button>
+                            </div>
+                            <div class="raffle-number-grid" id="raffle-number-grid" role="grid" aria-label="<?php esc_attr_e( 'Available ticket numbers', 'wpraffle' ); ?>">
+                                <p class="raffle-number-grid-loading"><?php esc_html_e( 'Loading numbers…', 'wpraffle' ); ?></p>
+                            </div>
+                            <p class="raffle-number-grid-legend">
+                                <span class="raffle-ng-legend-item"><span class="raffle-ng-dot raffle-ng-dot-available"></span><?php esc_html_e( 'Available', 'wpraffle' ); ?></span>
+                                <span class="raffle-ng-legend-item"><span class="raffle-ng-dot raffle-ng-dot-selected"></span><?php esc_html_e( 'Selected', 'wpraffle' ); ?></span>
+                                <span class="raffle-ng-legend-item"><span class="raffle-ng-dot raffle-ng-dot-sold"></span><?php esc_html_e( 'Sold', 'wpraffle' ); ?></span>
+                                <span class="raffle-ng-legend-item"><span class="raffle-ng-dot raffle-ng-dot-reserved"></span><?php esc_html_e( 'Reserved', 'wpraffle' ); ?></span>
+                            </p>
                         </div>
                         <?php endif; ?>
 
@@ -346,7 +472,7 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
     <?php if ( $r_computed_state === 'live' ) : ?>
 
         <?php if ( $ticket_selection === 'manual' ) : ?>
-            <div id="raffle-manual-selection" style="display:none; margin: 20px 0; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div id="raffle-manual-selection" style="display:none; margin: 20px 0; background: var(--wpr-bg-surface); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px var(--wpr-bg-overlay);">
                 <h3 style="margin-top:0;">Pick Your <span id="manual-qty-target">0</span> Numbers</h3>
                 <p>Click on the available numbers below to select them. <span style="float:right;"><span id="manual-qty-selected">0</span> selected</span></p>
                 <div id="raffle-number-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(60px, 1fr)); gap:10px; max-height:400px; overflow-y:auto; padding:10px 0;">
@@ -388,25 +514,25 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
             }
         }
     ?>
-        <div class="raffle-instant-wins-section" style="margin-top: 30px; background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #f3f4f6; text-align: left;">
-            <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 700; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+        <div class="raffle-instant-wins-section" style="margin-top: 30px; background: var(--wpr-bg-surface); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px var(--wpr-bg-overlay); border: 1px solid var(--wpr-bg-muted); text-align: left;">
+            <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 700; color: var(--wpr-text-primary); display: flex; align-items: center; gap: 8px;">
                 <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> Instant Win Prizes
             </h3>
-            <p style="margin-top: 0; margin-bottom: 20px; color: #6b7280; font-size: 14px;">Purchase tickets for this raffle and win any of these prizes instantly if your ticket number matches!</p>
+            <p style="margin-top: 0; margin-bottom: 20px; color: var(--wpr-text-muted); font-size: 14px;">Purchase tickets for this raffle and win any of these prizes instantly if your ticket number matches!</p>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
                 <?php foreach ( $iw_grouped as $iw_prize_name => $iw_group ) :
                     $iw_all_won = $iw_group['available'] === 0;
                     $iw_remaining = $iw_group['total'] > 1 ? $iw_group['available'] . ' of ' . $iw_group['total'] . ' remaining' : '';
                 ?>
-                    <div style="background: <?php echo $iw_all_won ? '#f9fafb' : '#fff8f1'; ?>; border: 1px solid <?php echo $iw_all_won ? '#e5e7eb' : '#ffedd5'; ?>; padding: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; position: relative; overflow: hidden; opacity: <?php echo $iw_all_won ? 0.75 : 1; ?>;">
+                    <div style="background: <?php echo $iw_all_won ? 'var(--wpr-bg-subtle)' : 'var(--wpr-bg-subtle)'; ?>; border: 1px solid <?php echo $iw_all_won ? 'var(--wpr-border-color)' : 'var(--wpr-draw-color)'; ?>; padding: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; position: relative; overflow: hidden; opacity: <?php echo $iw_all_won ? 0.75 : 1; ?>;">
                         <?php if ( ! $iw_all_won ) : ?>
-                            <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #f97316;"></div>
+                            <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--wpr-draw-color);"></div>
                         <?php endif; ?>
                         <div>
-                            <div style="font-weight: 700; color: #374151; font-size: 15px; margin-bottom: 4px;"><?php echo esc_html( $iw_prize_name ); ?></div>
+                            <div style="font-weight: 700; color: var(--wpr-text-primary); font-size: 15px; margin-bottom: 4px;"><?php echo esc_html( $iw_prize_name ); ?></div>
                             <?php if ( $iw_remaining ) : ?>
-                                <div style="font-size: 13px; color: <?php echo $iw_all_won ? '#9ca3af' : '#ea580c'; ?>; font-weight: 600;">
+                                <div style="font-size: 13px; color: <?php echo $iw_all_won ? 'var(--wpr-text-light)' : 'var(--wpr-draw-color)'; ?>; font-weight: 600;">
                                     <?php echo esc_html( $iw_remaining ); ?>
                                 </div>
                             <?php endif; ?>
@@ -419,12 +545,12 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
                                     $initials = Raffle_Instant_Wins::get_initials( $iw_group['last_won']->winner_name );
                                 }
                                 ?>
-                                <span style="background: #e5e7eb; color: #374151; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                                <span style="background: var(--wpr-border-color); color: var(--wpr-text-primary); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
                                     All claimed <?php echo $initials ? '(' . esc_html( $initials ) . ')' : ''; ?>
                                 </span>
                             <?php else : ?>
-                                <span style="background: #ffedd5; color: #ea580c; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;<?php echo $iw_group['total'] > 1 ? '' : ' animation: rs-pulse 2s infinite;'; ?>">
-                                    <span style="width: 6px; height: 6px; background: #ea580c; border-radius: 50%;"></span> <?php echo $iw_group['total'] > 1 ? esc_html( $iw_group['available'] ) . ' left' : 'Available'; ?>
+                                <span style="background: var(--wpr-draw-color); color: var(--wpr-draw-color); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;<?php echo $iw_group['total'] > 1 ? '' : ' animation: rs-pulse 2s infinite;'; ?>">
+                                    <span style="width: 6px; height: 6px; background: var(--wpr-draw-color); border-radius: 50%;"></span> <?php echo $iw_group['total'] > 1 ? esc_html( $iw_group['available'] ) . ' left' : 'Available'; ?>
                                 </span>
                             <?php endif; ?>
                         </div>
@@ -465,6 +591,43 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
     $has_rules  = ! empty( $rules_text );
     $has_faq    = ! empty( $faq_items );
     ?>
+    <?php if ( ! empty( $raffle->enable_share ) ) :
+        // Build the share URL — ?ref= referral code appended if logged-in user
+        // has one for this raffle, otherwise the bare raffle permalink.
+        $share_url_base = get_permalink( $raffle->wc_product_id ? $raffle->wc_product_id : 0 ) ?: home_url( '?raffle=' . $raffle->id );
+        $share_ref_code = '';
+        if ( is_user_logged_in() && class_exists( 'Raffle_Referrals' ) ) {
+            $share_ref_code = Raffle_Referrals::get_referral_code( $raffle->id, wp_get_current_user()->user_email );
+        }
+        $share_url = $share_ref_code ? add_query_arg( 'ref', $share_ref_code, $share_url_base ) : $share_url_base;
+        $share_text = rawurlencode( sprintf( __( 'I\'ve entered %s — enter now!', 'wpraffle' ), $raffle->title ) );
+        $share_url_enc = rawurlencode( $share_url );
+    ?>
+    <div class="raffle-share-section" style="margin-top: 30px;">
+        <span class="raffle-qty-heading"><?php echo wpr_get_icon( 'share', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'SHARE & EARN BONUS ENTRIES', 'wpraffle' ); ?></span>
+        <div class="raffle-share-buttons">
+            <a class="raffle-share-btn raffle-share-whatsapp" href="https://wa.me/?text=<?php echo esc_attr( $share_text . '%20' . $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on WhatsApp', 'wpraffle' ); ?>">
+                <?php echo wpr_get_icon( 'share-whatsapp', 'wpr-icon--md' ); ?>
+            </a>
+            <a class="raffle-share-btn raffle-share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on Facebook', 'wpraffle' ); ?>">
+                <?php echo wpr_get_icon( 'share-facebook', 'wpr-icon--md' ); ?>
+            </a>
+            <a class="raffle-share-btn raffle-share-x" href="https://twitter.com/intent/tweet?text=<?php echo esc_attr( $share_text ); ?>&url=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on X', 'wpraffle' ); ?>">
+                <?php echo wpr_get_icon( 'share-x', 'wpr-icon--md' ); ?>
+            </a>
+            <button type="button" class="raffle-share-btn raffle-share-copy" data-share-url="<?php echo esc_attr( $share_url ); ?>" aria-label="<?php esc_attr_e( 'Copy link', 'wpraffle' ); ?>">
+                <?php echo wpr_get_icon( 'link', 'wpr-icon--md' ); ?>
+            </button>
+        </div>
+        <?php if ( $share_ref_code ) : ?>
+            <p class="raffle-share-ref-info"><?php esc_html_e( 'Your referral link is ready — share it and earn bonus entries when your friends buy tickets.', 'wpraffle' ); ?></p>
+        <?php else : ?>
+            <p class="raffle-share-ref-info"><?php esc_html_e( 'Log in to get your personal referral link and earn bonus entries.', 'wpraffle' ); ?></p>
+        <?php endif; ?>
+        <span class="raffle-share-copy-confirm" style="display:none;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Link copied!', 'wpraffle' ); ?></span>
+    </div>
+    <?php endif; ?>
+
     <?php if ( $has_desc || $has_rules || $has_faq ) : ?>
     <div class="rs-accordion" style="margin-top: 30px;">
 
@@ -472,10 +635,10 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Prize Description</span>
-                <svg class="rs-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
-                <div style="color: #4b5563; line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $raffle->description ) ); ?></div>
+                <div style="color: var(--wpr-text-secondary); line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $raffle->description ) ); ?></div>
             </div>
         </div>
         <?php endif; ?>
@@ -484,10 +647,10 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Raffle Rules</span>
-                <svg class="rs-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
-                <div style="color: #4b5563; line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $rules_text ) ); ?></div>
+                <div style="color: var(--wpr-text-secondary); line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $rules_text ) ); ?></div>
             </div>
         </div>
         <?php endif; ?>
@@ -496,7 +659,7 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Frequently Asked Questions</span>
-                <svg class="rs-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
                 <div class="rs-faq-list">
@@ -514,19 +677,19 @@ $postal_instructions = isset( $raffle->postal_instructions ) && ! empty( $raffle
     </div>
 
     <style>
-    .rs-accordion { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }
-    .rs-accordion-item { border-bottom: 1px solid #f3f4f6; }
+    .rs-accordion { border: 1px solid var(--wpr-border-color); border-radius: 12px; background: var(--wpr-bg-surface); box-shadow: 0 4px 6px var(--wpr-bg-overlay); overflow: hidden; }
+    .rs-accordion-item { border-bottom: 1px solid var(--wpr-bg-muted); }
     .rs-accordion-item:last-child { border-bottom: none; }
-    .rs-accordion-header { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 18px 22px; background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 700; color: #1f2937; text-align: left; transition: background 0.2s; }
-    .rs-accordion-header:hover { background: #f9fafb; }
-    .rs-accordion-chevron { width: 20px; height: 20px; transition: transform 0.3s; flex-shrink: 0; color: #9ca3af; }
+    .rs-accordion-header { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 18px 22px; background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 700; color: var(--wpr-text-primary); text-align: left; transition: background 0.2s; }
+    .rs-accordion-header:hover { background: var(--wpr-bg-subtle); }
+    .rs-accordion-chevron { width: 20px; height: 20px; transition: transform 0.3s; flex-shrink: 0; color: var(--wpr-text-light); }
     .rs-accordion-open .rs-accordion-chevron { transform: rotate(180deg); }
     .rs-accordion-body { padding: 0 22px 20px; display: none; }
     .rs-accordion-open + .rs-accordion-body { display: block; }
     .rs-faq-list { display: flex; flex-direction: column; gap: 14px; }
-    .rs-faq-item { background: #f9fafb; border-radius: 8px; padding: 14px 16px; }
-    .rs-faq-q { font-weight: 700; color: #1f2937; font-size: 14px; margin-bottom: 4px; }
-    .rs-faq-a { color: #6b7280; font-size: 14px; line-height: 1.6; }
+    .rs-faq-item { background: var(--wpr-bg-subtle); border-radius: 8px; padding: 14px 16px; }
+    .rs-faq-q { font-weight: 700; color: var(--wpr-text-primary); font-size: 14px; margin-bottom: 4px; }
+    .rs-faq-a { color: var(--wpr-text-muted); font-size: 14px; line-height: 1.6; }
     </style>
 
     <script>

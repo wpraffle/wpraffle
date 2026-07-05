@@ -14,7 +14,8 @@ class Raffle_Free_Entry {
      * Handle free entry submission.
      */
     public function handle_free_entry() {
-        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'raffle_free_entry_nonce' ) ) {
+        // SEC-A12 FIX: Frontend JS sends rafflePublic.nonce (action: raffle_purchase_nonce)
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'raffle_purchase_nonce' ) ) {
             wp_send_json_error( array( 'message' => 'Security error.' ) );
         }
 
@@ -26,9 +27,14 @@ class Raffle_Free_Entry {
         if ( ! $raffle_id || ! $buyer_name || ! $buyer_email ) {
             wp_send_json_error( array( 'message' => 'All fields are required.' ) );
         }
+        if ( ! is_email( $buyer_email ) ) {
+            wp_send_json_error( array( 'message' => 'A valid email address is required.' ) );
+        }
 
-        // Centralized rate limiting
-        $rate_id   = $buyer_email . '_' . sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '' ) );
+        // Centralized rate limiting — keyed on the proxy-aware client IP so
+        // an attacker rotating throwaway emails can't mint fresh buckets.
+        $client_ip  = function_exists( 'wpraffle_get_client_ip' ) ? wpraffle_get_client_ip() : '';
+        $rate_id    = $client_ip . '_' . $buyer_email;
         $rate_check = Raffle_Rate_Limiter::check_or_error( 'free_entry', $rate_id );
         if ( is_wp_error( $rate_check ) ) {
             wp_send_json_error( array( 'message' => $rate_check->get_error_message() ) );
@@ -57,10 +63,25 @@ class Raffle_Free_Entry {
             }
         }
 
-        // Rate limiting: one free entry per email per raffle per day
-        $rate_key = 'raffle_free_' . md5( $raffle_id . '_' . $buyer_email );
+        // Rate limiting: one free entry per client IP per raffle per day.
+        // Keyed on IP (not email) so a rotating-email attacker cannot farm
+        // entries; the email-scoped check below catches the rare case of one
+        // user submitting legitimately from two IPs on the same day.
+        $rate_key = 'raffle_free_' . md5( $raffle_id . '_' . $client_ip );
         if ( get_transient( $rate_key ) ) {
             wp_send_json_error( array( 'message' => 'You have already submitted a free entry today. Please try again tomorrow.' ) );
+        }
+        $email_rate_key = 'raffle_free_email_' . md5( $raffle_id . '_' . strtolower( $buyer_email ) );
+        if ( get_transient( $email_rate_key ) ) {
+            wp_send_json_error( array( 'message' => 'This email has already been used for a free entry today.' ) );
+        }
+
+        // Responsible-gambling gate — free entries still consume ticket slots
+        // and self-excluded/locked buyers must not be able to enter.
+        $rg_user_id = get_current_user_id();
+        $rg = apply_filters( 'raffle_pre_purchase_check', true, $rg_user_id, 0.0, $buyer_email );
+        if ( is_wp_error( $rg ) ) {
+            wp_send_json_error( array( 'message' => $rg->get_error_message() ) );
         }
 
         // SEC-14 FIX: Cumulative ticket limit across ALL entry types (paid + free + referral)
@@ -132,8 +153,9 @@ class Raffle_Free_Entry {
 
         $wpdb->query( 'COMMIT' );
 
-        // Set rate limit (24 hours)
+        // Set rate limits (24 hours)
         set_transient( $rate_key, '1', DAY_IN_SECONDS );
+        set_transient( $email_rate_key, '1', DAY_IN_SECONDS );
 
         // Record in centralized rate limiter
         Raffle_Rate_Limiter::hit( 'free_entry', $rate_id );

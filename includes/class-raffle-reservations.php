@@ -6,10 +6,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Raffle_Reservations {
 
     /**
-     * Reserve tickets for a user session (15 min hold).
+     * Reserve tickets for a user session (default 15 min hold).
+     *
+     * @internal Callers MUST verify capability/nonce/ownership before invoking
+     *           this method — it performs no auth of its own so it can be used
+     *           from both authenticated purchase flows and (future) logged-in
+     *           number-picker UIs. Never expose via an unauthenticated endpoint.
+     *
+     * @param int                  $raffle_id
+     * @param int[]                $ticket_numbers
+     * @param string               $user_email
+     * @param string               $session_id
+     * @param int                  $minutes      Validated to [1, 60].
+     * @return int Inserted row id.
      */
     public static function reserve_tickets( $raffle_id, $ticket_numbers, $user_email, $session_id, $minutes = 15 ) {
         global $wpdb;
+
+        // Clamp the hold window to a sane range so a future caller can't pass
+        // an unbounded/garbage value via $_POST.
+        $minutes = max( 1, min( 60, (int) $minutes ) );
+        $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
 
         $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
 

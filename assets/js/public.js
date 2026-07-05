@@ -4,6 +4,7 @@
   var modal = $("#raffle-modal");
   var confirmation = $("#raffle-confirmation");
   var selectedNumbers = [];
+  var selectedBundlePrice = 0;
 
   // --- Entry Tabs Switcher ---
   $(".raffle-tab-btn").on("click", function () {
@@ -36,6 +37,16 @@
     // Position the tooltip nicely over the range slider thumb
     var percent = ((qty - min) / (max - min)) * 100;
     tooltip.css("left", "calc(" + percent + "% + (" + (8 - percent * 0.15) + "px))");
+
+    // Toggle active state on pills + recompute bundle price.
+    $(".raffle-qty-pill").removeClass("active");
+    selectedBundlePrice = 0;
+    $(".raffle-qty-pill").each(function() {
+      if (parseInt($(this).data("qty")) === qty) {
+        $(this).addClass("active");
+        selectedBundlePrice = parseFloat($(this).data("bundle-price")) || 0;
+      }
+    });
   }
 
   if (slider.length > 0) {
@@ -57,6 +68,7 @@
 
     $(".raffle-qty-pill").on("click", function () {
       updateQty($(this).data("qty"));
+      selectedBundlePrice = parseFloat($(this).data("bundle-price")) || 0;
     });
 
     // Init quantity layout
@@ -169,8 +181,8 @@
         for (var i = 1; i <= maxRender; i++) {
           var isSold = sold.indexOf(i) !== -1;
           var style = isSold
-            ? "background:#e2e8f0; color:#94a3b8; cursor:not-allowed;"
-            : "background:#f1f5f9; color:#334155; cursor:pointer;";
+            ? "background:var(--wpr-bg-muted); color:var(--wpr-text-light); cursor:not-allowed;"
+            : "background:var(--wpr-bg-subtle); color:var(--wpr-text-primary); cursor:pointer;";
           html +=
             '<div class="rs-grid-number" data-num="' +
             i +
@@ -189,11 +201,11 @@
           var idx = selectedNumbers.indexOf(num);
           if (idx !== -1) {
             selectedNumbers.splice(idx, 1);
-            $(this).css({ background: "#f1f5f9", color: "#334155" });
+            $(this).css({ background: "var(--wpr-bg-subtle)", color: "var(--wpr-text-primary)" });
           } else {
             if (selectedNumbers.length < targetQty) {
               selectedNumbers.push(num);
-              $(this).css({ background: "#667eea", color: "#fff" });
+              $(this).css({ background: "var(--wpr-accent)", color: "var(--wpr-text-inverse)" });
             } else {
               alert("You have already selected " + targetQty + " numbers.");
             }
@@ -236,7 +248,8 @@
         raffle_id: raffleId,
         quantity: qty,
         selected_numbers: selectedNums,
-        answer_index: answerIdx
+        answer_index: answerIdx,
+        bundle_price: selectedBundlePrice
       },
       function (response) {
         if (response.success) {
@@ -368,6 +381,7 @@
         answer_index: form.find('[name="answer_index"]').val(),
         buyer_name: form.find('[name="buyer_name"]').val(),
         buyer_email: form.find('[name="buyer_email"]').val(),
+        bundle_price: selectedBundlePrice
       },
       function (response) {
         if (response.success && response.data.pay_url) {
@@ -408,7 +422,7 @@
     }, function (response) {
       if (response.success) {
         var ticketSpan = $('<strong>').text(response.data.ticket_number);
-        form.html($('<div class="free-entry-success" style="background:#dcfce7;color:#166534;padding:20px;border-radius:8px;text-align:center;">')
+        form.html($('<div class="free-entry-success" style="background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:20px;border-radius:8px;text-align:center;">')
           .append('<h3>🎉 You\'re In!</h3>')
           .append($('<p>').text('Your free entry has been submitted. Ticket number: ').append(ticketSpan))
         );
@@ -438,7 +452,7 @@
   });
 
   function showToast(msg) {
-    var toast = $('<div class="raffle-toast" style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#166534;color:#fff;padding:12px 24px;border-radius:8px;z-index:99999;font-weight:600;"></div>');
+    var toast = $('<div class="raffle-toast" style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--wpr-success);color:var(--wpr-text-inverse);padding:12px 24px;border-radius:8px;z-index:99999;font-weight:600;"></div>');
     toast.text(msg);
     $("body").append(toast);
     setTimeout(function () { toast.fadeOut(function () { toast.remove(); }); }, 2500);
@@ -485,5 +499,208 @@
 
     updateCountdown();
     setInterval(updateCountdown, 1000);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Number Picker Grid (Phase 2.2)
+  // Renders clickable cells for each ticket number; sold/reserved greyed out.
+  // Selection feeds into the existing selectedNumbers[] + hidden form field.
+  // ─────────────────────────────────────────────────────────────────────
+  var numberGrid = $("#raffle-number-grid");
+  if (numberGrid.length > 0) {
+    var gridSection = numberGrid.closest(".raffle-number-grid-section");
+    var gridRaffleId = parseInt(gridSection.data("raffle-id")) || 0;
+    var gridTotal = parseInt(gridSection.data("total")) || 0;
+    var gridSold = {};
+    var gridReserved = {};
+
+    function renderNumberGrid() {
+      if (!gridTotal) return;
+      var html = "";
+      for (var n = 1; n <= gridTotal; n++) {
+        var sold = !!gridSold[n];
+        var reserved = !sold && !!gridReserved[n];
+        var selected = selectedNumbers.indexOf(n) !== -1;
+        var cls = "raffle-ng-cell";
+        if (sold) cls += " raffle-ng-cell-sold";
+        else if (reserved) cls += " raffle-ng-cell-reserved";
+        else if (selected) cls += " raffle-ng-cell-selected";
+        html += '<button type="button" class="' + cls + '" data-num="' + n + '"' +
+          (sold || reserved ? ' disabled' : '') + '>' + n + "</button>";
+      }
+      numberGrid.html(html);
+    }
+
+    function toggleGridNumber(num) {
+      var qty = parseInt(slider.val()) || 1;
+      var idx = selectedNumbers.indexOf(num);
+      if (idx !== -1) {
+        selectedNumbers.splice(idx, 1);
+      } else {
+        if (selectedNumbers.length >= qty) {
+          // Cap at the current quantity selection.
+          selectedNumbers.shift();
+        }
+        selectedNumbers.push(num);
+      }
+      $('input[name="selected_numbers"]').val(selectedNumbers.join(","));
+      renderNumberGrid();
+    }
+
+    function luckyDipGrid() {
+      var qty = parseInt(slider.val()) || 1;
+      var pool = [];
+      for (var n = 1; n <= gridTotal; n++) {
+        if (!gridSold[n] && !gridReserved[n]) pool.push(n);
+      }
+      // Fisher-Yates with random_int-equivalent (crypto when available).
+      for (var i = pool.length - 1; i > 0; i--) {
+        var j = (window.crypto && window.crypto.getRandomValues)
+          ? window.crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1)
+          : Math.floor(Math.random() * (i + 1));
+        var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+      }
+      selectedNumbers = pool.slice(0, qty);
+      $('input[name="selected_numbers"]').val(selectedNumbers.join(","));
+      renderNumberGrid();
+    }
+
+    numberGrid.on("click", ".raffle-ng-cell", function () {
+      toggleGridNumber(parseInt($(this).data("num")) || 0);
+    });
+    gridSection.on("click", ".raffle-number-grid-luckydip", function (e) {
+      e.preventDefault();
+      luckyDipGrid();
+    });
+
+    // Initial fetch + periodic refresh (so sold numbers update live).
+    function fetchGridStatus() {
+      $.post(rafflePublic.ajax_url, {
+        action: "raffle_get_sold_numbers",
+        nonce: rafflePublic.nonce,
+        raffle_id: gridRaffleId
+      }, function (response) {
+        if (response && response.success && response.data) {
+          gridSold = {};
+          (response.data.sold || []).forEach(function (n) { gridSold[n] = true; });
+          gridReserved = {};
+          (response.data.reserved || []).forEach(function (n) { gridReserved[n] = true; });
+          // Drop any selected numbers that became sold/reserved.
+          selectedNumbers = selectedNumbers.filter(function (n) {
+            return !gridSold[n] && !gridReserved[n];
+          });
+          renderNumberGrid();
+        }
+      });
+    }
+    fetchGridStatus();
+    setInterval(fetchGridStatus, 30000);
+  }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Share copy-to-clipboard (Phase 2.4)
+    // ─────────────────────────────────────────────────────────────────────
+    $(".raffle-share-copy").on("click", function () {
+      var url = $(this).data("share-url") || window.location.href;
+      var confirm = $(".raffle-share-copy-confirm");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () {
+          confirm.fadeIn(200).delay(1500).fadeOut(400);
+        });
+      } else {
+        // Legacy fallback.
+        var $tmp = $('<input>').val(url).appendTo("body").select();
+        try { document.execCommand("copy"); confirm.fadeIn(200).delay(1500).fadeOut(400); } catch (e) {}
+        $tmp.remove();
+      }
+    });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Scarcity / Urgency (Phase 2.5) — viewers-now heartbeat + live stock
+  // ─────────────────────────────────────────────────────────────────────
+  var viewersBadge = $("#raffle-viewers-now");
+  if (viewersBadge.length > 0) {
+    var viewersRaffleId = parseInt(viewersBadge.data("raffle-id")) || 0;
+    function fetchViewers() {
+      $.post(rafflePublic.ajax_url, {
+        action: "raffle_viewers",
+        raffle_id: viewersRaffleId
+      }, function (response) {
+        if (response && response.success && response.data && response.data.viewers) {
+          var n = parseInt(response.data.viewers) || 0;
+          if (n >= 2) {
+            viewersBadge.find(".raffle-viewers-count").text(
+              n + (n === 1 ? " person" : " people")
+            );
+            viewersBadge.fadeIn(300);
+          } else {
+            viewersBadge.fadeOut(300);
+          }
+        }
+      });
+    }
+    fetchViewers();
+    setInterval(fetchViewers, 30000); // 30s heartbeat
+  }
+
+  var scarcityBox = $(".raffle-scarcity-enabled");
+  if (scarcityBox.length > 0) {
+    var scarcityRaffleId = parseInt(scarcityBox.data("raffle-id")) || 0;
+    var scarcityTotal = parseInt(scarcityBox.data("total")) || 0;
+    function pollStock() {
+      // Don't poll when tab hidden (saves server load).
+      if (document.hidden) return;
+      $.post(rafflePublic.ajax_url, {
+        action: "raffle_get_sold_numbers",
+        nonce: rafflePublic.nonce,
+        raffle_id: scarcityRaffleId
+      }, function (response) {
+        if (!response || !response.success || !response.data) return;
+        var sold = (response.data.sold || []).length;
+        var pct = scarcityTotal > 0 ? Math.round((sold / scarcityTotal) * 100) : 0;
+        var remaining = Math.max(0, scarcityTotal - sold);
+        scarcityBox.find(".raffle-progress-pct").text(pct);
+        scarcityBox.find(".raffle-progress-sold").text(sold);
+        scarcityBox.find(".raffle-progress-bar-inner").css("width", pct + "%");
+      });
+    }
+    setInterval(pollStock, 15000); // 15s stock refresh
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Charity grid — live totals (polls every 60s so a new purchase reflects
+  // on the grid without a page reload).
+  // ─────────────────────────────────────────────────────────────────────
+  var charityGrid = $(".raffle-charities-grid[data-live='1']");
+  if (charityGrid.length > 0 && typeof raffleCharities !== "undefined") {
+    function pollCharityTotals() {
+      if (document.hidden) return;
+      var ids = [];
+      charityGrid.find(".raffle-charity-card").each(function () {
+        ids.push($(this).data("charity-id"));
+      });
+      if (!ids.length) return;
+      $.post(raffleCharities.ajax_url, {
+        action: "raffle_charity_totals",
+        nonce: raffleCharities.nonce,
+        charity_ids: ids
+      }, function (response) {
+        if (!response || !response.success || !response.data || !response.data.totals) return;
+        charityGrid.find(".raffle-charity-card").each(function () {
+          var id = $(this).data("charity-id");
+          var total = parseFloat(response.data.totals[id]);
+          if (isNaN(total)) return;
+          var amountEl = $(this).find(".raffle-charity-total-amount");
+          var prev = parseFloat(amountEl.data("raw")) || 0;
+          amountEl.attr("data-raw", total);
+          // Only animate when the value actually changed.
+          if (total !== prev) {
+            amountEl.text(raffleCharities.symbol + total.toFixed(2));
+            amountEl.stop(true, true).css({ transform: "scale(1.12)" }).animate({ transform: "scale(1)" }, 400);
+          }
+        });
+      });
+    }
+    setInterval(pollCharityTotals, 60000); // 60s charity totals refresh
   }
 })(jQuery);

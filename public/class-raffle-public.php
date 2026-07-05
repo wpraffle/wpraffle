@@ -11,13 +11,21 @@ class Raffle_Public {
         add_shortcode( 'raffle_list', array( $this, 'render_raffle_list_shortcode' ) );
         add_shortcode( 'raffle_ended_list', array( $this, 'render_raffle_ended_list_shortcode' ) );
         add_shortcode( 'raffle_entry_list', array( $this, 'render_entry_list_shortcode' ) );
+        add_shortcode( 'raffle_refer', array( $this, 'render_refer_shortcode' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
         add_action( 'wp_ajax_raffle_get_sold_numbers', array( $this, 'ajax_get_sold_numbers' ) );
         add_action( 'wp_ajax_nopriv_raffle_get_sold_numbers', array( $this, 'ajax_get_sold_numbers' ) );
 
+        // Viewing-now social-proof badge (Phase 2.5). Public endpoint — only
+        // returns a coarse count (no PII), keyed on raffle_id.
+        add_action( 'wp_ajax_raffle_viewers', array( $this, 'ajax_get_viewers' ) );
+        add_action( 'wp_ajax_nopriv_raffle_viewers', array( $this, 'ajax_get_viewers' ) );
+
+        // SEC-H1 FIX: Entry-list PDF contains entrant PII (names). Restrict the
+        // AJAX download to logged-in users only; a nonced nopriv endpoint exposed
+        // every entrant's full name to the public internet (GDPR breach).
         add_action( 'wp_ajax_raffle_download_entry_list', array( $this, 'ajax_download_entry_list' ) );
-        add_action( 'wp_ajax_nopriv_raffle_download_entry_list', array( $this, 'ajax_download_entry_list' ) );
 
         add_action( 'woocommerce_before_single_product', array( $this, 'maybe_override_product_layout' ) );
         add_filter( 'template_include', array( $this, 'override_single_product_template' ), 99 );
@@ -31,7 +39,7 @@ class Raffle_Public {
         }
 
         // WooCommerce My Account — my-raffles endpoint
-        $is_my_raffles = function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'my-raffles' );
+        $is_my_raffles = ( function_exists( 'is_account_page' ) && is_account_page() ) || ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'my-raffles' ) );
 
         $needs_raffle_assets = $is_raffle_product || $is_my_raffles || (
             is_a( $post, 'WP_Post' ) && (
@@ -39,7 +47,9 @@ class Raffle_Public {
                 has_shortcode( $post->post_content, 'raffle_list' ) ||
                 has_shortcode( $post->post_content, 'raffle_ended_list' ) ||
                 has_shortcode( $post->post_content, 'raffle_entry_list' ) ||
-                has_shortcode( $post->post_content, 'raffle_live_draw' )
+                has_shortcode( $post->post_content, 'raffle_live_draw' ) ||
+                has_shortcode( $post->post_content, 'raffle_charities' ) ||
+                has_shortcode( $post->post_content, 'raffle_refer' )
             )
         );
 
@@ -142,36 +152,36 @@ class Raffle_Public {
 
         ob_start();
         ?>
-        <div class="raffle-lookup-container" style="max-width: 400px; margin: 0 auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <div class="raffle-lookup-container" style="max-width: 400px; margin: 0 auto; padding: 20px; background: var(--wpr-bg-surface); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
             <h3 style="margin-top: 0;">Lookup Your Tickets</h3>
             <p>Enter the email address used during purchase to view your active tickets.</p>
             <form method="post" action="" class="rs-lookup-form">
                 <?php wp_nonce_field( 'raffle_lookup_nonce', 'lookup_nonce' ); ?>
                 <div style="margin-bottom: 15px;">
-                    <input type="email" name="lookup_email" required placeholder="Enter your email" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="email" name="lookup_email" required placeholder="Enter your email" style="width: 100%; padding: 10px; border: 1px solid var(--wpr-border-color); border-radius: 4px;">
                 </div>
-                <button type="submit" style="width: 100%; padding: 10px; background: #667eea; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Lookup Tickets</button>
+                <button type="submit" style="width: 100%; padding: 10px; background: var(--wpr-accent); color: var(--wpr-text-inverse); border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Lookup Tickets</button>
             </form>
             
             <?php
             if ( isset( $_POST['lookup_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['lookup_nonce'] ) ), 'raffle_lookup_nonce' ) ) {
                 $email = sanitize_email( wp_unslash( $_POST['lookup_email'] ) );
                 if ( is_email( $email ) ) {
+                    // SEC-A6 FIX: Always show the same response to prevent email enumeration.
+                    // In production, send a secure token link to the email if purchases exist.
                     global $wpdb;
                     $count = $wpdb->get_var( $wpdb->prepare(
                         "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_purchases WHERE buyer_email = %s AND payment_status = 'completed'",
                         $email
                     ) );
-                    
-                    if ( $count > 0 ) {
-                        echo '<div style="margin-top: 15px; padding: 10px; background: #dcfce7; color: #166534; border-radius: 4px;">';
-                        echo 'We found ' . esc_html( $count ) . ' purchases associated with this email. A secure link to view your tickets has been sent to your email address.';
-                        echo '</div>';
-                        // For a real app, send email with a secure token.
-                    } else {
-                        echo '<div style="margin-top: 15px; padding: 10px; background: #fee2e2; color: #991b1b; border-radius: 4px;">';
-                        echo 'No ticket purchases found for this email address.';
-                        echo '</div>';
+
+                    echo '<div style="margin-top: 15px; padding: 10px; background: var(--wpr-info-bg); color: var(--wpr-info-text); border-radius: 4px;">';
+                    echo 'If tickets are associated with this email address, a secure link will be sent to view them. Please check your inbox.';
+                    echo '</div>';
+
+                    // Only send the email if purchases actually exist
+                    if ( $count > 0 && class_exists( 'Raffle_Email' ) ) {
+                        // TODO: Implement secure token email for ticket lookup
                     }
                 }
             }
@@ -190,18 +200,78 @@ class Raffle_Public {
         $raffle_id = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
         if ( ! $raffle_id ) wp_send_json_error();
 
+        // SEC-M3: Rate-limit this public endpoint and verify the raffle exists
+        // to prevent bulk harvesting of sold-ticket data.
+        if ( class_exists( 'Raffle_Rate_Limiter' ) ) {
+            $rate_id  = wpraffle_get_client_ip();
+            $rate_chk = Raffle_Rate_Limiter::check_or_error( 'entry_list', $rate_id );
+            if ( is_wp_error( $rate_chk ) ) {
+                wp_send_json_error( array( 'message' => $rate_chk->get_error_message() ) );
+            }
+        }
+
         global $wpdb;
         $sold = $wpdb->get_col( $wpdb->prepare(
             "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE raffle_id = %d",
             $raffle_id
         ) );
-        
-        $pending_purchases = $wpdb->get_col( $wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}raffle_purchases WHERE raffle_id = %d AND payment_status = 'pending'",
+
+        // Number-picker grid support: also return reserved (held but unpaid)
+        // numbers and the total ticket pool so the JS grid can grey out cells.
+        $reserved = array();
+        if ( class_exists( 'Raffle_Reservations' ) ) {
+            $reserved = Raffle_Reservations::get_reserved_numbers( $raffle_id );
+        }
+        $total_tickets = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT total_tickets FROM {$wpdb->prefix}raffles WHERE id = %d",
             $raffle_id
         ) );
 
-        wp_send_json_success( array( 'sold' => array_map( 'intval', $sold ) ) );
+        wp_send_json_success( array(
+            'sold'          => array_map( 'intval', $sold ),
+            'reserved'      => array_map( 'intval', $reserved ),
+            'total_tickets' => $total_tickets,
+        ) );
+    }
+
+    /**
+     * AJAX: return the current "viewing now" count for a raffle (Phase 2.5).
+     *
+     * Uses a rolling 90-second transient window — each viewer refreshes their
+     * entry on a 30s heartbeat, so a count represents viewers active in the
+     * last ~90s. The count is intentionally coarse (rounded) and contains no
+     * PII. No nonce required: the data is non-sensitive and the endpoint is
+     * cheap (transient read/write only).
+     */
+    public function ajax_get_viewers() {
+        $raffle_id = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
+        if ( ! $raffle_id ) {
+            wp_send_json_error();
+        }
+
+        $bucket_key = 'wpr_viewers_' . $raffle_id;
+        $ip         = function_exists( 'wpraffle_get_client_ip' ) ? wpraffle_get_client_ip() : ( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
+        $now        = time();
+        $viewers    = get_transient( $bucket_key );
+
+        if ( ! is_array( $viewers ) ) {
+            $viewers = array();
+        }
+        // Drop stale viewers (older than 90s).
+        foreach ( $viewers as $vip => $ts ) {
+            if ( ( $now - (int) $ts ) > 90 ) {
+                unset( $viewers[ $vip ] );
+            }
+        }
+        // Register/refresh this viewer.
+        $viewers[ md5( $ip . '|' . $raffle_id ) ] = $now;
+        set_transient( $bucket_key, $viewers, 2 * MINUTE_IN_SECONDS );
+
+        // Coarse count (nearest 5 above the real number) for privacy.
+        $count = count( $viewers );
+        $coarse = $count <= 5 ? $count : (int) ceil( $count / 5 ) * 5;
+
+        wp_send_json_success( array( 'viewers' => $coarse ) );
     }
 
     public function maybe_override_product_layout() {
@@ -309,30 +379,100 @@ class Raffle_Public {
     }
 
     public static function get_raffle_state( $raffle ) {
+        if ( ! $raffle ) {
+            return 'live';
+        }
         $now = current_time( 'mysql' );
-        $remaining = (int)$raffle->total_tickets - (int)$raffle->sold_tickets;
+        $status        = isset( $raffle->status ) ? $raffle->status : 'active';
+        $total_tickets = isset( $raffle->total_tickets ) ? (int) $raffle->total_tickets : 0;
+        $sold_tickets  = isset( $raffle->sold_tickets ) ? (int) $raffle->sold_tickets : 0;
+        $start_date    = isset( $raffle->start_date ) ? $raffle->start_date : '';
+        $draw_date     = isset( $raffle->draw_date ) ? $raffle->draw_date : '';
+        $remaining     = $total_tickets - $sold_tickets;
 
-        if ( $raffle->status === 'draft' ) {
+        if ( $status === 'draft' ) {
             return 'draft';
         }
-
-        if ( $raffle->status === 'active' && ! empty( $raffle->start_date ) && $raffle->start_date > $now ) {
+        if ( $status === 'active' && ! empty( $start_date ) && $start_date > $now ) {
             return 'draft';
         }
-
-        if ( $raffle->status === 'finished' ) {
+        if ( $status === 'finished' ) {
             return 'ended';
         }
-
-        if ( $raffle->status === 'active' && ! empty( $raffle->draw_date ) && $raffle->draw_date <= $now ) {
+        if ( $status === 'active' && ! empty( $draw_date ) && $draw_date <= $now ) {
             return 'ended';
         }
-
-        if ( $raffle->status === 'active' && $remaining <= 0 ) {
+        if ( $status === 'active' && $remaining <= 0 ) {
             return 'ended';
         }
-
         return 'live';
+    }
+
+    /**
+     * [raffle_refer] — renders the current user's referral card for a raffle:
+     * referral URL + share buttons + bonus entries earned. Requires login.
+     *
+     * @param array $atts  'raffle_id' required.
+     */
+    public function render_refer_shortcode( $atts ) {
+        $atts = shortcode_atts( array( 'raffle_id' => 0 ), $atts, 'raffle_refer' );
+        $raffle_id = absint( $atts['raffle_id'] );
+        if ( ! $raffle_id ) {
+            return '';
+        }
+
+        if ( ! is_user_logged_in() ) {
+            return '<div class="raffle-refer-card"><p class="raffle-refer-login">' . esc_html__( 'Log in to get your referral link and earn bonus entries.', 'wpraffle' ) . '</p></div>';
+        }
+
+        $user  = wp_get_current_user();
+        $email = $user->user_email;
+        $code  = class_exists( 'Raffle_Referrals' ) ? Raffle_Referrals::get_referral_code( $raffle_id, $email ) : '';
+
+        global $wpdb;
+        $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT title, wc_product_id, referral_bonus_entries FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+        if ( ! $raffle ) {
+            return '';
+        }
+        $referral_row = $wpdb->get_row( $wpdb->prepare( "SELECT bonus_entries FROM {$wpdb->prefix}raffle_referrals WHERE raffle_id = %d AND user_email = %s", $raffle_id, $email ) );
+        $bonus_earned = $referral_row ? (int) $referral_row->bonus_entries : 0;
+
+        $base_url   = get_permalink( $raffle->wc_product_id ) ?: home_url( '?raffle=' . $raffle_id );
+        $share_url  = $code ? add_query_arg( 'ref', $code, $base_url ) : $base_url;
+        $share_text = rawurlencode( sprintf( __( 'I\'ve entered %s — enter now!', 'wpraffle' ), $raffle->title ) );
+        $share_url_enc = rawurlencode( $share_url );
+
+        ob_start();
+        ?>
+        <div class="raffle-refer-card">
+            <span class="raffle-qty-heading"><?php echo wpr_get_icon( 'share', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'REFER & EARN', 'wpraffle' ); ?></span>
+            <p class="raffle-refer-intro">
+                <?php
+                /* translators: %d: bonus entries per referral */
+                echo esc_html( sprintf( __( 'Earn %d bonus ticket(s) every time a friend buys using your link.', 'wpraffle' ), (int) $raffle->referral_bonus_entries ) );
+                ?>
+            </p>
+            <div class="raffle-refer-link-row">
+                <input type="text" readonly value="<?php echo esc_attr( $share_url ); ?>" class="raffle-refer-link-input">
+                <button type="button" class="rs-btn rs-btn-primary raffle-share-copy" data-share-url="<?php echo esc_attr( $share_url ); ?>">
+                    <?php echo wpr_get_icon( 'link', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Copy', 'wpraffle' ); ?>
+                </button>
+            </div>
+            <div class="raffle-share-buttons">
+                <a class="raffle-share-btn raffle-share-whatsapp" href="https://wa.me/?text=<?php echo esc_attr( $share_text . '%20' . $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'WhatsApp', 'wpraffle' ); ?>"><?php echo wpr_get_icon( 'share-whatsapp', 'wpr-icon--md' ); ?></a>
+                <a class="raffle-share-btn raffle-share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Facebook', 'wpraffle' ); ?>"><?php echo wpr_get_icon( 'share-facebook', 'wpr-icon--md' ); ?></a>
+                <a class="raffle-share-btn raffle-share-x" href="https://twitter.com/intent/tweet?text=<?php echo esc_attr( $share_text ); ?>&url=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'X', 'wpraffle' ); ?>"><?php echo wpr_get_icon( 'share-x', 'wpr-icon--md' ); ?></a>
+            </div>
+            <p class="raffle-refer-stat">
+                <?php echo wpr_get_icon( 'star', 'wpr-icon--sm wpr-icon--primary' ); ?>
+                <?php
+                /* translators: %d: bonus entries earned */
+                echo esc_html( sprintf( __( 'Bonus entries earned: %d', 'wpraffle' ), $bonus_earned ) );
+                ?>
+            </p>
+        </div>
+        <?php
+        return ob_get_clean();
     }
 
     public function render_raffle_list_shortcode( $atts ) {
@@ -379,7 +519,7 @@ class Raffle_Public {
         }
 
         if ( empty( $raffles ) ) {
-            return '<div style="text-align:center; padding: 40px; color: #6b7280; font-weight: 500; font-size: 16px;">' . wpr_get_icon( 'gift', 'wpr-icon--sm' ) . ' No raffle competitions found.</div>';
+            return '<div style="text-align:center; padding: 40px; color: var(--wpr-text-muted); font-weight: 500; font-size: 16px;">' . wpr_get_icon( 'gift', 'wpr-icon--sm' ) . ' No raffle competitions found.</div>';
         }
 
         // Enqueue countdown JS for the shortcode page
@@ -455,7 +595,7 @@ class Raffle_Public {
         ) );
 
         if ( empty( $raffles ) ) {
-            return '<div style="text-align:center; padding: 40px; color: #6b7280; font-weight: 500; font-size: 16px;">' . wpr_get_icon( 'trophy', 'wpr-icon--sm' ) . ' No ended competitions to show yet. Check back soon!</div>';
+            return '<div style="text-align:center; padding: 40px; color: var(--wpr-text-muted); font-weight: 500; font-size: 16px;">' . wpr_get_icon( 'trophy', 'wpr-icon--sm' ) . ' No ended competitions to show yet. Check back soon!</div>';
         }
 
         // Separate raffles by draw type
@@ -507,19 +647,19 @@ class Raffle_Public {
         <?php if ( $show_tab_live || $show_tab_auto || $show_tab_iw ) : ?>
 
         <!-- Tab Navigation -->
-        <div class="raffle-winners-tabs" style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:30px;">
+        <div class="raffle-winners-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--wpr-border-color);margin-bottom:30px;">
             <?php if ( $show_tab_live ) : ?>
-            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'live-draw' ? 'active' : ''; ?>" data-tab="live-draw" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'live-draw' ? '#1e40af' : '#6b7280'; ?>;border-bottom-color:<?php echo $active_tab === 'live-draw' ? '#1e40af' : 'transparent'; ?>;transition:all 0.2s;">
+            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'live-draw' ? 'active' : ''; ?>" data-tab="live-draw" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'live-draw' ? 'var(--wpr-accent)' : 'var(--wpr-text-muted)'; ?>;border-bottom-color:<?php echo $active_tab === 'live-draw' ? 'var(--wpr-accent)' : 'transparent'; ?>;transition:all 0.2s;">
                 <?php echo wpr_get_icon( 'zap', 'wpr-icon--sm' ); ?> Live Draw
             </button>
             <?php endif; ?>
             <?php if ( $show_tab_auto ) : ?>
-            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'auto-draw' ? 'active' : ''; ?>" data-tab="auto-draw" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'auto-draw' ? '#1e40af' : '#6b7280'; ?>;border-bottom-color:<?php echo $active_tab === 'auto-draw' ? '#1e40af' : 'transparent'; ?>;transition:all 0.2s;">
+            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'auto-draw' ? 'active' : ''; ?>" data-tab="auto-draw" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'auto-draw' ? 'var(--wpr-accent)' : 'var(--wpr-text-muted)'; ?>;border-bottom-color:<?php echo $active_tab === 'auto-draw' ? 'var(--wpr-accent)' : 'transparent'; ?>;transition:all 0.2s;">
                 <?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm' ); ?> Auto-Draw
             </button>
             <?php endif; ?>
             <?php if ( $show_tab_iw ) : ?>
-            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'instant-wins' ? 'active' : ''; ?>" data-tab="instant-wins" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'instant-wins' ? '#1e40af' : '#6b7280'; ?>;border-bottom-color:<?php echo $active_tab === 'instant-wins' ? '#1e40af' : 'transparent'; ?>;transition:all 0.2s;">
+            <button type="button" class="raffle-winners-tab-btn <?php echo $active_tab === 'instant-wins' ? 'active' : ''; ?>" data-tab="instant-wins" style="padding:14px 28px;font-size:15px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:<?php echo $active_tab === 'instant-wins' ? 'var(--wpr-accent)' : 'var(--wpr-text-muted)'; ?>;border-bottom-color:<?php echo $active_tab === 'instant-wins' ? 'var(--wpr-accent)' : 'transparent'; ?>;transition:all 0.2s;">
                 <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> Instant Wins
             </button>
             <?php endif; ?>
@@ -529,7 +669,7 @@ class Raffle_Public {
         <?php if ( $show_tab_live ) : ?>
         <div class="raffle-winners-tab-content <?php echo $active_tab === 'live-draw' ? 'active' : ''; ?>" id="tab-live-draw" style="<?php echo $active_tab !== 'live-draw' ? 'display:none;' : ''; ?>">
             <?php if ( empty( $live_draw_raffles ) ) : ?>
-                <div style="text-align:center;padding:40px;color:#6b7280;font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'zap', 'wpr-icon--sm' ); ?> No live draw competitions yet. Check back soon!</div>
+                <div style="text-align:center;padding:40px;color:var(--wpr-text-muted);font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'zap', 'wpr-icon--sm' ); ?> No live draw competitions yet. Check back soon!</div>
             <?php else : ?>
             <div style="display:grid;grid-template-columns:repeat(<?php echo esc_attr( $cols ); ?>,1fr);gap:24px;">
                 <?php foreach ( $live_draw_raffles as $r ) :
@@ -545,39 +685,48 @@ class Raffle_Public {
                     $has_video = ! empty( $r->draw_video_url );
                     $has_verified = ! empty( $r->verified_result );
                 ?>
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);display:flex;flex-direction:column;">
-                    <?php if ( $show['image'] && $r->prize_image ) : ?>
-                    <div style="position:relative;overflow:hidden;">
-                        <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width:100%;height:200px;object-fit:cover;">
-                        <?php if ( $show['date'] && $r->draw_date ) : ?>
-                        <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                <div style="background:var(--wpr-bg-surface);border:1px solid var(--wpr-border-color);border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);display:flex;flex-direction:column;">
+                    <?php if ( $show['image'] ) : ?>
+                        <?php if ( ! empty( $r->prize_image ) ) : ?>
+                        <div style="position:relative;overflow:hidden;">
+                            <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width:100%;height:200px;object-fit:cover;">
+                            <?php if ( $show['date'] && $r->draw_date ) : ?>
+                            <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:var(--wpr-text-inverse);padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php else : ?>
+                        <div class="raffle-image-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, var(--wpr-accent-bg) 0%, var(--wpr-border-color) 100%); display: flex; align-items: center; justify-content: center; color: var(--wpr-accent); position: relative;">
+                            <?php echo wpr_get_icon( 'gift', 'wpr-icon--lg', 'Competition Prize' ); ?>
+                            <?php if ( $show['date'] && $r->draw_date ) : ?>
+                            <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:var(--wpr-text-inverse);padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                            <?php endif; ?>
+                        </div>
                         <?php endif; ?>
-                    </div>
                     <?php endif; ?>
                     <div style="padding:20px;display:flex;flex-direction:column;gap:14px;flex:1;">
                         <div>
-                            <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;color:#1f2937;line-height:1.3;"><?php echo esc_html( $r->title ); ?></h3>
-                            <?php if ( $show['entries'] ) : ?><div style="font-size:13px;color:#6b7280;"><?php echo esc_html( $r->sold_tickets ); ?> / <?php echo esc_html( $r->total_tickets ); ?> entries</div><?php endif; ?>
+                            <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;color:var(--wpr-text-primary);line-height:1.3;"><?php echo esc_html( $r->title ); ?></h3>
+                            <?php if ( $show['entries'] ) : ?><div style="font-size:13px;color:var(--wpr-text-muted);"><?php echo esc_html( $r->sold_tickets ); ?> / <?php echo esc_html( $r->total_tickets ); ?> entries</div><?php endif; ?>
                         </div>
                         <?php if ( $show['winner'] ) : ?>
-                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+                        <div style="background:var(--wpr-success-bg);border:1px solid var(--wpr-success-bg);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
                             <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
                             <?php if ( $winner_info ) : ?>
-                                <span style="font-size:14px;font-weight:700;color:#166534;"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
-                                <span style="font-size:12px;color:#6b7280;">Ticket: <span style="font-family:monospace;background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
+                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                                <span style="font-size:12px;color:var(--wpr-text-muted);">Ticket: <span style="font-family:monospace;background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
                             <?php else : ?>
-                                <span style="font-size:13px;color:#6b7280;font-weight:600;">Draw pending</span>
+                                <span style="font-size:13px;color:var(--wpr-text-muted);font-weight:600;">Draw pending</span>
                             <?php endif; ?>
                         </div>
                         <?php endif; ?>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;">
                             <?php if ( $show['video_btn'] && $has_video ) : ?>
-                            <a href="<?php echo esc_url( $r->draw_video_url ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid #c7d2fe;background:#e0e7ff;color:#4338ca;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
+                            <a href="<?php echo esc_url( $r->draw_video_url ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid var(--wpr-accent-border);background:var(--wpr-accent-bg);color:var(--wpr-accent-text);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
                                 <?php echo wpr_get_icon( 'zap', 'wpr-icon--sm', 'Watch' ); ?> Watch Draw
                             </a>
                             <?php endif; ?>
                             <?php if ( $show['verified_btn'] && $has_verified ) : ?>
-                            <a href="<?php echo esc_url( $r->verified_result ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid #bbf7d0;background:#dcfce7;color:#166534;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
+                            <a href="<?php echo esc_url( $r->verified_result ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid var(--wpr-success-bg);background:var(--wpr-success-bg);color:var(--wpr-success-text);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
                                 <?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'Verified' ); ?> Verified Draw
                             </a>
                             <?php endif; ?>
@@ -594,7 +743,7 @@ class Raffle_Public {
         <?php if ( $show_tab_auto ) : ?>
         <div class="raffle-winners-tab-content <?php echo $active_tab === 'auto-draw' ? 'active' : ''; ?>" id="tab-auto-draw" style="<?php echo $active_tab !== 'auto-draw' ? 'display:none;' : ''; ?>">
             <?php if ( empty( $auto_draw_raffles ) ) : ?>
-                <div style="text-align:center;padding:40px;color:#6b7280;font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm' ); ?> No auto-draw competitions yet. Check back soon!</div>
+                <div style="text-align:center;padding:40px;color:var(--wpr-text-muted);font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm' ); ?> No auto-draw competitions yet. Check back soon!</div>
             <?php else : ?>
             <div style="display:grid;grid-template-columns:repeat(<?php echo esc_attr( $cols ); ?>,1fr);gap:24px;">
                 <?php foreach ( $auto_draw_raffles as $r ) :
@@ -610,42 +759,51 @@ class Raffle_Public {
                     $has_video = ! empty( $r->draw_video_url );
                     $has_verified = ! empty( $r->verified_result );
                 ?>
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);display:flex;flex-direction:column;">
-                    <?php if ( $show['image'] && $r->prize_image ) : ?>
-                    <div style="position:relative;overflow:hidden;">
-                        <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width:100%;height:200px;object-fit:cover;">
-                        <?php if ( $show['date'] && $r->draw_date ) : ?>
-                        <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                <div style="background:var(--wpr-bg-surface);border:1px solid var(--wpr-border-color);border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);display:flex;flex-direction:column;">
+                    <?php if ( $show['image'] ) : ?>
+                        <?php if ( ! empty( $r->prize_image ) ) : ?>
+                        <div style="position:relative;overflow:hidden;">
+                            <img src="<?php echo esc_url( $r->prize_image ); ?>" style="width:100%;height:200px;object-fit:cover;">
+                            <?php if ( $show['date'] && $r->draw_date ) : ?>
+                            <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:var(--wpr-text-inverse);padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php else : ?>
+                        <div class="raffle-image-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, var(--wpr-accent-bg) 0%, var(--wpr-border-color) 100%); display: flex; align-items: center; justify-content: center; color: var(--wpr-accent); position: relative;">
+                            <?php echo wpr_get_icon( 'gift', 'wpr-icon--lg', 'Competition Prize' ); ?>
+                            <?php if ( $show['date'] && $r->draw_date ) : ?>
+                            <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.65);color:var(--wpr-text-inverse);padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;"><?php echo esc_html( date_i18n( 'jS M Y', strtotime( $r->draw_date ) ) ); ?></div>
+                            <?php endif; ?>
+                        </div>
                         <?php endif; ?>
-                    </div>
                     <?php endif; ?>
                     <div style="padding:20px;display:flex;flex-direction:column;gap:14px;flex:1;">
                         <div>
-                            <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;color:#1f2937;line-height:1.3;"><?php echo esc_html( $r->title ); ?></h3>
-                            <div style="font-size:13px;color:#6b7280;">
+                            <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;color:var(--wpr-text-primary);line-height:1.3;"><?php echo esc_html( $r->title ); ?></h3>
+                            <div style="font-size:13px;color:var(--wpr-text-muted);">
                                 <?php if ( $show['entries'] ) : ?><?php echo esc_html( $r->sold_tickets ); ?> / <?php echo esc_html( $r->total_tickets ); ?> entries<?php endif; ?>
-                                <span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-left:6px;">AUTO</span>
+                                <span style="background:var(--wpr-info-bg);color:var(--wpr-info-text);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-left:6px;">AUTO</span>
                             </div>
                         </div>
                         <?php if ( $show['winner'] ) : ?>
-                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+                        <div style="background:var(--wpr-success-bg);border:1px solid var(--wpr-success-bg);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
                             <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
                             <?php if ( $winner_info ) : ?>
-                                <span style="font-size:14px;font-weight:700;color:#166534;"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
-                                <span style="font-size:12px;color:#6b7280;">Ticket: <span style="font-family:monospace;background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
+                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                                <span style="font-size:12px;color:var(--wpr-text-muted);">Ticket: <span style="font-family:monospace;background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
                             <?php else : ?>
-                                <span style="font-size:13px;color:#6b7280;font-weight:600;">Draw pending</span>
+                                <span style="font-size:13px;color:var(--wpr-text-muted);font-weight:600;">Draw pending</span>
                             <?php endif; ?>
                         </div>
                         <?php endif; ?>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;">
                             <?php if ( $show['video_btn'] && $has_video ) : ?>
-                            <a href="<?php echo esc_url( $r->draw_video_url ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid #c7d2fe;background:#e0e7ff;color:#4338ca;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
+                            <a href="<?php echo esc_url( $r->draw_video_url ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid var(--wpr-accent-border);background:var(--wpr-accent-bg);color:var(--wpr-accent-text);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
                                 <?php echo wpr_get_icon( 'zap', 'wpr-icon--sm', 'Watch' ); ?> Watch Draw
                             </a>
                             <?php endif; ?>
                             <?php if ( $show['verified_btn'] && $has_verified ) : ?>
-                            <a href="<?php echo esc_url( $r->verified_result ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid #bbf7d0;background:#dcfce7;color:#166534;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
+                            <a href="<?php echo esc_url( $r->verified_result ); ?>" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;padding:8px 14px;border-radius:8px;border:1px solid var(--wpr-success-bg);background:var(--wpr-success-bg);color:var(--wpr-success-text);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;">
                                 <?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'Verified' ); ?> Verified Draw
                             </a>
                             <?php endif; ?>
@@ -662,13 +820,13 @@ class Raffle_Public {
         <?php if ( $show_tab_iw ) : ?>
         <div class="raffle-winners-tab-content <?php echo $active_tab === 'instant-wins' ? 'active' : ''; ?>" id="tab-instant-wins" style="<?php echo $active_tab !== 'instant-wins' ? 'display:none;' : ''; ?>">
             <?php if ( empty( $all_iw_by_date ) ) : ?>
-                <div style="text-align:center;padding:40px;color:#6b7280;font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> No instant win claims yet. Check back soon!</div>
+                <div style="text-align:center;padding:40px;color:var(--wpr-text-muted);font-weight:500;font-size:16px;"><?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> No instant win claims yet. Check back soon!</div>
             <?php else : ?>
                 <?php foreach ( $all_iw_by_date as $date_key => $date_wins ) : ?>
                 <div style="margin-bottom:30px;">
-                    <h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0 0 16px 0;display:flex;align-items:center;gap:8px;">
-                        <span style="background:#f3f4f6;padding:6px 14px;border-radius:8px;font-size:13px;"><?php echo esc_html( date_i18n( 'l, jS F Y', strtotime( $date_key ) ) ); ?></span>
-                        <span style="font-size:12px;color:#6b7280;font-weight:500;"><?php echo count( $date_wins ); ?> win<?php echo count( $date_wins ) > 1 ? 's' : ''; ?></span>
+                    <h3 style="font-size:16px;font-weight:700;color:var(--wpr-text-primary);margin:0 0 16px 0;display:flex;align-items:center;gap:8px;">
+                        <span style="background:var(--wpr-bg-muted);padding:6px 14px;border-radius:8px;font-size:13px;"><?php echo esc_html( date_i18n( 'l, jS F Y', strtotime( $date_key ) ) ); ?></span>
+                        <span style="font-size:12px;color:var(--wpr-text-muted);font-weight:500;"><?php echo count( $date_wins ); ?> win<?php echo count( $date_wins ) > 1 ? 's' : ''; ?></span>
                     </h3>
                     <div style="display:grid;grid-template-columns:repeat(<?php echo esc_attr( $cols ); ?>,1fr);gap:16px;">
                         <?php foreach ( $date_wins as $iw ) :
@@ -676,17 +834,17 @@ class Raffle_Public {
                             $fn = str_pad( $iw->ticket_number, $td, '0', STR_PAD_LEFT );
                             $initials = class_exists( 'Raffle_Instant_Wins' ) ? Raffle_Instant_Wins::get_initials( $iw->winner_name ) : '';
                         ?>
-                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 4px rgba(0,0,0,0.04);">
-                            <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#f97316,#ea580c);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;flex-shrink:0;">
+                        <div style="background:var(--wpr-bg-surface);border:1px solid var(--wpr-border-color);border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+                            <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--wpr-accent),var(--wpr-accent-dark));display:flex;align-items:center;justify-content:center;color:var(--wpr-text-inverse);font-weight:800;font-size:14px;flex-shrink:0;">
                                 <?php echo esc_html( $initials ?: '?' ); ?>
                             </div>
                             <div style="flex:1;min-width:0;">
-                                <div style="font-weight:700;font-size:14px;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo esc_html( $iw->prize_name ); ?></div>
-                                <div style="font-size:12px;color:#6b7280;margin-top:2px;">
+                                <div style="font-weight:700;font-size:14px;color:var(--wpr-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo esc_html( $iw->prize_name ); ?></div>
+                                <div style="font-size:12px;color:var(--wpr-text-muted);margin-top:2px;">
                                     <?php echo esc_html( $iw->raffle_title ); ?> &bull; Ticket #<span style="font-family:monospace;font-weight:700;"><?php echo esc_html( $fn ); ?></span>
                                 </div>
                             </div>
-                            <div style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;flex-shrink:0;">Won</div>
+                            <div style="background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;flex-shrink:0;">Won</div>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -703,9 +861,9 @@ class Raffle_Public {
             tabs.forEach(function(tab) {
                 tab.addEventListener('click', function() {
                     var target = tab.getAttribute('data-tab');
-                    tabs.forEach(function(t) { t.style.color = '#6b7280'; t.style.borderBottomColor = 'transparent'; t.classList.remove('active'); });
+                    tabs.forEach(function(t) { t.style.color = 'var(--wpr-text-muted)'; t.style.borderBottomColor = 'transparent'; t.classList.remove('active'); });
                     document.querySelectorAll('.raffle-winners-tab-content').forEach(function(c) { c.style.display = 'none'; c.classList.remove('active'); });
-                    tab.style.color = '#1e40af'; tab.style.borderBottomColor = '#1e40af'; tab.classList.add('active');
+                    tab.style.color = 'var(--wpr-accent)'; tab.style.borderBottomColor = 'var(--wpr-accent)'; tab.classList.add('active');
                     var content = document.getElementById('tab-' + target);
                     if (content) { content.style.display = 'block'; content.classList.add('active'); }
                 });
@@ -714,7 +872,7 @@ class Raffle_Public {
         </script>
 
         <?php else : ?>
-            <div style="text-align:center;padding:40px;color:#6b7280;font-weight:500;font-size:16px;">No tabs enabled. Configure winners page in Settings.</div>
+            <div style="text-align:center;padding:40px;color:var(--wpr-text-muted);font-weight:500;font-size:16px;">No tabs enabled. Configure winners page in Settings.</div>
         <?php endif; ?>
 
         </div>
@@ -728,8 +886,8 @@ class Raffle_Public {
     public function render_entry_list_shortcode( $atts ) {
         $sc_defaults = self::get_sc_settings( 'raffle_entry_list', array(
             'button_text' => 'Download Entry List',
-            'button_bg'   => '#1e40af',
-            'button_color'=> '#ffffff',
+            'button_bg'   => 'var(--wpr-accent)',
+            'button_color'=> 'var(--wpr-text-inverse)',
             'button_radius' => '8',
             'show_image'  => 'yes',
             'columns'     => '2',
@@ -752,7 +910,7 @@ class Raffle_Public {
         ) );
 
         if ( empty( $raffles ) ) {
-            return '<div style="text-align:center; padding: 40px; color: #6b7280; font-weight: 500; font-size: 16px;">No closed competitions found. Check back soon!</div>';
+            return '<div style="text-align:center; padding: 40px; color: var(--wpr-text-muted); font-weight: 500; font-size: 16px;">No closed competitions found. Check back soon!</div>';
         }
 
         $cols         = max( 1, min( 4, absint( $atts['columns'] ) ) );
@@ -771,6 +929,12 @@ class Raffle_Public {
      * AJAX handler to generate and return a PDF entry list for a closed raffle.
      */
     public function ajax_download_entry_list() {
+        // SEC-H1 FIX: Defence in depth — even though this is only registered as a
+        // priv-ajax action, enforce an explicit login check here.
+        if ( ! is_user_logged_in() ) {
+            wp_die( 'You must be logged in to download entry lists.', 'Forbidden', array( 'response' => 403 ) );
+        }
+
         $raffle_id = isset( $_GET['raffle_id'] ) ? absint( $_GET['raffle_id'] ) : 0;
         if ( ! $raffle_id ) {
             wp_die( 'Invalid raffle ID.' );

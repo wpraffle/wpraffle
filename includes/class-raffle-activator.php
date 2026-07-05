@@ -46,7 +46,7 @@ class Raffle_Activator {
                 'post_content' => $cfg['content'],
                 'post_status'  => 'publish',
                 'post_type'    => 'page',
-                'post_author'  => 1,
+                'post_author'  => get_current_user_id() ?: 1,
             ) );
 
             if ( ! is_wp_error( $page_id ) ) {
@@ -75,6 +75,11 @@ class Raffle_Activator {
         $table_audit        = $wpdb->prefix . 'raffle_audit_log';
         $table_templates    = $wpdb->prefix . 'raffle_templates';
         $table_free_entries = $wpdb->prefix . 'raffle_free_entries';
+        $table_charities    = $wpdb->prefix . 'raffle_charities';
+        $table_charity_alloc = $wpdb->prefix . 'raffle_charity_allocations';
+        $table_credits      = $wpdb->prefix . 'raffle_credits';
+        $table_payouts      = $wpdb->prefix . 'raffle_payouts';
+        $table_rg           = $wpdb->prefix . 'raffle_rg_settings';
 
         $sql = "CREATE TABLE {$table_raffles} (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -213,14 +218,15 @@ class Raffle_Activator {
         CREATE TABLE {$table_audit} (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             raffle_id bigint(20) UNSIGNED NOT NULL,
-            action varchar(100) NOT NULL,
-            actor varchar(255) NOT NULL DEFAULT 'system',
+            action_type varchar(50) NOT NULL,
+            user_id bigint(20) DEFAULT NULL,
             details longtext,
+            fairness_proof varchar(255) DEFAULT NULL,
             ip_address varchar(45) DEFAULT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY raffle_id (raffle_id),
-            KEY action (action),
+            KEY action_type (action_type),
             KEY created_at (created_at)
         ) {$charset_collate};
 
@@ -264,7 +270,7 @@ class Raffle_Activator {
             'post_title'   => 'Raffle Entry',
             'post_status'  => 'publish',
             'post_type'    => 'product',
-            'post_author'  => 1,
+            'post_author'  => get_current_user_id() ?: 1,
             'post_content' => 'System product used for raffle purchases. Do not delete.',
         ) );
 

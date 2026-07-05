@@ -16,6 +16,7 @@ $tabs = array(
     'sync'     => 'Sync',
     'sync'     => 'Sync',
     'advanced' => 'Advanced',
+    'styling'  => 'Styling',
     'updates'  => 'Updates',
 );
 
@@ -43,6 +44,11 @@ $advanced = wp_parse_args( get_option( 'wpraffle_advanced_settings', array() ), 
     'enable_audit' => 1,
 ) );
 
+// Trusted-proxy allowlist (S3) — only honoured in wpraffle_get_client_ip()
+// when REMOTE_ADDR matches one of these IPs/CIDRs. Leave blank on shared/MP
+// hosting unless you operate your own reverse proxy.
+$trusted_proxies = get_option( 'wpraffle_trusted_proxies', '' );
+
 $updates = wp_parse_args( get_option( 'wpraffle_update_settings', array() ), array(
     'github_repo'   => 'wpraffle/wpraffle',
     'auto_update'   => 1,
@@ -57,6 +63,16 @@ $legal = wp_parse_args( get_option( 'wpraffle_legal_settings', array() ), array(
 // Page status
 $pages = get_option( 'wpraffle_pages', array() );
 $saved = isset( $_GET['saved'] ) && $_GET['saved'] === '1';
+
+// Styling settings
+$styling = wp_parse_args( get_option( 'wpraffle_styling_settings', array() ), array(
+    'preset'                 => 'diamonds',
+    'custom_accent'          => '',
+    'custom_accent_dark'     => '',
+    'custom_text'            => '',
+    'custom_bg'              => '',
+    'disable_custom_styling' => '0',
+) );
 
 // Test email status
 $test_sent   = isset( $_GET['test'] ) && $_GET['test'] === 'sent';
@@ -200,6 +216,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                         'ended'       => array( 'title' => 'Past Raffles',    'shortcode' => '[raffle_ended_list]', 'type' => 'page' ),
                         'entry_list'  => array( 'title' => 'Entry Lists',     'shortcode' => '[raffle_entry_list]', 'type' => 'page' ),
                         'live_draw'   => array( 'title' => 'Live Draw',       'shortcode' => '[raffle_live_draw]',  'type' => 'page' ),
+                        'charities'   => array( 'title' => 'Charities',       'shortcode' => '[raffle_charities]',  'type' => 'page' ),
                     );
                     foreach ( $page_configs as $key => $cfg ) :
                         $page_id = isset( $pages[ $key ] ) ? (int) $pages[ $key ] : 0;
@@ -291,6 +308,11 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                     <td><code>[raffle_live_draw raffle_id="X"]</code></td>
                     <td>Display an animated live draw page for a raffle. Shows a slot-machine style draw with a "DRAW WINNER" button. Admin only — the actual draw requires admin permissions.</td>
                     <td><code>raffle_id</code> — The raffle ID <em>(required)</em></td>
+                </tr>
+                <tr>
+                    <td><code>[raffle_charities]</code></td>
+                    <td>Display a directory of all active charities with logos, descriptions, registration numbers, and total raised through competitions.</td>
+                    <td><code>columns</code> — Grid columns <em>(default: 3)</em></td>
                 </tr>
                 <tr>
                     <td><code>[raffle_entry_list]</code></td>
@@ -735,6 +757,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
 
     // Handle sync all
     if ( isset( $_GET['sync_all'] ) && check_admin_referer( 'wpraffle_sync_all', 'sync_nonce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to do that.', 'wpraffle' ) );
+        }
         $all_raffles = $wpdb->get_results( "SELECT * FROM {$raffles_table}" );
         foreach ( $all_raffles as $r ) {
             if ( ! $r->wc_product_id ) continue;
@@ -757,6 +782,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
 
     // Handle individual sync
     if ( isset( $_GET['sync_raffle'] ) && check_admin_referer( 'wpraffle_sync_single', 'sync_nonce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to do that.', 'wpraffle' ) );
+        }
         $sync_id = absint( $_GET['sync_raffle'] );
         $r = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$raffles_table} WHERE id = %d", $sync_id ) );
         if ( $r && $r->wc_product_id ) {
@@ -779,6 +807,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
 
     // Handle create missing products
     if ( isset( $_GET['sync_create'] ) && check_admin_referer( 'wpraffle_sync_create', 'sync_nonce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to do that.', 'wpraffle' ) );
+        }
         $create_id = absint( $_GET['sync_create'] );
         $r = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$raffles_table} WHERE id = %d", $create_id ) );
         if ( $r && class_exists( 'WooCommerce' ) ) {
@@ -1000,6 +1031,15 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                         <p class="description">Max AJAX requests per IP per minute. Prevents brute-force ticket purchasing.</p>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row"><label for="trusted_proxies">Trusted Proxy IPs</label></th>
+                    <td>
+                        <textarea id="trusted_proxies" name="trusted_proxies" rows="2" class="large-text" placeholder="e.g. 173.245.48.1, 103.21.244.1 (CloudFlare)"><?php echo esc_textarea( $trusted_proxies ); ?></textarea>
+                        <p class="description">
+                            <?php esc_html_e( 'Comma-separated list of reverse-proxy IPs (CloudFlare, your nginx/load balancer). WPRaffle will only honour X-Forwarded-For / CF-Connecting-IP headers when the request comes from one of these IPs — preventing IP spoofing on the rate limiter and geo-restriction. Leave blank if your site does not sit behind a proxy you control.', 'wpraffle' ); ?>
+                        </p>
+                    </td>
+                </tr>
             </table>
         </div>
 
@@ -1049,6 +1089,322 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
         <?php submit_button( 'Save Advanced Settings', 'primary' ); ?>
     </form>
 
+    <?php
+    // Handle recalculate charity totals
+    $charity_recalc_done = false;
+    $charity_snapshots   = 0;
+    if ( isset( $_GET['charity_recalc'] ) && check_admin_referer( 'wpraffle_recalc_charities', 'recalc_nonce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to do that.', 'wpraffle' ) );
+        }
+        if ( class_exists( 'Raffle_Charity' ) ) {
+            Raffle_Charity::refresh_all_totals();
+            $charity_recalc_done = true;
+        }
+    }
+    ?>
+
+    <?php if ( $charity_recalc_done ) : ?>
+        <div class="notice notice-success is-dismissible"><p><strong>Charity totals recalculated successfully.</strong> Reload the page to see updated values.</p></div>
+    <?php endif; ?>
+
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Charity Totals</h2>
+        <p class="description" style="margin-bottom:16px;">Charity totals are calculated as a percentage of <strong>gross ticket revenue</strong> (total ticket sales). Prizes are assumed to be donated by the operator. Use the button below to force a recalculation across all charities.</p>
+
+        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=advanced&charity_recalc=1' ), 'wpraffle_recalc_charities', 'recalc_nonce' ) ); ?>" class="button button-primary" style="margin-bottom:16px;" onclick="return confirm('Recalculate all charity totals now?');">
+            Recalculate All Charity Totals
+        </a>
+
+        <?php
+        // Diagnostic table: show all charity-linked raffles and their computed values
+        global $wpdb;
+        $charity_raffles = $wpdb->get_results(
+            "SELECT r.id, r.title, r.status, r.charity_id, r.charity_mode, r.charity_percent, r.sold_tickets, r.ticket_price, r.prize_value, r.total_tickets
+             FROM {$wpdb->prefix}raffles r
+             WHERE r.charity_id IS NOT NULL AND r.charity_mode != 'none'
+             ORDER BY r.id DESC"
+        );
+
+        if ( ! empty( $charity_raffles ) ) :
+        ?>
+        <h3 style="margin:16px 0 8px;font-size:14px;font-weight:700;">Charity-Linked Raffles</h3>
+        <table class="widefat striped" style="max-width:100%;">
+            <thead>
+                <tr>
+                    <th>Raffle</th>
+                    <th>Status</th>
+                    <th>Charity ID</th>
+                    <th>Mode / %</th>
+                    <th>Sold</th>
+                    <th>Gross Revenue</th>
+                    <th>Charity Amount</th>
+                    <th>Allocation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ( $charity_raffles as $cr ) :
+                    $gross = (float) $cr->sold_tickets * (float) $cr->ticket_price;
+                    $pct   = (int) $cr->charity_percent;
+                    $charity_amount = round( $gross * ( $pct / 100 ), 2 );
+
+                    // Check for committed allocation
+                    $allocation = $wpdb->get_row( $wpdb->prepare(
+                        "SELECT allocated_amount, status FROM {$wpdb->prefix}raffle_charity_allocations WHERE raffle_id = %d",
+                        $cr->id
+                    ) );
+
+                    // Resolve charity name
+                    $charity_name = '';
+                    $db_charity = $wpdb->get_var( $wpdb->prepare(
+                        "SELECT name FROM {$wpdb->prefix}raffle_charities WHERE id = %d",
+                        absint( $cr->charity_id )
+                    ) );
+                    if ( $db_charity ) {
+                        $charity_name = $db_charity;
+                    } else {
+                        $post = get_post( absint( $cr->charity_id ) );
+                        if ( $post ) $charity_name = $post->post_title;
+                    }
+
+                    $gross_is_zero = $gross <= 0;
+                ?>
+                <tr style="<?php echo $gross_is_zero ? 'background:#fef3c7;' : ''; ?>">
+                    <td>
+                        <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=raffle-list&action=edit&id=' . $cr->id ) ); ?>"><?php echo esc_html( $cr->title ); ?></a></strong>
+                        <div style="font-size:11px;color:#6b7280;">ID: <?php echo esc_html( $cr->id ); ?></div>
+                    </td>
+                    <td>
+                        <?php
+                        $sc_map = array( 'draft' => '#6b7280', 'active' => '#16a34a', 'finished' => '#dc2626' );
+                        $sc_c = isset( $sc_map[ $cr->status ] ) ? $sc_map[ $cr->status ] : '#6b7280';
+                        ?>
+                        <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;color:#fff;background:<?php echo esc_attr( $sc_c ); ?>;"><?php echo esc_html( ucfirst( $cr->status ) ); ?></span>
+                    </td>
+                    <td>
+                        <span title="<?php echo esc_attr( $charity_name ); ?>"><?php echo esc_html( $cr->charity_id ); ?></span>
+                        <?php if ( $charity_name ) : ?>
+                            <div style="font-size:11px;color:#6b7280;"><?php echo esc_html( $charity_name ); ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo esc_html( ucfirst( $cr->charity_mode ) ); ?> / <?php echo esc_html( $pct ); ?>%</td>
+                    <td><?php echo esc_html( $cr->sold_tickets ); ?>/<?php echo esc_html( $cr->total_tickets ); ?></td>
+                    <td><?php echo esc_html( wpr_price( $gross ) ); ?></td>
+                    <td style="font-weight:700;"><?php echo esc_html( wpr_price( $charity_amount ) ); ?></td>
+                    <td>
+                        <?php if ( $allocation ) : ?>
+                            <span style="color:#16a34a;font-weight:600;"><?php echo esc_html( wpr_price( $allocation->allocated_amount ) ); ?></span>
+                            <div style="font-size:11px;color:#6b7280;"><?php echo esc_html( ucfirst( $allocation->status ) ); ?></div>
+                        <?php else : ?>
+                            <span style="color:#9ca3af;font-size:12px;">Not yet snapshotted</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php if ( $gross_is_zero ) : ?>
+                <tr style="background:#fef3c7;">
+                    <td colspan="8" style="padding:6px 12px;font-size:12px;color:#92400e;">
+                        ⚠️ No tickets have been sold yet, so the charity amount is £0.
+                    </td>
+                </tr>
+                <?php endif; ?>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <?php
+        // Show charity totals summary
+        if ( class_exists( 'Raffle_Charity' ) ) :
+            $all_charities = Raffle_Charity::get_active_charities();
+            if ( ! empty( $all_charities ) ) :
+        ?>
+        <h3 style="margin:24px 0 8px;font-size:14px;font-weight:700;">Charity Totals Summary</h3>
+        <table class="widefat striped" style="max-width:500px;">
+            <thead><tr><th>Charity</th><th>Live Raised</th></tr></thead>
+            <tbody>
+                <?php foreach ( $all_charities as $ac ) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html( $ac->name ); ?></strong> <span style="color:#9ca3af;font-size:11px;">(ID: <?php echo esc_html( $ac->id ); ?>)</span></td>
+                    <td style="font-weight:700;color:#065f46;"><?php echo esc_html( wpr_price( $ac->live_raised ?? 0 ) ); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; endif; ?>
+
+        <?php else : ?>
+            <p style="color:#6b7280;padding:12px;">No raffles are currently linked to a charity.</p>
+        <?php endif; ?>
+    </div>
+
+    <!-- ════════════════════ STYLING TAB ════════════════════ -->
+    <?php elseif ( $tab === 'styling' ) : ?>
+    <?php
+    $presets = class_exists( 'Raffle_Styling' ) ? Raffle_Styling::get_presets() : array();
+    $var_docs = class_exists( 'Raffle_Styling' ) ? Raffle_Styling::get_variable_docs() : array();
+    ?>
+
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
+        <input type="hidden" name="action" value="wpraffle_save_styling_settings">
+
+        <!-- Theme Integration -->
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Theme Integration</h2>
+            <p class="description" style="margin-bottom:16px;">If you want WPRaffle to completely inherit your theme's native colors, backgrounds, borders, and styles without applying any plugin-level overrides, check this option.</p>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:14px;color:#1f2937;">
+                <input type="checkbox" name="disable_custom_styling" value="1" <?php checked( $styling['disable_custom_styling'], '1' ); ?> style="width:18px;height:18px;margin:0;">
+                Disable Plugin Styling (Use Active Theme Styles & Colors Only)
+            </label>
+        </div>
+
+        <!-- Preset Theme Selector -->
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Theme Presets</h2>
+            <p class="description" style="margin-bottom:16px;">Choose a colour theme for WPRaffle. The layout stays the same — only colours change. Semantic colours (red, green, amber) keep their meaning across all themes.</p>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
+                <?php foreach ( $presets as $key => $preset ) : ?>
+                    <label style="cursor:pointer;display:block;border:2px solid <?php echo $styling['preset'] === $key ? 'var(--wpr-accent,#6c5ce7)' : '#e5e7eb'; ?>;border-radius:12px;padding:16px;text-align:center;transition:border-color 0.2s;background:#fff;">
+                        <input type="radio" name="preset" value="<?php echo esc_attr( $key ); ?>" <?php checked( $styling['preset'], $key ); ?> style="display:none;" onchange="this.closest('label').parentElement.querySelectorAll('label').forEach(l=>l.style.borderColor='#e5e7eb');this.closest('label').style.borderColor='<?php echo esc_attr( $preset['vars']['--wpr-accent'] ); ?>';">
+
+                        <!-- Colour swatch -->
+                        <div style="display:flex;gap:4px;justify-content:center;margin-bottom:10px;">
+                            <div style="width:32px;height:32px;border-radius:50%;background:<?php echo esc_attr( $preset['vars']['--wpr-accent'] ); ?>;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.15);"></div>
+                            <div style="width:32px;height:32px;border-radius:50%;background:<?php echo esc_attr( $preset['vars']['--wpr-accent-dark'] ); ?>;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.15);"></div>
+                            <div style="width:32px;height:32px;border-radius:50%;background:<?php echo esc_attr( $preset['vars']['--wpr-accent-bg'] ); ?>;border:2px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.1);"></div>
+                        </div>
+
+                        <div style="font-weight:700;font-size:14px;color:#1f2937;"><?php echo esc_html( $preset['name'] ); ?></div>
+                        <div style="font-size:11px;color:#6b7280;margin-top:4px;"><?php echo esc_html( $preset['description'] ); ?></div>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Custom Overrides -->
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Custom Colour Overrides (Optional)</h2>
+            <p class="description" style="margin-bottom:16px;">Override specific colours beyond the preset. Enable a field and pick a colour to override. Disable to use the preset value.</p>
+            <table class="form-table" style="margin:0;">
+                <?php
+                $custom_fields = array(
+                    'custom_accent'      => 'Accent Colour',
+                    'custom_accent_dark' => 'Accent Dark (Hover)',
+                    'custom_text'        => 'Text Colour',
+                    'custom_bg'          => 'Background Colour',
+                );
+                foreach ( $custom_fields as $field_key => $field_label ) :
+                    $field_val = ! empty( $styling[ $field_key ] ) ? $styling[ $field_key ] : '';
+                    $is_active = ! empty( $field_val );
+                ?>
+                <tr>
+                    <th scope="row"><label><?php echo esc_html( $field_label ); ?></label></th>
+                    <td>
+                        <div class="wpr-color-override" style="display:flex;align-items:center;gap:10px;">
+                            <!-- Hidden input carries the actual submitted value (can be empty) -->
+                            <input type="hidden" name="<?php echo esc_attr( $field_key ); ?>" class="wpr-co-value" value="<?php echo esc_attr( $field_val ); ?>">
+
+                            <!-- Enable toggle -->
+                            <label style="position:relative;display:inline-block;width:36px;height:20px;margin:0;flex-shrink:0;">
+                                <input type="checkbox" class="wpr-co-toggle" <?php checked( $is_active ); ?> style="opacity:0;width:0;height:0;">
+                                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:<?php echo $is_active ? '#6c5ce7' : '#d1d5db'; ?>;border-radius:20px;transition:.3s;"></span>
+                                <span style="position:absolute;height:14px;width:14px;left:<?php echo $is_active ? '18px' : '3px'; ?>;bottom:3px;background:#fff;border-radius:50%;transition:.3s;box-shadow:0 1px 2px rgba(0,0,0,0.2);"></span>
+                            </label>
+
+                            <!-- Colour picker (UI only, no name attribute) -->
+                            <input type="color" class="wpr-co-picker" value="<?php echo esc_attr( $is_active ? $field_val : '#6c5ce7' ); ?>" style="width:40px;height:32px;border:1px solid #ddd;border-radius:6px;cursor:pointer;padding:2px;<?php echo $is_active ? '' : 'opacity:0.4;pointer-events:none;'; ?>">
+
+                            <!-- Hex display -->
+                            <code class="wpr-co-hex" style="font-family:monospace;font-size:13px;color:<?php echo $is_active ? '#1f2937' : '#9ca3af'; ?>;"><?php echo $is_active ? esc_html( $field_val ) : '—'; ?></code>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </table>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('.wpr-color-override').forEach(function(row) {
+                    var toggle  = row.querySelector('.wpr-co-toggle');
+                    var picker  = row.querySelector('.wpr-co-picker');
+                    var hidden  = row.querySelector('.wpr-co-value');
+                    var hex     = row.querySelector('.wpr-co-hex');
+                    var track   = toggle.nextElementSibling;
+                    var knob    = track.nextElementSibling;
+
+                    function updateUI(active) {
+                        track.style.background = active ? '#6c5ce7' : '#d1d5db';
+                        knob.style.left = active ? '18px' : '3px';
+                        picker.style.opacity = active ? '1' : '0.4';
+                        picker.style.pointerEvents = active ? 'auto' : 'none';
+                        if (active) {
+                            hidden.value = picker.value;
+                            hex.textContent = picker.value;
+                            hex.style.color = '#1f2937';
+                        } else {
+                            hidden.value = '';
+                            hex.textContent = '—';
+                            hex.style.color = '#9ca3af';
+                        }
+                    }
+
+                    toggle.addEventListener('change', function() { updateUI(toggle.checked); });
+
+                    picker.addEventListener('input', function() {
+                        if (toggle.checked) {
+                            hidden.value = picker.value;
+                            hex.textContent = picker.value;
+                        }
+                    });
+                });
+            });
+            </script>
+        </div>
+
+        <?php submit_button( 'Save Styling Settings', 'primary' ); ?>
+    </form>
+
+        <!-- Developer Documentation -->
+    <div class="rs-card">
+        <h2 class="rs-card-title">Developer Reference — CSS Custom Properties</h2>
+        <p class="description" style="margin-bottom:16px;">Theme developers can override any of these CSS variables in their theme's <code>style.css</code> or via Elementor custom CSS. These take precedence over the preset above.</p>
+
+        <details open style="margin-bottom:16px;">
+            <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0;">View all <?php echo array_sum(array_map('count', $var_docs)); ?> CSS variables</summary>
+            <div style="padding:12px 0;">
+                <?php foreach ( $var_docs as $category => $vars ) : ?>
+                    <h4 style="font-size:12px;text-transform:uppercase;color:#6b7280;margin:16px 0 8px;letter-spacing:0.5px;"><?php echo esc_html( $category ); ?></h4>
+                    <table class="widefat striped" style="max-width:700px;">
+                        <tbody>
+                            <?php foreach ( $vars as $var => $desc ) : ?>
+                                <tr>
+                                    <td style="width:220px;"><code style="font-family:monospace;font-size:12px;color:#6c5ce7;"><?php echo esc_html( $var ); ?></code></td>
+                                    <td style="font-size:12px;color:#4b5563;"><?php echo esc_html( $desc ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endforeach; ?>
+            </div>
+        </details>
+
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-top:12px;">
+            <h4 style="margin:0 0 8px;font-size:13px;">Example: Override in your theme</h4>
+            <pre style="background:#1a1a1a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:0;"><code>/* In your theme's style.css */
+:root {
+    --wpr-accent: #e11d48;
+    --wpr-accent-dark: #be123c;
+    --wpr-text-primary: #0f172a;
+    --wpr-bg-surface: #fefce8;
+}</code></pre>
+        </div>
+
+        <p style="margin-top:12px;font-size:12px;color:#6b7280;">
+            Full documentation: see <code>STYLING-GUIDE.md</code> in the plugin folder, or visit the
+            <a href="https://github.com/wpraffle/wpraffle/wiki" target="_blank" rel="noopener">WPRaffle Wiki</a>.
+        </p>
+    </div>
+
     <!-- ════════════════════ UPDATES TAB ════════════════════ -->
     <?php elseif ( $tab === 'updates' ) : ?>
     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -1080,7 +1436,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
             </table>
 
             <div style="margin-top:12px;">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpraffle-settings&tab=updates&check_updates=1' ) ); ?>" class="button">Check for Updates</a>
+                <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=updates&check_updates=1' ), 'wpraffle_check_updates' ) ); ?>" class="button">Check for Updates</a>
             </div>
         </div>
 

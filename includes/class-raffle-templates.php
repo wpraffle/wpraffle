@@ -84,7 +84,7 @@ class Raffle_Templates {
                 'post_content' => $raffle->description,
                 'post_status'  => 'draft',
                 'post_type'    => 'product',
-                'post_author'  => 1,
+                'post_author'  => get_current_user_id() ?: 1,
             ) );
 
             if ( ! is_wp_error( $wc_product_id ) && $wc_product_id ) {
@@ -124,6 +124,13 @@ class Raffle_Templates {
 
     /**
      * AJAX: Save template.
+     *
+     * Accepts either:
+     *   - `raffle_id` + `template_name` (what the admin UI's "Save as Template"
+     *     button posts): the config is built server-side from the raffle row,
+     *     which is more robust than trusting client-gathered config.
+     *   - `name` + `config` (JSON): direct/programmatic path, kept for
+     *     backwards compatibility.
      */
     public function ajax_save_template() {
         if ( ! current_user_can( 'manage_options' ) ) {
@@ -133,16 +140,84 @@ class Raffle_Templates {
             wp_send_json_error( 'Security error' );
         }
 
-        $name   = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
-        $config = sanitize_text_field( wp_unslash( $_POST['config'] ?? '{}' ) );
-        $config = json_decode( $config, true );
+        global $wpdb;
 
-        if ( ! $name || ! $config ) {
-            wp_send_json_error( 'Invalid data' );
+        // Path A: raffle_id + template_name (admin UI button).
+        $raffle_id = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
+        $name      = '';
+        if ( isset( $_POST['template_name'] ) ) {
+            $name = sanitize_text_field( wp_unslash( $_POST['template_name'] ) );
+        } elseif ( isset( $_POST['name'] ) ) {
+            $name = sanitize_text_field( wp_unslash( $_POST['name'] ) );
+        }
+
+        if ( $raffle_id ) {
+            $raffle = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
+                $raffle_id
+            ) );
+            if ( ! $raffle ) {
+                wp_send_json_error( 'Raffle not found.' );
+            }
+            if ( ! $name ) {
+                $name = $raffle->title . ' Template';
+            }
+            $config = self::build_config_from_raffle( $raffle );
+        } else {
+            // Path B: direct config.
+            $config_raw = isset( $_POST['config'] ) ? wp_unslash( $_POST['config'] ) : '{}';
+            $config     = json_decode( is_string( $config_raw ) ? $config_raw : '{}', true );
+            if ( ! $name || ! $config ) {
+                wp_send_json_error( 'Invalid data' );
+            }
         }
 
         $id = self::save_template( $name, $config );
+        if ( ! $id ) {
+            wp_send_json_error( 'Could not save template.' );
+        }
         wp_send_json_success( array( 'id' => $id, 'message' => 'Template saved' ) );
+    }
+
+    /**
+     * Build a template config array from a raffle row. Captures every
+     * configuration field EXCEPT raffle-specific data (title, description,
+     * prize image/value, dates, sales counts, winner, product link, audit
+     * data) per the documented template contract.
+     *
+     * @param object $raffle
+     * @return array
+     */
+    public static function build_config_from_raffle( $raffle ) {
+        global $wpdb;
+
+        $data = (array) $raffle;
+
+        // Strip raffle-specific / runtime fields.
+        $strip = array(
+            'id', 'title', 'description', 'prize_image', 'prize_value',
+            'draw_date', 'start_date', 'status', 'sold_tickets',
+            'winner_ticket_id', 'reminder_sent', 'wc_product_id',
+            'created_at', 'verified_result', 'template_id',
+        );
+        foreach ( $strip as $k ) {
+            unset( $data[ $k ] );
+        }
+
+        // Snapshot the raffle's instant-win configuration (available rows
+        // only — won/claimed instant wins aren't relevant to a template).
+        $instant_wins = $wpdb->get_results( $wpdb->prepare(
+            "SELECT ticket_number, prize_name FROM {$wpdb->prefix}raffle_instant_wins
+             WHERE raffle_id = %d AND status = 'available'",
+            (int) $raffle->id
+        ) );
+        $data['instant_wins'] = $instant_wins ?: array();
+
+        // Strip NULL values so the JSON is clean (the form's $raffle? value : ''
+        // pattern treats missing keys the same as empty).
+        return array_filter( $data, function ( $v ) {
+            return $v !== null;
+        } );
     }
 
     /**

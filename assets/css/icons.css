@@ -30,11 +30,11 @@
 .wpr-icon--3xl { width: 48px; height: 48px; }
 
 /* ─── Colour helpers ─────────────────────────── */
-.wpr-icon--primary  { color: var(--rf-primary, #6c5ce7); }
-.wpr-icon--success  { color: var(--rf-success, #00b894); }
-.wpr-icon--warning  { color: var(--rf-warning, #fdcb6e); }
-.wpr-icon--danger   { color: var(--rf-danger, #ff6b6b); }
-.wpr-icon--muted    { color: #9ca3af; }
+.wpr-icon--primary  { color: var(--wpr-accent, #6c5ce7); }
+.wpr-icon--success  { color: var(--wpr-success, #00b894); }
+.wpr-icon--warning  { color: var(--wpr-warning, #f59e0b); }
+.wpr-icon--danger   { color: var(--wpr-danger, #dc2626); }
+.wpr-icon--muted    { color: var(--wpr-text-muted, #9ca3af); }
 .wpr-icon--white    { color: #ffffff; }
 
 /* ─── Inline spacing ─────────────────────────── */

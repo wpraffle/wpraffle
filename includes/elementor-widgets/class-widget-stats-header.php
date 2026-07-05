@@ -19,13 +19,13 @@ class Raffle_Widget_Stats_Header extends \Elementor\Widget_Base {
         $s = $this->get_settings_for_display();
         echo '<div class="raffle-stats-header">';
         if ( $s['show_max_tickets'] === 'yes' ) {
-            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">&#127915;</span> Max ' . esc_html( $raffle->total_tickets ) . ' Tickets</div>';
+            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">' . wpr_get_icon( 'ticket', 'wpr-icon--md' ) . '</span> Max ' . esc_html( $raffle->total_tickets ) . ' Tickets</div>';
         }
         if ( $s['show_available'] === 'yes' ) {
-            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">&#9989;</span> ' . esc_html( $ctx['remaining'] ) . ' Available</div>';
+            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">' . wpr_get_icon( 'check-circle', 'wpr-icon--md' ) . '</span> ' . esc_html( $ctx['remaining'] ) . ' Available</div>';
         }
         if ( $s['show_draw_date'] === 'yes' && $raffle->draw_date ) {
-            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">&#128197;</span> Draw: ' . esc_html( date( 'M j, Y g:i A', strtotime( $raffle->draw_date ) ) ) . '</div>';
+            echo '<div class="raffle-stat-box"><span class="raffle-stat-icon">' . wpr_get_icon( 'calendar', 'wpr-icon--md' ) . '</span> Draw: ' . esc_html( date( 'M j, Y g:i A', strtotime( $raffle->draw_date ) ) ) . '</div>';
         }
         echo '</div>';
     }

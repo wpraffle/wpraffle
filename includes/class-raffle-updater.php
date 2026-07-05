@@ -28,13 +28,20 @@ class Raffle_Updater {
     }
 
     /**
-     * Get the configured GitHub repo.
+     * Get the configured GitHub repo, validated against the strict
+     * `owner/name` format before use. Falls back to the default if the stored
+     * value is malformed (defence-in-depth against a compromised/malicious
+     * setting being interpolated into the API URL).
      */
     private function get_repo() {
         $settings = wp_parse_args( get_option( 'wpraffle_update_settings', array() ), array(
             'github_repo' => 'wpraffle/wpraffle',
         ) );
-        return $settings['github_repo'];
+        $repo = $settings['github_repo'];
+        if ( ! preg_match( '#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$#', $repo ) ) {
+            return 'wpraffle/wpraffle';
+        }
+        return $repo;
     }
 
     /**
