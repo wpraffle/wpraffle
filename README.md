@@ -324,8 +324,3 @@ This project is licensed under [GPL-2.0+](https://www.gnu.org/licenses/gpl-2.0.h
 
 The full documentation lives at **<https://docs.wpraffle.dev>** and covers every feature,
 the database schema, hooks & filters, AJAX endpoints, cron jobs, security model, and more.
-
-The source for the docs site is in the
-[`wpraffle-docs` repo](https://github.com/wpraffle/wpraffle-docs). See
-[`CHANGELOG.md`](./CHANGELOG.md) for a per-version changelog and
-[`RELEASE.md`](./RELEASE.md) for the latest release notes.
