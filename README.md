@@ -9,6 +9,11 @@
 <h1 align="center">🎟️ WPRaffle</h1>
 
 <p align="center">
+  All documentation, changelog, readme are AI written slop pulled from the docs site which is half AI slop tweaked for a starting point. <br>
+  It's not perfect but it gets the job done.
+</p>
+
+<p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
   Built on WooCommerce with full ticket management, live draws, instant wins, charity fundraising, responsible-gambling controls, and UK compliance features.
 </p>
