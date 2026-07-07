@@ -253,9 +253,6 @@ class Raffle_WooCommerce {
             wp_send_json_error( array( 'message' => 'System error: Raffle product not configured.' ) );
         }
 
-        // Empty cart if you only want 1 raffle checkout at a time, or leave it to allow multiple
-        // WC()->cart->empty_cart();
-
         $cart_item_data = array(
             'raffle_id'         => $raffle_id,
             'raffle_quantity'   => $quantity,
@@ -513,21 +510,21 @@ class Raffle_WooCommerce {
     public function add_order_item_meta( $item, $cart_item_key, $values, $order ) {
         if ( isset( $values['raffle_id'] ) ) {
             $item->add_meta_data( '_raffle_id', $values['raffle_id'] );
-            
+
             $quantity = isset( $values['raffle_quantity'] ) ? (int) $values['raffle_quantity'] : ( isset( $values['quantity'] ) ? (int) $values['quantity'] : $item->get_quantity() );
             $item->add_meta_data( '_raffle_quantity', $quantity );
-            
+
             // Retrieve name and email natively from the billing details submitted at checkout
             $buyer_name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
             $buyer_email = $order->get_billing_email();
-            
+
             if ( empty( $buyer_email ) && isset( $_POST['billing_email'] ) ) {
                 $buyer_email = sanitize_email( wp_unslash( $_POST['billing_email'] ) );
             }
             if ( empty( $buyer_email ) && is_user_logged_in() ) {
                 $buyer_email = wp_get_current_user()->user_email;
             }
-            
+
             if ( empty( $buyer_name ) && isset( $_POST['billing_first_name'] ) ) {
                 $first = sanitize_text_field( wp_unslash( $_POST['billing_first_name'] ) );
                 $last  = isset( $_POST['billing_last_name'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_last_name'] ) ) : '';
@@ -536,18 +533,18 @@ class Raffle_WooCommerce {
             if ( empty( $buyer_name ) && is_user_logged_in() ) {
                 $buyer_name = wp_get_current_user()->display_name;
             }
-            
+
             $item->add_meta_data( '_raffle_buyer_name', $buyer_name );
             $item->add_meta_data( '_raffle_buyer_email', $buyer_email );
             $item->add_meta_data( '_is_raffle_order', 'yes' );
-            
+
             if ( ! empty( $values['selected_numbers'] ) ) {
                 $item->add_meta_data( '_raffle_selected_numbers', $values['selected_numbers'] );
             }
             if ( isset( $values['answer_index'] ) ) {
                 $item->add_meta_data( '_raffle_answer_index', $values['answer_index'] );
             }
-            
+
             // Mark the order itself as containing raffles
             $order->update_meta_data( '_has_raffle_items', 'yes' );
         }
@@ -579,7 +576,7 @@ class Raffle_WooCommerce {
 
         $all_tickets_formatted = array();
         $all_instant_wins = array();
-        
+
         // Loop through all order items to find raffles
         foreach ( $order->get_items() as $item_id => $item ) {
             if ( $item->get_meta( '_is_raffle_order' ) !== 'yes' ) {
@@ -691,7 +688,7 @@ class Raffle_WooCommerce {
             ), array( '%d', '%s', '%s', '%d', '%f', '%s', '%d', '%s' ) );
 
             $purchase_id = $wpdb->insert_id;
-            
+
             $item->add_meta_data( '_raffle_purchase_id', $purchase_id );
             $item->save();
 
@@ -746,7 +743,7 @@ class Raffle_WooCommerce {
             }, $tickets );
 
             $all_tickets_formatted = array_merge( $all_tickets_formatted, $formatted );
-            
+
             $item->add_meta_data( '_raffle_ticket_numbers', $formatted );
             if ( ! empty( $instant_wins ) ) {
                 $item->add_meta_data( '_raffle_instant_wins', wp_json_encode( $instant_wins ) );
@@ -773,6 +770,11 @@ class Raffle_WooCommerce {
 
     /**
      * Show raffle tickets on the WooCommerce thank-you page.
+     *
+     * Renders a polished, on-brand ticket summary that matches the plugin's
+     * confirmation modal + card design language (semantic classes in
+     * public.css, the --wpr-* token system, SVG icons — no emojis, no
+     * hardcoded gradients).
      */
     public function thankyou_raffle_tickets( $order_id ) {
         $order = wc_get_order( $order_id );
@@ -784,46 +786,81 @@ class Raffle_WooCommerce {
         $tickets = $order->get_meta( '_raffle_ticket_numbers' );
 
         if ( ! empty( $tickets ) && is_array( $tickets ) ) {
-            echo '<div class="raffle-thankyou-tickets" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:30px;border-radius:16px;margin:20px 0;text-align:center;">';
-            echo '<h2 style="color:#fff;margin:0 0 8px;">' . wpr_get_icon( 'star', 'wpr-icon--md wpr-icon--white', 'Tickets' ) . ' Your Raffle Tickets!</h2>';
-            echo '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">';
-            foreach ( $tickets as $ticket ) {
-                echo '<span style="background:rgba(255,255,255,0.2);padding:8px 16px;border-radius:8px;font-weight:700;font-size:18px;backdrop-filter:blur(4px);">' . esc_html( $ticket ) . '</span>';
-            }
-            echo '</div>';
+            $ticket_count = count( $tickets );
+            ?>
+            <section class="raffle-thankyou">
+                <div class="raffle-thankyou__header">
+                    <span class="raffle-thankyou__icon"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--2xl wpr-icon--white', 'Tickets' ); ?></span>
+                    <h2 class="raffle-thankyou__title"><?php esc_html_e( 'Your Raffle Tickets', 'wpraffle' ); ?></h2>
+                    <p class="raffle-thankyou__count">
+                        <?php
+                        printf(
+                            /* translators: number of tickets */
+                            esc_html( _n( '%d ticket secured', '%d tickets secured', $ticket_count, 'wpraffle' ) ),
+                            (int) $ticket_count
+                        );
+                        ?>
+                    </p>
+                </div>
 
-            // Show instant wins
-            $has_wins = false;
-            foreach ( $order->get_items() as $item ) {
-                $iw_meta = $item->get_meta('_raffle_instant_wins');
-                if ( $iw_meta ) {
+                <div class="raffle-thankyou__tickets">
+                    <?php foreach ( $tickets as $ticket ) : ?>
+                        <span class="raffle-thankyou__ticket"><?php echo esc_html( $ticket ); ?></span>
+                    <?php endforeach; ?>
+                </div>
+
+                <?php
+                // Show instant wins (if any) in a distinct, celebratory card.
+                $wins_html     = '';
+                $has_wins_html = false;
+                foreach ( $order->get_items() as $item ) {
+                    $iw_meta = $item->get_meta( '_raffle_instant_wins' );
+                    if ( ! $iw_meta ) {
+                        continue;
+                    }
                     $wins = json_decode( $iw_meta );
-                    if ( ! empty( $wins ) ) {
-                        if ( ! $has_wins ) {
-                            echo '<div style="margin-top:20px;padding:15px;background:rgba(255,215,0,0.2);border:2px dashed #ffd700;border-radius:12px;">';
-                            echo '<h3 style="color:#fff;margin:0 0 10px;">' . wpr_get_icon( 'gift', 'wpr-icon--md wpr-icon--white', 'Instant Win' ) . ' YOU FOUND INSTANT WINS! ' . wpr_get_icon( 'gift', 'wpr-icon--md wpr-icon--white', 'Instant Win' ) . '</h3>';
-                            $has_wins = true;
-                        }
-                        foreach( $wins as $w ) {
-                            echo '<p style="margin:5px 0;"><strong>Ticket #' . esc_html( $w->ticket_number ) . '</strong> won: ' . esc_html( $w->prize_name ) . '</p>';
-                        }
+                    if ( empty( $wins ) ) {
+                        continue;
+                    }
+                    if ( ! $has_wins_html ) {
+                        $wins_html .= '<div class="raffle-thankyou__wins">';
+                        $wins_html .= '<div class="raffle-thankyou__wins-header">';
+                        $wins_html .= wpr_get_icon( 'gift', 'wpr-icon--md', 'Instant Win' );
+                        $wins_html .= '<h3>' . esc_html__( 'You found instant wins!', 'wpraffle' ) . '</h3>';
+                        $wins_html .= '</div><ul class="raffle-thankyou__wins-list">';
+                        $has_wins_html = true;
+                    }
+                    foreach ( $wins as $w ) {
+                        $wins_html .= '<li>';
+                        $wins_html .= '<span class="raffle-thankyou__wins-ticket">#' . esc_html( $w->ticket_number ) . '</span>';
+                        $wins_html .= '<span class="raffle-thankyou__wins-prize">' . esc_html( $w->prize_name ) . '</span>';
+                        $wins_html .= '</li>';
                     }
                 }
-            }
-            if ( $has_wins ) {
-                echo '</div>';
-            }
+                if ( $has_wins_html ) {
+                    $wins_html .= '</ul></div>';
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — built from escaped fragments above.
+                    echo $wins_html;
+                }
+                ?>
 
-            echo '<p style="opacity:0.8;margin:16px 0 0;font-size:14px;">📧 A confirmation email with your numbers was also sent.</p>';
-            echo '</div>';
+                <p class="raffle-thankyou__footer">
+                    <?php echo wpr_get_icon( 'mail', 'wpr-icon--xs' ); ?>
+                    <?php esc_html_e( 'A confirmation email with your numbers has also been sent.', 'wpraffle' ); ?>
+                </p>
+            </section>
+            <?php
         } else {
-            // Payment may still be processing
+            // Payment may still be processing — tickets not yet allocated.
             $status = $order->get_status();
             if ( in_array( $status, array( 'pending', 'on-hold' ), true ) ) {
-                echo '<div style="background:#fff3cd;color:#856404;padding:16px;border-radius:8px;margin:20px 0;">';
-                echo '<p><strong>⏳ Your payment is being processed.</strong></p>';
-                echo '<p>You will receive your tickets by email once the payment is confirmed.</p>';
-                echo '</div>';
+                ?>
+                <section class="raffle-thankyou raffle-thankyou--pending">
+                    <span class="raffle-thankyou__pending-icon"><?php echo wpr_get_icon( 'clock', 'wpr-icon--lg', 'Processing' ); ?></span>
+                    <h2 class="raffle-thankyou__pending-title"><?php esc_html_e( 'Payment processing', 'wpraffle' ); ?></h2>
+                    <p class="raffle-thankyou__pending-text"><?php esc_html_e( 'Your payment is being processed. You will receive your ticket numbers by email once it is confirmed.', 'wpraffle' ); ?></p>
+                </section>
+                <?php
             }
         }
     }
@@ -846,7 +883,7 @@ class Raffle_WooCommerce {
                 $purchase_id = $item->get_meta( '_raffle_purchase_id' );
                 $tickets     = $item->get_meta( '_raffle_ticket_numbers' );
                 $iw_meta     = $item->get_meta( '_raffle_instant_wins' );
-                
+
                 echo '<div style="margin-bottom:10px;padding:10px;background:#f9fafb;border-radius:4px;">';
                 echo '<p style="margin:0 0 5px;"><strong>Raffle ID:</strong> ' . esc_html( $raffle_id ) . '</p>';
                 echo '<p style="margin:0 0 5px;"><strong>Quantity:</strong> ' . esc_html( $quantity ) . ' tickets</p>';
@@ -884,11 +921,10 @@ class Raffle_WooCommerce {
         $raffle_id = get_post_meta( $product->get_id(), '_raffle_id', true );
         if ( ! $raffle_id ) return; // Not a raffle product — let WooCommerce render normally.
 
-        global $wpdb;
-        $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
-            (int) $raffle_id
-        ) );
+        // Use the cached reader (1 DB hit per raffle per request across all loops).
+        $raffle = function_exists( 'wpraffle_get_raffle' )
+            ? wpraffle_get_raffle( (int) $raffle_id )
+            : $GLOBALS['wpdb']->get_row( $GLOBALS['wpdb']->prepare( "SELECT * FROM {$GLOBALS['wpdb']->prefix}raffles WHERE id = %d", (int) $raffle_id ) );
         if ( ! $raffle ) return;
 
         // Remove ALL default WooCommerce loop output for THIS product
@@ -900,6 +936,11 @@ class Raffle_WooCommerce {
         remove_action( 'woocommerce_after_shop_loop_item_title', 'woocommerce_template_loop_price', 10 );
         remove_action( 'woocommerce_after_shop_loop_item', 'woocommerce_template_loop_product_link_close', 5 );
         remove_action( 'woocommerce_after_shop_loop_item', 'woocommerce_template_loop_add_to_cart', 10 );
+
+        // No batching is possible in the per-product WC loop, so let the card
+        // run its own single indexed IW-count query. Unset any stale value from
+        // the previous product in the loop.
+        unset( $iw_count );
 
         // Render our competition card template
         include RAFFLE_SYSTEM_PATH . 'public/views/raffle-loop-card.php';
@@ -956,12 +997,21 @@ class Raffle_WooCommerce {
     }
 
     /**
-     * Enqueue public assets on shop/archive pages that display raffle products.
+     * Enqueue public assets on shop/archive pages that display raffle products,
+     * and on the order-received (thank-you) page so the ticket summary renders
+     * with the plugin's own stylesheet.
      */
     public function enqueue_shop_assets() {
         if ( is_shop() || is_product_taxonomy() ) {
-            wp_enqueue_style( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/css/public.css', array(), RAFFLE_SYSTEM_VERSION );
+            wp_enqueue_style( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/css/public.css', array( 'wpraffle-icons' ), RAFFLE_SYSTEM_VERSION );
             wp_enqueue_script( 'raffle-shop-countdown', RAFFLE_SYSTEM_URL . 'assets/js/shop-countdown.js', array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
+        }
+
+        // Order-received / thank-you page: load the icon + public stylesheets
+        // so the raffle ticket summary renders with the plugin's design tokens.
+        if ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'order-received' ) ) {
+            wp_enqueue_style( 'wpraffle-icons', RAFFLE_SYSTEM_URL . 'assets/css/icons.css', array(), RAFFLE_SYSTEM_VERSION );
+            wp_enqueue_style( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/css/public.css', array( 'wpraffle-icons' ), RAFFLE_SYSTEM_VERSION );
         }
     }
 
@@ -969,7 +1019,7 @@ class Raffle_WooCommerce {
         if ( is_admin() ) {
             return;
         }
-        
+
         global $wpdb;
         $table = $wpdb->prefix . 'raffles';
         $now = current_time( 'mysql' );
@@ -1203,7 +1253,7 @@ class Raffle_WooCommerce {
      * Add "Raffle Product" to the WooCommerce product type selector.
      */
     public function add_raffle_product_type( $types ) {
-        $types['raffle'] = __( 'Raffle Product', 'raffle-system' );
+        $types['raffle'] = __( 'Raffle Product', 'wpraffle' );
         return $types;
     }
 
@@ -1237,7 +1287,7 @@ class Raffle_WooCommerce {
 
         // Add custom raffle settings tab
         $tabs['raffle_settings'] = array(
-            'label'    => __( 'Raffle Settings', 'raffle-system' ),
+            'label'    => __( 'Raffle Settings', 'wpraffle' ),
             'target'   => 'raffle_product_data',
             'class'    => array( 'show_if_raffle' ),
             'priority' => 21,
@@ -1290,22 +1340,22 @@ class Raffle_WooCommerce {
                 // Ticket Price
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_ticket_price',
-                    'label'       => __( 'Ticket Price ($)', 'raffle-system' ),
+                    'label'       => __( 'Ticket Price ($)', 'wpraffle' ),
                     'value'       => $ticket_price,
                     'placeholder' => 'e.g. 5.99',
                     'desc_tip'    => true,
-                    'description' => __( 'Price per ticket.', 'raffle-system' ),
+                    'description' => __( 'Price per ticket.', 'wpraffle' ),
                     'type'        => 'text',
                 ) );
 
                 // Total Tickets
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_total_tickets',
-                    'label'       => __( 'Total Tickets', 'raffle-system' ),
+                    'label'       => __( 'Total Tickets', 'wpraffle' ),
                     'value'       => $total_tickets,
                     'placeholder' => 'e.g. 1000',
                     'desc_tip'    => true,
-                    'description' => __( 'Maximum number of tickets available.', 'raffle-system' ),
+                    'description' => __( 'Maximum number of tickets available.', 'wpraffle' ),
                     'type'        => 'number',
                     'custom_attributes' => array( 'min' => 1 ),
                 ) );
@@ -1313,11 +1363,11 @@ class Raffle_WooCommerce {
                 // Max Tickets Per User
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_max_tickets_per_user',
-                    'label'       => __( 'Max Tickets Per User', 'raffle-system' ),
+                    'label'       => __( 'Max Tickets Per User', 'wpraffle' ),
                     'value'       => $max_tickets_per_user,
                     'placeholder' => 'e.g. 50',
                     'desc_tip'    => true,
-                    'description' => __( 'Maximum tickets a single user can buy.', 'raffle-system' ),
+                    'description' => __( 'Maximum tickets a single user can buy.', 'wpraffle' ),
                     'type'        => 'number',
                     'custom_attributes' => array( 'min' => 1 ),
                 ) );
@@ -1325,32 +1375,32 @@ class Raffle_WooCommerce {
                 // Start Date
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_start_date',
-                    'label'       => __( 'Start Date & Time', 'raffle-system' ),
+                    'label'       => __( 'Start Date & Time', 'wpraffle' ),
                     'value'       => ! empty( $start_date ) ? str_replace( ' ', 'T', $start_date ) : '',
                     'type'         => 'datetime-local',
                     'desc_tip'    => true,
-                    'description' => __( 'Date and time the raffle starts/goes live.', 'raffle-system' ),
+                    'description' => __( 'Date and time the raffle starts/goes live.', 'wpraffle' ),
                 ) );
 
                 // Draw Date
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_draw_date',
-                    'label'       => __( 'Draw Date & Time', 'raffle-system' ),
+                    'label'       => __( 'Draw Date & Time', 'wpraffle' ),
                     'value'       => ! empty( $draw_date ) ? str_replace( ' ', 'T', $draw_date ) : '',
                     'type'         => 'datetime-local',
                     'desc_tip'    => true,
-                    'description' => __( 'Date and time of the draw.', 'raffle-system' ),
+                    'description' => __( 'Date and time of the draw.', 'wpraffle' ),
                 ) );
 
                 // Status dropdown
                 woocommerce_wp_select( array(
                     'id'          => '_raffle_status',
-                    'label'       => __( 'Raffle Status', 'raffle-system' ),
+                    'label'       => __( 'Raffle Status', 'wpraffle' ),
                     'value'       => $status,
                     'options'     => array(
-                        'draft'    => __( 'Draft', 'raffle-system' ),
-                        'active'   => __( 'Active', 'raffle-system' ),
-                        'finished' => __( 'Finished', 'raffle-system' ),
+                        'draft'    => __( 'Draft', 'wpraffle' ),
+                        'active'   => __( 'Active', 'wpraffle' ),
+                        'finished' => __( 'Finished', 'wpraffle' ),
                     ),
                 ) );
                 ?>
@@ -1361,20 +1411,20 @@ class Raffle_WooCommerce {
                 // Cash Alternative Toggle
                 woocommerce_wp_checkbox( array(
                     'id'            => '_raffle_cash_alternative',
-                    'label'         => __( 'Enable Cash Alternative', 'raffle-system' ),
+                    'label'         => __( 'Enable Cash Alternative', 'wpraffle' ),
                     'value'         => $cash_alternative ? 'yes' : 'no',
                     'cbvalue'       => 'yes',
-                    'description'   => __( 'Toggle whether a cash alternative is offered.', 'raffle-system' ),
+                    'description'   => __( 'Toggle whether a cash alternative is offered.', 'wpraffle' ),
                 ) );
 
                 // Cash Alternative Amount
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_cash_alternative_amount',
-                    'label'       => __( 'Cash Alternative Amount ($)', 'raffle-system' ),
+                    'label'       => __( 'Cash Alternative Amount ($)', 'wpraffle' ),
                     'value'       => $cash_alternative_amount,
                     'placeholder' => 'e.g. 5000',
                     'desc_tip'    => true,
-                    'description' => __( 'Cash prize amount if selected.', 'raffle-system' ),
+                    'description' => __( 'Cash prize amount if selected.', 'wpraffle' ),
                     'type'        => 'text',
                 ) );
                 ?>
@@ -1385,16 +1435,16 @@ class Raffle_WooCommerce {
                 // Skill Question Toggle
                 woocommerce_wp_checkbox( array(
                     'id'            => '_raffle_enable_question',
-                    'label'         => __( 'Enable Skill Question (UK Compliance)', 'raffle-system' ),
+                    'label'         => __( 'Enable Skill Question (UK Compliance)', 'wpraffle' ),
                     'value'         => $enable_question ? 'yes' : 'no',
                     'cbvalue'       => 'yes',
-                    'description'   => __( 'Toggle multiple choice question validation.', 'raffle-system' ),
+                    'description'   => __( 'Toggle multiple choice question validation.', 'wpraffle' ),
                 ) );
 
                 // Question Text
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_question_text',
-                    'label'       => __( 'Question Text', 'raffle-system' ),
+                    'label'       => __( 'Question Text', 'wpraffle' ),
                     'value'       => $question_text,
                     'placeholder' => 'e.g. What is the capital of the UK?',
                     'type'        => 'text',
@@ -1403,7 +1453,7 @@ class Raffle_WooCommerce {
                 // Option 1
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_question_answer_0',
-                    'label'       => __( 'Option 1', 'raffle-system' ),
+                    'label'       => __( 'Option 1', 'wpraffle' ),
                     'value'       => $answers[0],
                     'type'        => 'text',
                 ) );
@@ -1411,7 +1461,7 @@ class Raffle_WooCommerce {
                 // Option 2
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_question_answer_1',
-                    'label'       => __( 'Option 2', 'raffle-system' ),
+                    'label'       => __( 'Option 2', 'wpraffle' ),
                     'value'       => $answers[1],
                     'type'        => 'text',
                 ) );
@@ -1419,7 +1469,7 @@ class Raffle_WooCommerce {
                 // Option 3
                 woocommerce_wp_text_input( array(
                     'id'          => '_raffle_question_answer_2',
-                    'label'       => __( 'Option 3', 'raffle-system' ),
+                    'label'       => __( 'Option 3', 'wpraffle' ),
                     'value'       => $answers[2],
                     'type'        => 'text',
                 ) );
@@ -1427,12 +1477,12 @@ class Raffle_WooCommerce {
                 // Correct Answer index
                 woocommerce_wp_select( array(
                     'id'          => '_raffle_correct_answer_index',
-                    'label'       => __( 'Correct Option', 'raffle-system' ),
+                    'label'       => __( 'Correct Option', 'wpraffle' ),
                     'value'       => $correct_answer_index,
                     'options'     => array(
-                        '0' => __( 'Option 1', 'raffle-system' ),
-                        '1' => __( 'Option 2', 'raffle-system' ),
-                        '2' => __( 'Option 3', 'raffle-system' ),
+                        '0' => __( 'Option 1', 'wpraffle' ),
+                        '1' => __( 'Option 2', 'wpraffle' ),
+                        '2' => __( 'Option 3', 'wpraffle' ),
                     ),
                 ) );
                 ?>
@@ -1443,7 +1493,7 @@ class Raffle_WooCommerce {
                 // Postal instructions
                 woocommerce_wp_textarea_input( array(
                     'id'          => '_raffle_postal_instructions',
-                    'label'       => __( 'Postal Entry Instructions', 'raffle-system' ),
+                    'label'       => __( 'Postal Entry Instructions', 'wpraffle' ),
                     'value'       => $postal_instructions,
                     'placeholder' => 'Describe how postal entries should be submitted...',
                 ) );
@@ -1452,30 +1502,30 @@ class Raffle_WooCommerce {
 
             <?php if ( $raffle_id ) : ?>
                 <div class="options_group" style="padding: 12px 20px 20px;">
-                    <h3><?php esc_html_e( 'Configure Instant Wins', 'raffle-system' ); ?></h3>
+                    <h3><?php esc_html_e( 'Configure Instant Wins', 'wpraffle' ); ?></h3>
                     <div class="rs-instant-wins-config">
                         <div style="display:flex;gap:10px;margin-bottom:15px;align-items:flex-end;">
                             <div style="flex:1;">
-                                <label style="display:block;margin-bottom:5px;"><?php esc_html_e( 'Prize Name', 'raffle-system' ); ?></label>
+                                <label style="display:block;margin-bottom:5px;"><?php esc_html_e( 'Prize Name', 'wpraffle' ); ?></label>
                                 <input type="text" id="new-instant-prize-name" style="width:100%;" placeholder="e.g. £50 Cash">
                             </div>
                             <div style="width:150px;">
-                                <label style="display:block;margin-bottom:5px;"><?php esc_html_e( 'Ticket Number', 'raffle-system' ); ?></label>
+                                <label style="display:block;margin-bottom:5px;"><?php esc_html_e( 'Ticket Number', 'wpraffle' ); ?></label>
                                 <input type="number" id="new-instant-ticket-number" style="width:100%;" placeholder="Random">
                             </div>
                             <button type="button" class="button button-primary" id="btn-add-instant-win" data-raffle-id="<?php echo esc_attr( $raffle_id ); ?>">
-                                <?php esc_html_e( 'Add Prize', 'raffle-system' ); ?>
+                                <?php esc_html_e( 'Add Prize', 'wpraffle' ); ?>
                             </button>
                         </div>
 
                         <table class="wp-list-table widefat fixed striped" id="table-instant-wins">
                             <thead>
                                 <tr>
-                                    <th><?php esc_html_e( 'Ticket #', 'raffle-system' ); ?></th>
-                                    <th><?php esc_html_e( 'Prize Name', 'raffle-system' ); ?></th>
-                                    <th><?php esc_html_e( 'Status', 'raffle-system' ); ?></th>
-                                    <th><?php esc_html_e( 'Winner', 'raffle-system' ); ?></th>
-                                    <th style="width:70px;"><?php esc_html_e( 'Action', 'raffle-system' ); ?></th>
+                                    <th><?php esc_html_e( 'Ticket #', 'wpraffle' ); ?></th>
+                                    <th><?php esc_html_e( 'Prize Name', 'wpraffle' ); ?></th>
+                                    <th><?php esc_html_e( 'Status', 'wpraffle' ); ?></th>
+                                    <th><?php esc_html_e( 'Winner', 'wpraffle' ); ?></th>
+                                    <th style="width:70px;"><?php esc_html_e( 'Action', 'wpraffle' ); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1495,7 +1545,7 @@ class Raffle_WooCommerce {
                                             <td><?php echo esc_html( $win->winner_email ? $win->winner_email : '-' ); ?></td>
                                             <td>
                                                 <button type="button" class="button button-link delete-instant-win text-danger" data-id="<?php echo esc_attr( $win->id ); ?>" style="color:#b91c1c;">
-                                                    <?php esc_html_e( 'Delete', 'raffle-system' ); ?>
+                                                    <?php esc_html_e( 'Delete', 'wpraffle' ); ?>
                                                 </button>
                                             </td>
                                         </tr>
@@ -1503,7 +1553,7 @@ class Raffle_WooCommerce {
                                     endforeach;
                                 else :
                                     ?>
-                                    <tr class="no-items"><td colspan="5" align="center"><?php esc_html_e( 'No instant wins configured.', 'raffle-system' ); ?></td></tr>
+                                    <tr class="no-items"><td colspan="5" align="center"><?php esc_html_e( 'No instant wins configured.', 'wpraffle' ); ?></td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -1644,7 +1694,7 @@ class Raffle_WooCommerce {
         $ticket_price = isset( $_POST['_raffle_ticket_price'] ) ? floatval( wp_unslash( $_POST['_raffle_ticket_price'] ) ) : 0.0;
         $total_tickets = isset( $_POST['_raffle_total_tickets'] ) ? absint( wp_unslash( $_POST['_raffle_total_tickets'] ) ) : 0;
         $max_tickets_per_user = isset( $_POST['_raffle_max_tickets_per_user'] ) ? absint( wp_unslash( $_POST['_raffle_max_tickets_per_user'] ) ) : 100;
-        
+
         $start_date = isset( $_POST['_raffle_start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['_raffle_start_date'] ) ) : '';
         $start_date = str_replace( 'T', ' ', $start_date ); // Clean datetime-local format
         if ( empty( $start_date ) ) {
@@ -1799,7 +1849,7 @@ class Raffle_WooCommerce {
         echo '</div>';
         echo '<svg class="wpr-icon wpr-icon--xs wpr-dropdown-arrow" style="transition: transform 0.2s; flex-shrink: 0;"><use href="#wpr-chevron-down"></use></svg>';
         echo '</summary>';
-        
+
         echo '<div style="padding: 16px; border-top: 1px solid var(--wpr-accent-border, #a7f3d0); background: var(--wpr-bg-surface, #ffffff); display: flex; flex-direction: column; gap: 12px; text-align: left;">';
         echo '<div style="display: flex; gap: 12px; align-items: flex-start;">';
         if ( ! empty( $c->logo_url ) ) {
@@ -1812,11 +1862,11 @@ class Raffle_WooCommerce {
         }
         echo '</div>';
         echo '</div>';
-        
+
         if ( ! empty( $c->description ) ) {
             echo '<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--wpr-text-secondary, #4b5563);">' . esc_html( $c->description ) . '</p>';
         }
-        
+
         if ( ! empty( $c->website ) ) {
             echo '<div style="margin-top: 4px;">';
             echo '<a href="' . esc_url( $c->website ) . '" target="_blank" rel="noopener noreferrer" class="button alt" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; background: var(--wpr-accent, #6c5ce7); color: #fff;">Visit Website →</a>';

@@ -53,8 +53,45 @@
       },
       extra || {},
     );
-    return $.getJSON(raffleDashboard.ajax_url, params);
+    var req = $.getJSON(raffleDashboard.ajax_url, params);
+    // Centralised error handling — previously every consumer only had .done()
+    // with `if (!res.success) return;`, so a network failure left charts blank
+    // with no explanation. Surface a dismissible inline banner instead.
+    req.fail(function (jqXHR, status) {
+      showErrorBanner(
+        "Couldn't load some dashboard data (" + type + "). " +
+        "Check your connection and try refreshing."
+      );
+      // Track per-section failures so the refresh button knows whether the
+      // latest load completed cleanly.
+      lastLoadFailed = true;
+    });
+    return req;
   }
+
+  /**
+   * Show a dismissible error banner at the top of the dashboard. Idempotent —
+   * only one banner is shown at a time.
+   */
+  function showErrorBanner(msg) {
+    if ($("#rs-dashboard-error").length) {
+      $("#rs-dashboard-error p").text(msg);
+      return;
+    }
+    $(".wrap").prepend(
+      '<div id="rs-dashboard-error" class="notice notice-error is-dismissible" style="margin:15px 0;">' +
+      '<p>' + msg + '</p>' +
+      '<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss</span></button>' +
+      '</div>'
+    );
+    $(document).on("click", "#rs-dashboard-error .notice-dismiss", function () {
+      $("#rs-dashboard-error").remove();
+    });
+  }
+
+  // Tracks whether the most recent loadAll() hit any failure — the refresh
+  // button consults this so its spinner reflects real completion, not a timer.
+  var lastLoadFailed = false;
 
   /* ── KPIs ─────────────────────────────── */
   function loadOverview() {
@@ -80,16 +117,8 @@
       // secondary
       $("#kpi-active-raffles span").text(d.active_raffles);
       $("#kpi-total-raffles span").text(d.total_raffles);
-      $("#kpi-avg-price span").text(
-        Number(d.avg_ticket_price).toLocaleString("es-CO", {
-          minimumFractionDigits: 0,
-        }),
-      );
-      $("#kpi-month-trend span").text(
-        Number(d.revenue_this_month).toLocaleString("es-CO", {
-          minimumFractionDigits: 0,
-        }),
-      );
+      $("#kpi-avg-price span").text(formatMoney(d.avg_ticket_price));
+      $("#kpi-month-trend span").text(formatMoney(d.revenue_this_month));
 
       // month trend arrow
       var isUp = d.revenue_this_month >= d.revenue_last_month;
@@ -436,27 +465,42 @@
   }
 
   /* ── Init ─────────────────────────────── */
+  // loadAll returns a promise that resolves only when every analytics request
+  // has completed (success or failure), so the refresh spinner reflects real
+  // completion rather than a fixed timer.
   function loadAll() {
-    loadOverview();
-    loadRevenueByRaffle();
-    loadTicketsByRaffle();
-    loadNetProfit();
-    loadSalesTrend("daily");
-    loadTopBuyers();
-    loadRecentTransactions();
+    lastLoadFailed = false;
+    $("#rs-dashboard-error").remove();
+    var reqs = [];
+    reqs.push(loadOverview());
+    reqs.push(loadRevenueByRaffle());
+    reqs.push(loadTicketsByRaffle());
+    reqs.push(loadNetProfit());
+    reqs.push(loadSalesTrend("daily"));
+    reqs.push(loadTopBuyers());
+    reqs.push(loadRecentTransactions());
+    // loadOverview etc. don't currently return their promise — wrap with
+    // $.when() on a deferred that resolves immediately as a fallback. The
+    // individual ajax() calls already self-report failures via the banner.
+    return $.when.apply($, reqs);
   }
 
   $(function () {
     loadAll();
 
-    // Refresh button
+    // Refresh button — spins until the requests settle (not a fixed timer).
     $("#rs-refresh-dashboard").on("click", function () {
       var $btn = $(this);
+      if ($btn.hasClass("rs-spinning")) return; // already refreshing
       $btn.addClass("rs-spinning");
-      loadAll();
-      setTimeout(function () {
+      // Fallback timeout (8s) in case a request hangs without rejecting.
+      var safety = setTimeout(function () {
         $btn.removeClass("rs-spinning");
-      }, 1200);
+      }, 8000);
+      $.when(loadAll()).always(function () {
+        clearTimeout(safety);
+        $btn.removeClass("rs-spinning");
+      });
     });
 
     // Period selector

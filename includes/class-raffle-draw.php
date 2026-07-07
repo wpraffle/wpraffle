@@ -144,6 +144,11 @@ class Raffle_Draw {
 
         $wpdb->query( 'COMMIT' );
 
+        // Invalidate the cached raffle row — status flipped to finished + winner set.
+        if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {
+            wpraffle_flush_raffle_cache( $raffle_id );
+        }
+
         // Feature expansion: fire action so charity allocations + wallet payouts run.
         do_action( 'raffle_draw_completed', $raffle_id, $winner_ticket );
 

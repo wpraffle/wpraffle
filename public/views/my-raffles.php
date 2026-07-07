@@ -10,11 +10,16 @@ if ( 0 == $current_user->ID ) {
 global $wpdb;
 $email = $current_user->user_email;
 
-// Find all unique purchases by email
+// Find all unique purchases by email. We also JOIN the winning ticket row so we
+// can resolve winner_ticket_id (a ticket ROW id stored on the raffle) into the
+// actual ticket NUMBER the user sees — without this, the "YOU WON!" check below
+// compares a row id against ticket numbers and never matches.
 $purchases = $wpdb->get_results( $wpdb->prepare(
-    "SELECT p.*, r.title, r.status, r.draw_date, r.winner_ticket_id, r.prize_image, r.total_tickets 
+    "SELECT p.*, r.title, r.status, r.draw_date, r.winner_ticket_id, r.prize_image,
+            r.total_tickets, r.wc_product_id, wt.ticket_number AS winner_ticket_number
      FROM {$wpdb->prefix}raffle_purchases p
      JOIN {$wpdb->prefix}raffles r ON p.raffle_id = r.id
+     LEFT JOIN {$wpdb->prefix}raffle_tickets wt ON wt.id = r.winner_ticket_id
      WHERE p.buyer_email = %s AND p.payment_status = 'completed'
      ORDER BY p.purchase_date DESC",
     $email
@@ -35,13 +40,15 @@ foreach ( $purchases as $p ) {
             'status' => $p->status,
             'draw_date' => $p->draw_date,
             'winner_ticket_id' => $p->winner_ticket_id,
+            'winner_ticket_number' => $p->winner_ticket_number, // resolved ticket NUMBER (may be null)
             'total_tickets' => $p->total_tickets,
             'prize_image' => $p->prize_image,
+            'wc_product_id' => $p->wc_product_id,
             'tickets' => array(),
             'instant_wins' => array()
         );
     }
-    
+
     // Get tickets
     $tickets = $wpdb->get_col( $wpdb->prepare(
         "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d",
@@ -134,11 +141,26 @@ $accordion_id = 0;
 
 <div class="my-raffles-wrapper">
     <?php foreach ( $raffles_grouped as $raffle_id => $data ) :
-        sort( $data['tickets'] );
+        // Sort ticket numbers as integers — get_col() returns strings, so a
+        // naive sort() would order "100" before "20".
+        $tickets_int = array_map( 'intval', $data['tickets'] );
+        sort( $tickets_int );
+        $data['tickets'] = $tickets_int;
+
         $is_active = ( $data['status'] === 'active' );
-        $did_i_win_main = in_array( $data['winner_ticket_id'], $data['tickets'] );
+        // Compare the winning ticket NUMBER (resolved via the tickets-table JOIN
+        // above) against the user's ticket numbers. Previously this compared the
+        // ticket ROW id against ticket numbers, which never matched.
+        $winner_number = $data['winner_ticket_number'] !== null ? (int) $data['winner_ticket_number'] : null;
+        $did_i_win_main = ( ! $is_active && $winner_number !== null && in_array( $winner_number, $data['tickets'], true ) );
         $accordion_id++;
         $uid = 'myr-acc-' . $accordion_id;
+
+        // Build a link back to the competition page so finished entries can be reviewed.
+        $results_url = '';
+        if ( ! empty( $data['wc_product_id'] ) && get_post_status( $data['wc_product_id'] ) ) {
+            $results_url = get_permalink( (int) $data['wc_product_id'] );
+        }
     ?>
         <div style="background:var(--wpr-bg-surface); border:1px solid var(--wpr-border-color); border-radius:12px; padding:20px; margin-bottom:16px; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06);">
 
@@ -178,6 +200,11 @@ $accordion_id = 0;
                             <div style="background:var(--wpr-bg-muted); border:1px solid var(--wpr-border-color); border-radius:6px; padding:5px 10px; text-align:center; font-weight:600; color:var(--wpr-text-muted); font-size:12px;">
                                 Completed
                             </div>
+                        <?php endif; ?>
+                        <?php if ( $results_url ) : ?>
+                            <a href="<?php echo esc_url( $results_url ); ?>" style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; color:var(--wpr-accent); border:1px solid color-mix(in srgb, var(--wpr-accent) 30%, transparent); text-decoration:none;">
+                                <?php echo wpr_get_icon( 'eye', 'wpr-icon--xs' ); ?> View Results
+                            </a>
                         <?php endif; ?>
                     <?php endif; ?>
                 </div>
@@ -222,8 +249,9 @@ $accordion_id = 0;
                 </button>
                 <div class="myr-panel" id="<?php echo esc_attr( $uid ); ?>">
                     <div class="myr-panel-inner">
-                        <?php foreach ( $data['tickets'] as $ticket ) : 
-                            $is_winner = ( $ticket == $data['winner_ticket_id'] );
+                        <?php foreach ( $data['tickets'] as $ticket ) :
+                            // Compare as ints against the resolved winning ticket NUMBER.
+                            $is_winner = ( $winner_number !== null && (int) $ticket === $winner_number );
                             $is_instant_win = false;
                             foreach( $data['instant_wins'] as $iw ) {
                                 if ( $iw->ticket_number == $ticket ) {

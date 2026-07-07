@@ -15,6 +15,7 @@ class Raffle_Setup {
         self::migration_v9_raffle_feature_flags();
         self::migration_v10_charity_tables_backstop();
         self::migration_v10_charity_backfill();
+        self::migration_v11_performance_indexes();
     }
 
     private static function migration_v6_tables() {
@@ -610,5 +611,41 @@ CREATE TABLE {$wpdb->prefix}raffle_charity_allocations (
                 'created_at'          => current_time( 'mysql' ),
             ), array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s' ) );
         }
+    }
+
+    /**
+     * v11 — Performance indexes on the two hottest query paths.
+     *
+     * The raffles table historically had only a PRIMARY KEY, yet every list
+     * shortcode filters and orders on (status, draw_date, start_date). And
+     * raffle_purchases is queried by buyer_email on every purchase attempt
+     * (cumulative per-user limit SUM) and on every My-Raffles / Responsible-
+     * Gambling read — but buyer_email had no index, so those were full table
+     * scans at scale. Both indexes are additive and idempotent.
+     */
+    private static function migration_v11_performance_indexes() {
+        if ( get_option( 'raffle_system_db_migrated_v11' ) ) {
+            return;
+        }
+
+        global $wpdb;
+
+        // Composite index covering the list-shortcode WHERE + ORDER BY.
+        // Table name comes from $wpdb->prefix (safe to interpolate, matching
+        // the v8 migration pattern; avoids the WP-6.2+-only %i placeholder).
+        $raffles = $wpdb->prefix . 'raffles';
+        $idx     = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM {$raffles} WHERE Key_name = %s", 'status_dates' ) );
+        if ( empty( $idx ) ) {
+            $wpdb->query( "ALTER TABLE {$raffles} ADD KEY status_dates (status, draw_date, start_date)" );
+        }
+
+        // buyer_email lookup for cumulative-limit / RG / My-Raffles reads.
+        $purchases = $wpdb->prefix . 'raffle_purchases';
+        $idx       = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM {$purchases} WHERE Key_name = %s", 'buyer_email' ) );
+        if ( empty( $idx ) ) {
+            $wpdb->query( "ALTER TABLE {$purchases} ADD KEY buyer_email (buyer_email)" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v11', 1 );
     }
 }

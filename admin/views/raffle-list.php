@@ -18,10 +18,70 @@
 
     <?php
     global $wpdb;
-    $raffles = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}raffles ORDER BY created_at DESC" );
+
+    // ── Search / filter / pagination params ──────────────────────────────
+    $search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+    $status_filter = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
+    $paged    = max( 1, isset( $_GET['paged'] ) ? absint( $_GET['paged'] ) : 1 );
+    $per_page = apply_filters( 'wpraffle_admin_list_per_page', 20 );
+
+    // Build the WHERE clause from filters.
+    $where  = '1=1';
+    $params = array();
+    if ( $search !== '' ) {
+        $where   .= ' AND title LIKE %s';
+        $params[] = '%' . $wpdb->esc_like( $search ) . '%';
+    }
+    if ( in_array( $status_filter, array( 'active', 'draft', 'finished' ), true ) ) {
+        $where   .= ' AND status = %s';
+        $params[] = $status_filter;
+    }
+
+    $total_query = "SELECT COUNT(*) FROM {$wpdb->prefix}raffles WHERE {$where}";
+    if ( $params ) {
+        $total_query = $wpdb->prepare( $total_query, $params );
+    }
+    $total_items = (int) $wpdb->get_var( $total_query );
+    $total_pages = max( 1, (int) ceil( $total_items / $per_page ) );
+    $offset      = ( $paged - 1 ) * $per_page;
+
+    // Paged query.
+    $list_query = "SELECT * FROM {$wpdb->prefix}raffles WHERE {$where} ORDER BY created_at DESC LIMIT %d OFFSET %d";
+    $list_params = array_merge( $params, array( $per_page, $offset ) );
+    $raffles = $wpdb->get_results( $wpdb->prepare( $list_query, $list_params ) );
+
+    // Helper to build a filter-preserving pagination URL.
+    $base_url = admin_url( 'admin.php?page=raffle-list' );
+    $filter_query_args = array();
+    if ( $search !== '' )       { $filter_query_args['s']      = rawurlencode( $search ); }
+    if ( $status_filter !== '' ) { $filter_query_args['status'] = $status_filter; }
     ?>
 
-    <div class="list-table-wrapper" style="margin-top: 20px;">
+    <!-- Filter / search bar -->
+    <form method="get" class="rs-list-filter-form" style="margin: 15px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input type="hidden" name="page" value="raffle-list">
+        <label for="rs-list-search" class="screen-reader-text"><?php esc_html_e( 'Search raffles', 'wpraffle' ); ?></label>
+        <input type="search" id="rs-list-search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search by title…', 'wpraffle' ); ?>" style="min-width:220px;">
+        <label for="rs-list-status" class="screen-reader-text"><?php esc_html_e( 'Filter by status', 'wpraffle' ); ?></label>
+        <select id="rs-list-status" name="status">
+            <option value="" <?php selected( $status_filter, '' ); ?>><?php esc_html_e( 'All statuses', 'wpraffle' ); ?></option>
+            <option value="active" <?php selected( $status_filter, 'active' ); ?>><?php esc_html_e( 'Live', 'wpraffle' ); ?></option>
+            <option value="draft" <?php selected( $status_filter, 'draft' ); ?>><?php esc_html_e( 'Draft', 'wpraffle' ); ?></option>
+            <option value="finished" <?php selected( $status_filter, 'finished' ); ?>><?php esc_html_e( 'Ended', 'wpraffle' ); ?></option>
+        </select>
+        <?php submit_button( __( 'Filter', 'wpraffle' ), '', 'filter_action', false ); ?>
+        <?php if ( $search !== '' || $status_filter !== '' ) : ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=raffle-list' ) ); ?>" class="button"><?php esc_html_e( 'Reset', 'wpraffle' ); ?></a>
+        <?php endif; ?>
+        <span style="margin-left:auto; color:#646970; font-size:13px;">
+            <?php
+            /* translators: 1: shown count, 2: total count */
+            printf( esc_html__( 'Showing %1$s of %2$s', 'wpraffle' ), number_format_i18n( count( $raffles ) ), number_format_i18n( $total_items ) );
+            ?>
+        </span>
+    </form>
+
+    <div class="list-table-wrapper" style="margin-top: 10px;">
         <table class="wp-list-table widefat fixed striped table-view-list posts">
             <thead>
                 <tr>
@@ -124,6 +184,36 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Pagination -->
+    <?php if ( $total_pages > 1 ) :
+        $page_url = $base_url;
+        if ( $filter_query_args ) {
+            $page_url = add_query_arg( $filter_query_args, $base_url );
+        }
+    ?>
+    <div class="tablenav bottom" style="margin-top:10px;">
+        <div class="tablenav-pages">
+            <span class="displaying-num"><?php echo esc_html( sprintf( _n( '%s item', '%s items', $total_items, 'wpraffle' ), number_format_i18n( $total_items ) ) ); ?></span>
+            <span class="pagination-links">
+                <?php
+                $first_url = add_query_arg( array_merge( $filter_query_args, array( 'paged' => 1 ) ), $base_url );
+                $prev_url  = add_query_arg( array_merge( $filter_query_args, array( 'paged' => max( 1, $paged - 1 ) ) ), $base_url );
+                $next_url  = add_query_arg( array_merge( $filter_query_args, array( 'paged' => min( $total_pages, $paged + 1 ) ) ), $base_url );
+                $last_url  = add_query_arg( array_merge( $filter_query_args, array( 'paged' => $total_pages ) ), $base_url );
+                ?>
+                <a class="first-page button <?php echo $paged <= 1 ? 'disabled' : ''; ?>" href="<?php echo esc_url( $first_url ); ?>" aria-label="<?php esc_attr_e( 'First page', 'wpraffle' ); ?>">&laquo;</a>
+                <a class="prev-page button <?php echo $paged <= 1 ? 'disabled' : ''; ?>" href="<?php echo esc_url( $prev_url ); ?>" aria-label="<?php esc_attr_e( 'Previous page', 'wpraffle' ); ?>">&lsaquo;</a>
+                <span class="paging-input">
+                    <label for="current-page-selector" class="screen-reader-text"><?php esc_html_e( 'Current Page', 'wpraffle' ); ?></label>
+                    <?php echo esc_html( number_format_i18n( $paged ) ); ?> <?php esc_html_e( 'of', 'wpraffle' ); ?> <span class="total-pages"><?php echo esc_html( number_format_i18n( $total_pages ) ); ?></span>
+                </span>
+                <a class="next-page button <?php echo $paged >= $total_pages ? 'disabled' : ''; ?>" href="<?php echo esc_url( $next_url ); ?>" aria-label="<?php esc_attr_e( 'Next page', 'wpraffle' ); ?>">&rsaquo;</a>
+                <a class="last-page button <?php echo $paged >= $total_pages ? 'disabled' : ''; ?>" href="<?php echo esc_url( $last_url ); ?>" aria-label="<?php esc_attr_e( 'Last page', 'wpraffle' ); ?>">&raquo;</a>
+            </span>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div class="card" style="margin-top: 20px; max-width: 100%;">
         <h2 class="title">How to display raffles on your site</h2>

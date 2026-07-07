@@ -156,3 +156,76 @@ function wpr_output_icon_sprite() {
         echo '</div>';
     }
 }
+
+/**
+ * Get a raffle row by ID, cached for the request.
+ *
+ * The raffles row is read 2–3× per single-page render (shortcode, layout,
+ * single-raffle view, display template) and once per card in list views.
+ * wp_cache_get/set keeps it to one DB hit per raffle per request. The cache
+ * is invalidated by wpraffle_flush_raffle_cache() whenever sold_tickets or
+ * status changes (called from Raffle_Tickets::generate_tickets()).
+ *
+ * @param int $raffle_id Raffle ID.
+ * @return object|null Raffle row, or null if not found.
+ */
+function wpraffle_get_raffle( $raffle_id ) {
+    $raffle_id = (int) $raffle_id;
+    if ( $raffle_id <= 0 ) {
+        return null;
+    }
+
+    $cache_key = 'raffle:' . $raffle_id;
+    $raffle    = wp_cache_get( $cache_key, 'wpraffle' );
+    if ( false !== $raffle ) {
+        return $raffle ?: null; // A stored falsey means "not found".
+    }
+
+    global $wpdb;
+    $raffle = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
+        $raffle_id
+    ) );
+
+    // Store falsey (0) for not-found so the miss is also cached.
+    wp_cache_set( $cache_key, $raffle ?: 0, 'wpraffle' );
+    return $raffle;
+}
+
+/**
+ * Invalidate the cached raffle row after sold_tickets/status change.
+ *
+ * @param int $raffle_id Raffle ID whose cache entry should be purged.
+ */
+function wpraffle_flush_raffle_cache( $raffle_id ) {
+    wp_cache_delete( 'raffle:' . (int) $raffle_id, 'wpraffle' );
+}
+
+/**
+ * Batch-count instant-win prizes for a set of raffles in a single query.
+ *
+ * Replaces the per-card `SELECT COUNT(*) ... WHERE raffle_id = %d` that ran
+ * once for every card in a list view (N+1). Raffles with no instant wins are
+ * present in the result with a count of 0.
+ *
+ * @param array $raffle_ids Array of raffle IDs.
+ * @return array Map of raffle_id (int) => instant-win count (int).
+ */
+function wpraffle_batch_instant_win_counts( $raffle_ids ) {
+    $raffle_ids = array_filter( array_map( 'absint', (array) $raffle_ids ) );
+    if ( empty( $raffle_ids ) ) {
+        return array();
+    }
+
+    global $wpdb;
+    $ids_csv    = implode( ',', $raffle_ids );
+    $rows       = $wpdb->get_results(
+        "SELECT raffle_id, COUNT(*) AS cnt FROM {$wpdb->prefix}raffle_instant_wins WHERE raffle_id IN ({$ids_csv}) GROUP BY raffle_id"
+    );
+
+    $counts = array_fill_keys( $raffle_ids, 0 );
+    foreach ( (array) $rows as $row ) {
+        $counts[ (int) $row->raffle_id ] = (int) $row->cnt;
+    }
+    return $counts;
+}

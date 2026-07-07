@@ -645,8 +645,67 @@ class Raffle_Admin {
             $this->delete_raffle();
             return;
         }
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'export_buyers' && isset( $_GET['id'] ) ) {
+            $this->export_buyers_csv( absint( $_GET['id'] ) );
+            return;
+        }
 
         include RAFFLE_SYSTEM_PATH . 'admin/views/raffle-list.php';
+    }
+
+    /**
+     * Stream a CSV of all buyers + their ticket numbers for a raffle.
+     * Capability-checked + nonced via the row-action URL.
+     */
+    private function export_buyers_csv( $raffle_id ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+        check_admin_referer( 'export_buyers_' . $raffle_id );
+
+        global $wpdb;
+        $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+        if ( ! $raffle ) {
+            wp_die( esc_html__( 'Raffle not found.', 'wpraffle' ) );
+        }
+
+        $purchases = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}raffle_purchases WHERE raffle_id = %d ORDER BY purchase_date DESC",
+            $raffle_id
+        ) );
+
+        $slug = sanitize_title( $raffle->title );
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="buyers-' . $slug . '-' . $raffle_id . '.csv"' );
+
+        $out = fopen( 'php://output', 'w' );
+        // UTF-8 BOM so Excel opens the CSV with correct encoding.
+        fputs( $out, "\xEF\xBB\xBF" );
+        fputcsv( $out, array( 'Purchase ID', 'Name', 'Email', 'Quantity', 'Total Paid', 'Payment Status', 'Purchase Date', 'Ticket Numbers' ) );
+
+        foreach ( $purchases as $p ) {
+            $tickets = $wpdb->get_col( $wpdb->prepare(
+                "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d ORDER BY ticket_number",
+                $p->id
+            ) );
+            $formatted = array_map( function ( $n ) use ( $raffle ) {
+                return Raffle_Tickets::format_ticket_number( $n, $raffle->total_tickets );
+            }, $tickets );
+
+            fputcsv( $out, array(
+                $p->id,
+                $p->buyer_name,
+                $p->buyer_email,
+                $p->quantity,
+                $p->total_amount,
+                $p->payment_status,
+                $p->purchase_date,
+                implode( ', ', $formatted ),
+            ) );
+        }
+        fclose( $out );
+        exit;
     }
 
     public function render_dashboard_page() {
@@ -813,11 +872,6 @@ class Raffle_Admin {
         include RAFFLE_SYSTEM_PATH . 'admin/views/settings.php';
     }
 
-    /** @deprecated Use render_settings_page() with tab=email */
-    public function render_email_settings_page() {
-        include RAFFLE_SYSTEM_PATH . 'admin/views/settings.php';
-    }
-
     public function save_general_settings() {
         $this->verify_settings_nonce();
         $settings = array(
@@ -826,6 +880,7 @@ class Raffle_Admin {
             'currency_code'             => sanitize_text_field( wp_unslash( $_POST['currency_code'] ?? 'GBP' ) ),
             'logo_url'                  => esc_url_raw( wp_unslash( $_POST['logo_url'] ?? '' ) ),
             'max_tickets_default'       => absint( $_POST['max_tickets_default'] ?? 100 ),
+            'publish_winner_full_name'  => isset( $_POST['publish_winner_full_name'] ) ? 1 : 0,
             'winners_show_live_draw'    => isset( $_POST['winners_show_live_draw'] ) ? 1 : 0,
             'winners_show_auto_draw'    => isset( $_POST['winners_show_auto_draw'] ) ? 1 : 0,
             'winners_show_instant_wins' => isset( $_POST['winners_show_instant_wins'] ) ? 1 : 0,
@@ -904,6 +959,10 @@ class Raffle_Admin {
             'update_channel'  => sanitize_text_field( wp_unslash( $_POST['update_channel'] ?? 'stable' ) ),
         );
         update_option( 'wpraffle_update_settings', $settings );
+
+        // Anonymous activation notice opt-out (checkbox checked = opted out).
+        update_option( 'wpraffle_tracking_opted_out', isset( $_POST['wpraffle_tracking_opted_out'] ) ? 1 : 0 );
+
         // Clear cache so next check uses new repo
         delete_transient( 'wpraffle_release_info' );
         delete_transient( 'wpraffle_latest_version' );
@@ -1017,22 +1076,17 @@ class Raffle_Admin {
         $this->redirect_settings( 'pages' );
     }
 
-    private function verify_settings_nonce() {
+    private function verify_settings_nonce( $field = 'wpraffle_settings_nonce', $action = 'wpraffle_save_settings' ) {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( 'Unauthorised.' );
         }
-        if ( ! isset( $_POST['wpraffle_settings_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpraffle_settings_nonce'] ) ), 'wpraffle_save_settings' ) ) {
+        if ( ! isset( $_POST[ $field ] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST[ $field ] ) ), $action ) ) {
             wp_die( 'Security check failed.' );
         }
     }
 
     private function verify_email_nonce() {
-        if ( ! current_user_can( 'manage_options' ) ) {
-            wp_die( 'Unauthorised.' );
-        }
-        if ( ! isset( $_POST['wpraffle_email_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpraffle_email_nonce'] ) ), 'wpraffle_save_email_settings' ) ) {
-            wp_die( 'Security check failed.' );
-        }
+        $this->verify_settings_nonce( 'wpraffle_email_nonce', 'wpraffle_save_email_settings' );
     }
 
     private function redirect_settings( $tab ) {

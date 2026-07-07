@@ -205,17 +205,6 @@ class Raffle_Referrals {
     }
 
     /**
-     * Get referral stats for a raffle.
-     */
-    public static function get_referral_stats( $raffle_id ) {
-        global $wpdb;
-        return $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}raffle_referrals WHERE raffle_id = %d ORDER BY bonus_entries DESC",
-            absint( $raffle_id )
-        ) );
-    }
-
-    /**
      * AJAX: Get referral code for current user.
      */
     public function ajax_get_referral() {

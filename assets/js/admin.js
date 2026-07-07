@@ -348,7 +348,11 @@
       nonce: raffleAdmin.clone_nonce,
     }, function (response) {
       if (response.success) {
-        window.location.href = "?page=raffle-system&action=edit&id=" + response.data.new_id;
+        // The edit action is served by the raffle-list page slug, not the
+        // top-level raffle-system slug (which renders the dashboard and
+        // ignores `action=edit`). Redirect to the correct page so the new
+        // clone opens for editing instead of landing on the dashboard.
+        window.location.href = "?page=raffle-list&action=edit&id=" + response.data.new_id;
       } else {
         alert(response.data || "Error cloning raffle.");
         btn.prop("disabled", false).text("Clone This Raffle");
@@ -358,4 +362,93 @@
       btn.prop("disabled", false).text("Clone This Raffle");
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Ticket Bundle Builder — syncs the friendly repeatable-row UI into the
+  // hidden #packages field (the real source of truth submitted to the server).
+  // Produces bare-int JSON [5,10,15] when no bundle prices are set, or full
+  // bundle objects [{"qty":5,"price":25,...}] when any price/label/badge is set.
+  // The server-side save handler already sanitises both shapes, so no PHP
+  // change is required.
+  // ─────────────────────────────────────────────────────────────────────
+  function bundleRowHasPrice($row) {
+    var price = parseFloat($row.find(".rs-b-price").val());
+    var label = $.trim($row.find(".rs-b-label").val());
+    var badge = $.trim($row.find(".rs-b-badge").val());
+    return (!isNaN(price) && price > 0) || label !== "" || badge !== "";
+  }
+
+  function syncPackagesFromBuilder() {
+    var $rows = $("#rs-bundle-rows .rs-bundle-row");
+    if ($rows.length === 0) {
+      $("#packages").val("");
+      return;
+    }
+    var anyBundles = false;
+    var asBundles = [];
+    var asInts = [];
+    $rows.each(function () {
+      var qty = parseInt($(this).find(".rs-b-qty").val(), 10);
+      if (isNaN(qty) || qty < 1) return; // skip invalid rows
+      var priceRaw = $(this).find(".rs-b-price").val();
+      var price = priceRaw !== "" ? parseFloat(priceRaw) : 0;
+      var label = $.trim($(this).find(".rs-b-label").val());
+      var badge = $.trim($(this).find(".rs-b-badge").val());
+      if ((!isNaN(price) && price > 0) || label !== "" || badge !== "") {
+        anyBundles = true;
+      }
+      var b = { qty: qty, price: (!isNaN(price) ? price : 0), label: label, badge: badge };
+      asBundles.push(b);
+      asInts.push(qty);
+    });
+
+    // If any row uses a bundle feature, emit full bundle objects; otherwise
+    // emit the lean bare-int shape for back-compat with simple raffles.
+    var out = anyBundles ? asBundles : asInts;
+    $("#packages").val(JSON.stringify(out));
+    // Live validation feedback — toggle a red outline on any qty that's invalid.
+    $rows.each(function () {
+      var q = parseInt($(this).find(".rs-b-qty").val(), 10);
+      $(this).find(".rs-b-qty").css("border-color", (isNaN(q) || q < 1) ? "#d63638" : "#c3c4c7");
+    });
+  }
+
+  if ($("#rs-bundle-builder").length > 0) {
+    $("#rs-add-bundle").on("click", function () {
+      var symbol = $("#rs-bundle-rows").data("symbol") || "$";
+      var row = $(
+        '<div class="rs-bundle-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:8px;">' +
+        '<input type="number" class="rs-b-qty" min="1" step="1" placeholder="Qty" value="" style="width:70px;" aria-label="Quantity">' +
+        '<span style="color:#50575e;font-size:12px;">tickets for</span>' +
+        '<span class="rs-b-price-wrap" style="display:flex;align-items:center;gap:2px;"><span style="color:#50575e;">' + symbol + '</span>' +
+        '<input type="number" class="rs-b-price" min="0" step="0.01" placeholder="Standard" value="" style="width:90px;" aria-label="Bundle price"></span>' +
+        '<input type="text" class="rs-b-label" placeholder="Label (e.g. 5 for £25)" value="" style="width:180px;" aria-label="Label">' +
+        '<input type="text" class="rs-b-badge" placeholder="Badge (e.g. Popular)" value="" style="width:130px;" aria-label="Badge">' +
+        '<button type="button" class="button rs-b-remove" aria-label="Remove bundle">&times;</button>' +
+        '</div>'
+      );
+      $("#rs-bundle-rows").append(row);
+      syncPackagesFromBuilder();
+    });
+
+    // Remove row (delegated so it works for dynamically added rows).
+    $("#rs-bundle-rows").on("click", ".rs-b-remove", function () {
+      $(this).closest(".rs-bundle-row").remove();
+      syncPackagesFromBuilder();
+    });
+
+    // Sync on any input change (delegated).
+    $("#rs-bundle-rows").on("input change", ".rs-b-qty, .rs-b-price, .rs-b-label, .rs-b-badge", function () {
+      syncPackagesFromBuilder();
+    });
+
+    // Final sync before form submit so the latest state is captured even if
+    // the user tabbed away without triggering a change event.
+    $("#rs-bundle-builder").closest("form").on("submit", function () {
+      syncPackagesFromBuilder();
+    });
+
+    // Initial sync to normalise whatever was loaded from the DB.
+    syncPackagesFromBuilder();
+  }
 })(jQuery);

@@ -3,7 +3,7 @@
  * Plugin Name: WPRaffle
  * Plugin URI:  https://github.com/wpraffle/wpraffle
  * Description: A fully-featured WooCommerce raffle & competition system. Run live competitions, manage tickets, instant wins, skill questions, postal entries, and lifecycle states — all for free.
- * Version:     1.2.0
+ * Version:     1.2.1
  * Author:      WPRaffle
  * Author URI:  https://github.com/wpraffle
  * Text Domain: wpraffle
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RAFFLE_SYSTEM_VERSION', '1.2.0' );
+define( 'RAFFLE_SYSTEM_VERSION', '1.2.1' );
 define( 'RAFFLE_SYSTEM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RAFFLE_SYSTEM_URL', plugin_dir_url( __FILE__ ) );
 
@@ -71,6 +71,7 @@ add_action( 'admin_notices', function() {
 // Includes
 require_once RAFFLE_SYSTEM_PATH . 'includes/functions-icons.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-activator.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-tracker.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-tickets.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-purchase.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-draw.php';

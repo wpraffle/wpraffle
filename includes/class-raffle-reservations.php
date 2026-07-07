@@ -28,8 +28,6 @@ class Raffle_Reservations {
         $minutes = max( 1, min( 60, (int) $minutes ) );
         $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
 
-        $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
-
         $wpdb->insert(
             $wpdb->prefix . 'raffle_reservations',
             array(

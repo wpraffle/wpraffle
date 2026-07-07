@@ -104,7 +104,7 @@ class Raffle_Purchase {
         }
 
         // Rate limiting: prevent spam purchases (max 1 request per 30 seconds per email+IP)
-        $client_ip = self::get_client_ip();
+        $client_ip = wpraffle_get_client_ip();
         $rate_key  = 'raffle_rate_' . md5( $buyer_email . '_' . $client_ip );
         if ( get_transient( $rate_key ) ) {
             wp_send_json_error( array( 'message' => 'Please wait a moment before trying again.' ) );
@@ -193,32 +193,5 @@ class Raffle_Purchase {
             'purchase_id' => $purchase_id,
             'total'       => number_format( $total_amount, 2 ),
         ) );
-    }
-
-    /**
-     * SEC-11 FIX: Get the real client IP, accounting for reverse proxies.
-     */
-    private static function get_client_ip() {
-        $headers = array(
-            'HTTP_CF_CONNECTING_IP', // CloudFlare
-            'HTTP_X_FORWARDED_FOR',  // Standard proxy
-            'HTTP_X_REAL_IP',        // Nginx proxy
-            'REMOTE_ADDR',          // Direct connection
-        );
-
-        foreach ( $headers as $header ) {
-            if ( ! empty( $_SERVER[ $header ] ) ) {
-                $ip = sanitize_text_field( wp_unslash( $_SERVER[ $header ] ) );
-                // X-Forwarded-For can contain multiple IPs — take the first
-                if ( strpos( $ip, ',' ) !== false ) {
-                    $ip = trim( explode( ',', $ip )[0] );
-                }
-                if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
-                    return $ip;
-                }
-            }
-        }
-
-        return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' ) );
     }
 }

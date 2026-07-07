@@ -150,6 +150,11 @@ class Raffle_Tickets {
             $raffle_id
         ) );
 
+        // Invalidate the cached raffle row — sold_tickets/status changed.
+        if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {
+            wpraffle_flush_raffle_cache( $raffle_id );
+        }
+
         // COMMIT — releases the lock and confirms everything
         if ( $manage_transaction ) {
             $wpdb->query( 'COMMIT' );
@@ -199,19 +204,6 @@ class Raffle_Tickets {
         }
 
         return $selected;
-    }
-
-    /**
-     * Get tickets for a specific purchase.
-     */
-    public static function get_tickets_by_purchase( $purchase_id ) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'raffle_tickets';
-
-        return $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$table} WHERE purchase_id = %d ORDER BY ticket_number ASC",
-            $purchase_id
-        ) );
     }
 
     /**

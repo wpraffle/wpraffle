@@ -158,7 +158,7 @@ class Raffle_Rate_Limiter {
             'identifier'    => substr( $id, 0, 80 ), // Truncate for storage
             'duration'      => $duration,
             'offense_count' => $offense_count,
-            'ip'            => self::get_client_ip(),
+            'ip'            => wpraffle_get_client_ip(),
         );
 
         update_option( 'raffle_rate_limit_log', $log, false );
@@ -230,33 +230,6 @@ class Raffle_Rate_Limiter {
                 OR option_name LIKE '_transient_raffle_count_%'
                 OR option_name LIKE '_transient_raffle_offenses_%'"
         );
-    }
-
-    /* ===================================================================
-       Helper: Get client IP (matches Raffle_Purchase::get_client_ip)
-       =================================================================== */
-
-    private static function get_client_ip() {
-        $headers = array(
-            'HTTP_CF_CONNECTING_IP',
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_REAL_IP',
-            'REMOTE_ADDR',
-        );
-
-        foreach ( $headers as $header ) {
-            if ( ! empty( $_SERVER[ $header ] ) ) {
-                $ip = sanitize_text_field( wp_unslash( $_SERVER[ $header ] ) );
-                if ( strpos( $ip, ',' ) !== false ) {
-                    $ip = trim( explode( ',', $ip )[0] );
-                }
-                if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
-                    return $ip;
-                }
-            }
-        }
-
-        return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' ) );
     }
 
     /* ===================================================================

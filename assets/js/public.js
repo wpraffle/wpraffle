@@ -47,6 +47,77 @@
         selectedBundlePrice = parseFloat($(this).data("bundle-price")) || 0;
       }
     });
+
+    // Keep the modal order summary in sync as the slider/pills move.
+    refreshModalSummary(qty);
+
+    // Keep the odds-of-winning display in sync with the selected quantity.
+    updateOdds(qty);
+  }
+
+  /**
+   * Recalculate the "Your odds: 1 in N" display for the given ticket quantity.
+   * Uses the raffle total (cached in #raffle-odds-box data-total). When the
+   * buyer selects N tickets the denominator shrinks proportionally.
+   */
+  function updateOdds(qty) {
+    var oddsBox = $("#raffle-odds-box");
+    if (oddsBox.length === 0) {
+      return;
+    }
+    qty = parseInt(qty, 10) || 1;
+    if (qty < 1) qty = 1;
+    var total = parseInt(oddsBox.data("total"), 10) || 0;
+    if (total < 1) {
+      oddsBox.hide();
+      return;
+    }
+    var oneIn = Math.max(1, Math.round(total / qty));
+    oddsBox.find(".raffle-odds-qty").text(qty);
+    oddsBox.find(".raffle-odds-value").text("1 in " + oneIn.toLocaleString());
+  }
+
+  /**
+   * Recompute the live order summary (qty × price = total, plus any bundle
+   * savings). Called from updateQty() on every slider input and when the
+   * modal opens. Reads the standard price from .raffle-price-value and the
+   * active bundle price from selectedBundlePrice (0 = no bundle = per-ticket).
+   */
+  function refreshModalSummary(qty) {
+    var summary = $(".raffle-order-summary");
+    if (summary.length === 0) {
+      return; // Summary block not present on this page.
+    }
+
+    qty = parseInt(qty, 10);
+    if (isNaN(qty) || qty < 1) {
+      qty = parseInt(slider.val(), 10) || 1;
+    }
+
+    var curSym = (window.rafflePublic && rafflePublic.currency_symbol) || "$";
+    var pricePer = parseFloat($(".raffle-price-value").text().replace(curSym, "")) || 0;
+    var standardTotal = qty * pricePer;
+
+    // A bundle is active when selectedBundlePrice > 0; its price is the fixed
+    // total for the whole qty. Otherwise total is qty × standard price.
+    var isBundle = selectedBundlePrice > 0;
+    var total = isBundle ? selectedBundlePrice : standardTotal;
+    var savings = isBundle ? (standardTotal - selectedBundlePrice) : 0;
+
+    var unitLabel = isBundle
+      ? curSym + total.toFixed(2) + " for " + qty
+      : curSym + pricePer.toFixed(2) + " each";
+
+    summary.find('[data-summary="qty-label"]').text(qty + (qty === 1 ? " ticket" : " tickets"));
+    summary.find('[data-summary="unit-price"]').text(unitLabel);
+    summary.find('[data-summary="total"]').text(curSym + total.toFixed(2));
+
+    var savingsEl = summary.find('[data-summary="savings"]');
+    if (savings > 0) {
+      savingsEl.text("You save " + curSym + savings.toFixed(2)).show();
+    } else {
+      savingsEl.hide();
+    }
   }
 
   if (slider.length > 0) {
@@ -105,10 +176,7 @@
 
     $("#raffle-quantity").val(qty);
 
-    var curSym = rafflePublic.currency_symbol || "$";
-    var pricePer = parseFloat($(".raffle-price-value").text().replace(curSym, "")) || 0;
-    var totalPrice = curSym + (qty * pricePer).toFixed(2);
-    $(".raffle-modal-summary").text(qty + " tickets — " + totalPrice);
+    refreshModalSummary(qty);
 
     // If manual selection is enabled
     if ($("#raffle-manual-selection").length > 0) {
@@ -132,8 +200,13 @@
     var price = $(this).closest(".raffle-package-card").find(".raffle-package-price").text();
     var raffleId = $(".raffle-container").data("raffle-id");
 
+    // Sync qty + bundle price so the live summary reflects this package.
     $("#raffle-quantity").val(qty);
-    $(".raffle-modal-summary").text(qty + " tickets — " + price);
+    selectedBundlePrice = parseFloat(String(price).replace(/[^0-9.]/g, "")) || 0;
+    if (typeof updateQty === "function" && slider.length > 0) {
+      updateQty(qty);
+    }
+    refreshModalSummary(qty);
 
     if ($("#raffle-manual-selection").length > 0) {
       $("#manual-qty-target").text(qty);
@@ -214,7 +287,21 @@
           btn.prop("disabled", selectedNumbers.length !== parseInt(targetQty));
         });
       }
-    );
+    ).fail(function () {
+      // Network error / 5xx / nonce expiry — previously the grid hung on the
+      // "Loading..." placeholder forever with no escape. Show a retry button.
+      var raffleIdRetry = raffleId;
+      var targetQtyRetry = targetQty;
+      grid.html(
+        '<div style="text-align:center; padding:24px;">' +
+        '<p style="color:var(--wpr-danger, #dc2626); margin:0 0 12px; font-weight:600;">We couldn\'t load the available numbers.</p>' +
+        '<button type="button" id="rs-retry-load-numbers" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--wpr-accent);color:var(--wpr-text-inverse);border:none;border-radius:6px;font-weight:700;cursor:pointer;">' +
+        'Try again</button></div>'
+      );
+      $("#rs-retry-load-numbers").on("click", function () {
+        loadManualSelection(raffleIdRetry, targetQtyRetry);
+      });
+    });
   }
 
   $("#cancel-manual-selection").on("click", function () {
@@ -265,6 +352,10 @@
     });
   }
 
+  // Track the element that opened the modal so focus can be restored on close
+  // — a baseline accessibility requirement for dialog patterns.
+  var modalTrigger = null;
+
   function openModal() {
     if (typeof rafflePublic.wc_enabled !== "undefined" && rafflePublic.wc_enabled === "1") {
       handleWooCommerceAddToCart();
@@ -281,26 +372,82 @@
     $("#raffle-purchase-form").show();
     modal.find(".raffle-loading").hide();
     modal.find(".raffle-error-msg").remove();
+    refreshModalSummary(qty);
     modal.show();
+
+    // Focus management: remember the trigger, then move focus into the dialog
+    // so keyboard/screen-reader users land inside it rather than behind it.
+    modalTrigger = document.activeElement;
+    focusFirstInDialog(modal);
+  }
+
+  /** Move focus to the first focusable element inside a dialog. */
+  function focusFirstInDialog($dialog) {
+    var focusable = getFocusable($dialog);
+    if (focusable.length) {
+      focusable.first().trigger("focus");
+    } else {
+      $dialog.attr("tabindex", "-1").trigger("focus");
+    }
+  }
+
+  /** Query the focusable elements within a container. */
+  function getFocusable($container) {
+    return $container.find(
+      'a[href], area[href], input:not([disabled]), select:not([disabled]), ' +
+      'textarea:not([disabled]), button:not([disabled]), iframe, object, ' +
+      'embed, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+    ).filter(":visible");
+  }
+
+  function closeModal() {
+    modal.hide();
+    confirmation.hide();
+    // Restore focus to the element that opened the dialog.
+    if (modalTrigger && typeof modalTrigger.focus === "function") {
+      modalTrigger.focus();
+      modalTrigger = null;
+    }
   }
 
   $(document).on("click", ".raffle-modal-close", function () {
-    modal.hide();
-    confirmation.hide();
+    closeModal();
   });
 
   modal.on("click", function (e) {
-    if (e.target === this) modal.hide();
+    if (e.target === this) closeModal();
   });
 
   confirmation.on("click", function (e) {
-    if (e.target === this) confirmation.hide();
+    if (e.target === this) {
+      confirmation.hide();
+      if (modalTrigger && typeof modalTrigger.focus === "function") {
+        modalTrigger.focus();
+        modalTrigger = null;
+      }
+    }
   });
 
   $(document).on("keydown", function (e) {
     if (e.key === "Escape") {
-      modal.hide();
-      confirmation.hide();
+      if (modal.is(":visible") || confirmation.is(":visible")) {
+        closeModal();
+      }
+    }
+    // Focus trap: when Tab (or Shift+Tab) would escape an open dialog, wrap
+    // focus to the other end so the dialog is self-contained for keyboard users.
+    if (e.key === "Tab" && modal.is(":visible")) {
+      var focusable = getFocusable(modal);
+      if (!focusable.length) return;
+      var first = focusable.first()[0];
+      var last = focusable.last()[0];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   });
 
@@ -310,7 +457,8 @@
     form.find(".raffle-submit-btn").prop("disabled", false);
     modal.find(".raffle-loading").hide();
     modal.find(".raffle-error-msg").remove();
-    var errorDiv = $('<div class="raffle-error-msg" style="background:#fee;color:#c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:14px;"></div>');
+    // role="alert" so screen readers announce the error immediately.
+    var errorDiv = $('<div class="raffle-error-msg" role="alert" style="background:#fee;color:#c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:14px;"></div>');
     errorDiv.text(msg);
     form.before(errorDiv);
   }
@@ -469,6 +617,25 @@
       document.getElementById("raffle-countdown-expired-inline") ||
       document.getElementById("raffle-countdown-expired");
 
+    function freezeEntryUI() {
+      // Disable every entry affordance the instant the raffle closes, so a
+      // buyer can't click "Enter Competition" only to be rejected by AJAX.
+      var enterBtn = document.getElementById("raffle-enter-comp-submit-btn");
+      if (enterBtn) {
+        enterBtn.disabled = true;
+        enterBtn.classList.add("raffle-btn--closed");
+        enterBtn.textContent = "COMPETITION CLOSED";
+      }
+      // Hide the online entry panel + slider + bundles.
+      var entryPanel = document.getElementById("tab-online");
+      if (entryPanel) {
+        entryPanel.style.display = "none";
+      }
+      // Broadcast for any other listeners (e.g. number grid, scarcity pollers).
+      $(document).trigger("raffle:closed");
+    }
+
+    var countdownInterval;
     function updateCountdown() {
       var now = Date.now();
       var diff = drawDate - now;
@@ -476,6 +643,13 @@
       if (diff <= 0) {
         countdownEl.style.display = "none";
         if (expiredEl) expiredEl.style.display = "block";
+        // Freeze the page once and stop ticking — the interval is pointless on
+        // an expired raffle and just burns CPU in backgrounded tabs.
+        freezeEntryUI();
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
         return;
       }
 
@@ -498,7 +672,7 @@
     }
 
     updateCountdown();
-    setInterval(updateCountdown, 1000);
+    countdownInterval = setInterval(updateCountdown, 1000);
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -585,12 +759,32 @@
           (response.data.sold || []).forEach(function (n) { gridSold[n] = true; });
           gridReserved = {};
           (response.data.reserved || []).forEach(function (n) { gridReserved[n] = true; });
-          // Drop any selected numbers that became sold/reserved.
-          selectedNumbers = selectedNumbers.filter(function (n) {
-            return !gridSold[n] && !gridReserved[n];
+          // Drop any selected numbers that became sold/reserved. Track how many
+          // were removed so we can warn the buyer — previously this happened
+          // silently and they only discovered the loss at the confirm step.
+          var before = selectedNumbers.length;
+          var lostNumbers = selectedNumbers.filter(function (n) {
+            return gridSold[n] || gridReserved[n];
           });
-          renderNumberGrid();
+          if (lostNumbers.length > 0) {
+            selectedNumbers = selectedNumbers.filter(function (n) {
+              return !gridSold[n] && !gridReserved[n];
+            });
+            // Non-blocking notice via the existing toast helper.
+            var msg = lostNumbers.length === 1
+              ? "1 of your selected numbers was just taken — please pick another."
+              : lostNumbers.length + " of your selected numbers were just taken — please pick others.";
+            if (typeof showToast === "function") {
+              showToast(msg);
+            }
+            $('input[name="selected_numbers"]').val(selectedNumbers.join(","));
+          }
+            renderNumberGrid();
         }
+      }).fail(function () {
+        // Silent on failure — the next 30s poll will retry. We deliberately do
+        // not throw an error toast here because the grid is still usable with
+        // its last-known state; only a persistent failure should escalate.
       });
     }
     fetchGridStatus();
@@ -696,7 +890,12 @@
           // Only animate when the value actually changed.
           if (total !== prev) {
             amountEl.text(raffleCharities.symbol + total.toFixed(2));
-            amountEl.stop(true, true).css({ transform: "scale(1.12)" }).animate({ transform: "scale(1)" }, 400);
+            // jQuery's .animate() cannot animate `transform` without a plugin,
+            // which previously left the number stuck at scale(1.12). Use a CSS
+            // class + transition instead so the pulse actually resolves.
+            amountEl.removeClass("raffle-pulse-bump");
+            void amountEl[0].offsetWidth; // force reflow so the class re-triggers
+            amountEl.addClass("raffle-pulse-bump");
           }
         });
       });

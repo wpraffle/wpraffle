@@ -676,15 +676,45 @@
     color: var(--wpr-text-inverse, #ffffff);
 }
 
-.raffle-modal-summary {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 10px 16px;
-    border-radius: 10px;
+/* Live order summary block — sticky at the top of the modal so the buyer
+   always sees qty × price = total as the slider moves. */
+.raffle-order-summary {
+    padding: 14px 32px;
+    background: var(--wpr-bg-subtle);
+    border-bottom: 1px solid var(--wpr-border-color);
+}
+
+.raffle-order-summary__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: var(--wpr-text-secondary);
+}
+
+.raffle-order-summary__row + .raffle-order-summary__row {
+    margin-top: 6px;
+}
+
+.raffle-order-summary__row--total {
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px dashed var(--wpr-border-color);
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--wpr-text-primary);
+}
+
+.raffle-order-summary__total {
+    font-variant-numeric: tabular-nums;
+}
+
+.raffle-order-summary__savings {
+    margin-top: 6px;
+    text-align: right;
+    font-size: 12px;
     font-weight: 700;
-    color: var(--wpr-text-inverse, #ffffff);
-    text-align: center;
-    font-size: 15px;
-    margin: 0;
+    color: var(--wpr-success-text);
 }
 
 #raffle-purchase-form {
@@ -857,6 +887,205 @@
     color: var(--wpr-text-muted);
     font-size: 13px;
     margin-top: 12px;
+}
+
+/* ==========================================================================
+   Order-Received / Thank-You Ticket Summary
+   Mirrors the confirmation-modal + card design language: --wpr-* tokens,
+   accent gradient header, success-tinted ticket chips. No emojis.
+   ========================================================================== */
+.raffle-thankyou {
+    max-width: 720px;
+    margin: 24px auto;
+    background: var(--wpr-bg-surface, #ffffff);
+    border: 1px solid var(--wpr-border-color, #e5e7eb);
+    border-radius: var(--wpr-radius, 16px);
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    font-family: inherit;
+}
+
+.raffle-thankyou__header {
+    background: linear-gradient(135deg, var(--wpr-accent, #6c5ce7) 0%, var(--wpr-accent-secondary, #a66efa) 100%);
+    color: var(--wpr-text-inverse, #ffffff);
+    padding: 28px 32px 22px;
+    text-align: center;
+}
+
+.raffle-thankyou__icon {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.raffle-thankyou__title {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--wpr-text-inverse, #ffffff);
+    line-height: 1.2;
+}
+
+.raffle-thankyou__count {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--wpr-text-inverse, #ffffff);
+    opacity: 0.9;
+}
+
+.raffle-thankyou__tickets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    padding: 24px 28px 8px;
+}
+
+.raffle-thankyou__ticket {
+    display: inline-flex;
+    align-items: center;
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--wpr-accent, #6c5ce7) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--wpr-accent, #6c5ce7) 22%, transparent);
+    color: var(--wpr-accent, #6c5ce7);
+    font-weight: 800;
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+}
+
+/* Instant-wins card — sits inside .raffle-thankyou, success-tinted. */
+.raffle-thankyou__wins {
+    margin: 16px 28px;
+    padding: 18px 20px;
+    border-radius: 12px;
+    background: var(--wpr-success-bg, #d1fae5);
+    border: 1px solid var(--wpr-success, #059669);
+}
+
+.raffle-thankyou__wins-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.raffle-thankyou__wins-header .wpr-icon {
+    color: var(--wpr-success, #059669);
+    flex-shrink: 0;
+}
+
+.raffle-thankyou__wins-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--wpr-success-text, #065f46);
+}
+
+.raffle-thankyou__wins-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.raffle-thankyou__wins-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+}
+
+.raffle-thankyou__wins-ticket {
+    font-weight: 800;
+    color: var(--wpr-success-text, #065f46);
+    font-variant-numeric: tabular-nums;
+}
+
+.raffle-thankyou__wins-prize {
+    color: var(--wpr-text-secondary, #4b5563);
+}
+
+.raffle-thankyou__footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    padding: 16px 28px 24px;
+    color: var(--wpr-text-muted, #6b7280);
+    font-size: 13px;
+}
+
+.raffle-thankyou__footer .wpr-icon {
+    color: var(--wpr-text-muted, #6b7280);
+    flex-shrink: 0;
+}
+
+/* Processing state — tickets not yet allocated. Warning-tinted, calm. */
+.raffle-thankyou--pending {
+    text-align: center;
+    padding: 32px 28px;
+    background: var(--wpr-warning-bg, #fffbeb);
+    border-color: var(--wpr-warning, #d97706);
+}
+
+.raffle-thankyou__pending-icon {
+    display: inline-flex;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.raffle-thankyou--pending .wpr-icon {
+    color: var(--wpr-warning, #d97706);
+}
+
+.raffle-thankyou__pending-title {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--wpr-warning-text, #92400e);
+}
+
+.raffle-thankyou__pending-text {
+    margin: 0;
+    font-size: 14px;
+    color: var(--wpr-warning-text, #92400e);
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media (max-width: 600px) {
+    .raffle-thankyou__header {
+        padding: 22px 18px 18px;
+    }
+
+    .raffle-thankyou__title {
+        font-size: 19px;
+    }
+
+    .raffle-thankyou__tickets {
+        padding: 18px 14px 4px;
+        gap: 8px;
+    }
+
+    .raffle-thankyou__ticket {
+        font-size: 15px;
+        padding: 7px 12px;
+    }
+
+    .raffle-thankyou__wins,
+    .raffle-thankyou__footer {
+        margin-left: 14px;
+        margin-right: 14px;
+    }
 }
 
 /* ========== Responsive ========== */
@@ -1233,6 +1462,23 @@ li.raffle-product-card > *:not(.rc-card) {
 }
 
 /* CTA button */
+.rc-card__charity {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 0;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--wpr-accent-text-dark, var(--wpr-success-dark));
+}
+
+.rc-card__charity .wpr-icon {
+    flex-shrink: 0;
+    color: var(--wpr-accent);
+}
+
 .rc-card__cta {
     display: block;
     text-align: center;
@@ -1251,6 +1497,54 @@ li.raffle-product-card > *:not(.rc-card) {
 .rc-card__cta:hover {
     filter: brightness(1.1);
     transform: translateY(-1px);
+}
+
+/* Closed / sold-out / expired card states — visually de-emphasise so buyers
+   aren't drawn into a competition they can no longer enter. */
+.rc-card--expired,
+.rc-card--sold-out {
+    opacity: 0.78;
+}
+.rc-card--expired .rc-card__image img,
+.rc-card--sold-out .rc-card__image img {
+    filter: grayscale(0.35);
+}
+.rc-card__cta--closed {
+    background: var(--wpr-bg-muted);
+    color: var(--wpr-text-secondary) !important;
+}
+.rc-card:focus-visible {
+    outline: 2px solid var(--wpr-accent);
+    outline-offset: 2px;
+}
+
+/* Status badge overlay on the card image (ENDED / SOLD OUT / ENDING SOON).
+   Replaces the instant-wins badge when a state takes precedence so the most
+   decision-relevant signal is shown. */
+.rc-card__status {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 2;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.rc-card__status--ended {
+    background: var(--wpr-text-muted, #6b7280);
+}
+.rc-card__status--soldout {
+    background: var(--wpr-danger, #dc2626);
+}
+.rc-card__status--soon {
+    background: var(--wpr-urgency-warn, #f59e0b);
+    color: #1f2937;
+    animation: rc-pulse 2s ease-in-out infinite;
 }
 
 
@@ -1276,6 +1570,73 @@ li.raffle-product-card > *:not(.rc-card) {
         font-size: 12px;
         padding: 10px 12px;
         min-height: 48px;
+    }
+}
+
+/* Tightest screens: keep the card legible + tappable below 480px.
+   The 4-across countdown overflows here, so we compact it and enlarge the
+   CTA touch target. Stacked progress stats avoid awkward wrapping. */
+@media (max-width: 480px) {
+    .rc-card__title {
+        font-size: 11px;
+        padding: 9px 10px;
+        min-height: 42px;
+        letter-spacing: 0.1px;
+    }
+
+    .rc-card__title-iw {
+        font-size: 9px;
+        margin-top: 2px;
+    }
+
+    /* Countdown: 4 units stay on one row but shrink so they don't overflow. */
+    .rc-card__countdown {
+        gap: 3px;
+        padding: 5px;
+    }
+
+    .rc-card__cd-unit {
+        padding: 3px 1px;
+    }
+
+    .rc-card__cd-num {
+        font-size: 15px;
+    }
+
+    .rc-card__cd-label {
+        font-size: 7px;
+    }
+
+    /* Draw bar: keep on one line. */
+    .rc-card__draw-bar {
+        font-size: 10px;
+        padding: 6px 5px;
+        letter-spacing: 0.4px;
+    }
+
+    /* Price + CTA: larger touch targets, full-width CTA. */
+    .rc-card__price {
+        padding: 10px 8px;
+    }
+
+    .rc-card__price-amount {
+        font-size: 22px;
+    }
+
+    .rc-card__cta {
+        padding: 16px 12px;
+        font-size: 12px;
+    }
+
+    /* Progress stats: stack so "Sold: 50%" and "120 / 240" don't wrap mid-number. */
+    .rc-card__progress-stats {
+        flex-direction: column;
+        gap: 1px;
+        font-size: 10px;
+    }
+
+    .rc-card__charity {
+        font-size: 10px;
     }
 }
 
@@ -1471,6 +1832,47 @@ li.raffle-product-card > *:not(.rc-card) {
     bottom: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
     animation: raffle-bar-shimmer 2s ease-in-out infinite;
+}
+
+/* Odds of winning — small social-proof line below the progress bar.
+   Updates live as the buyer changes ticket quantity (see public.js updateOds). */
+.raffle-odds-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0 4px;
+    padding: 8px 12px;
+    background: color-mix(in srgb, var(--wpr-accent) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--wpr-accent) 22%, transparent);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--wpr-text-secondary);
+}
+.raffle-odds-box .wpr-icon { color: var(--wpr-accent); }
+.raffle-odds-label { color: var(--wpr-text-muted); }
+.raffle-odds-qty { color: var(--wpr-text-primary); }
+.raffle-odds-value { color: var(--wpr-accent); margin-left: 2px; }
+
+/* "Competition closed" state applied to the enter button when the countdown
+   hits zero (see public.js freezeEntryUI) — prevents the dead-end click. */
+#raffle-enter-comp-submit-btn.raffle-btn--closed,
+.raffle-enter-comp-submit-btn.raffle-btn--closed {
+    background: var(--wpr-bg-muted) !important;
+    color: var(--wpr-text-muted) !important;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Charity total pulse — fired when a live poll detects a changed total.
+   Replaces a broken jQuery .animate({transform}) call that left the number
+   stuck enlarged. */
+@keyframes raffle-pulse-bump {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.12); }
+    100% { transform: scale(1); }
+}
+.raffle-pulse-bump {
+    animation: raffle-pulse-bump 0.5s ease-out;
 }
 
 /* Tabs Route Switcher */

@@ -61,6 +61,10 @@ $options = array(
     'wpraffle_shortcode_settings',
     'wpraffle_update_settings',
     'wpraffle_delete_data_on_uninstall',
+    // Anonymous activation tracker (see Raffle_Tracker).
+    'wpraffle_install_id',
+    'wpraffle_activation_ping_sent',
+    'wpraffle_tracking_opted_out',
 );
 
 foreach ( $options as $option ) {

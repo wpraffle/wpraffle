@@ -27,6 +27,10 @@ $general = wp_parse_args( get_option( 'wpraffle_general_settings', array() ), ar
     'currency_code'   => 'GBP',
     'logo_url'        => '',
     'max_tickets_default' => 100,
+    // Winner privacy — when ON (default, back-compat) the full winner name is
+    // shown on public results pages. When OFF, only initials are published
+    // (e.g. "J.S."), matching how instant-win winners are already shown.
+    'publish_winner_full_name' => 1,
 ) );
 
 $email = wp_parse_args( get_option( 'wpraffle_email_settings', array() ), array(
@@ -181,6 +185,16 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                     <td>
                         <input type="number" id="max_tickets_default" name="max_tickets_default" value="<?php echo esc_attr( $general['max_tickets_default'] ); ?>" min="1" max="9999" class="small-text">
                         <p class="description">Default limit applied to new raffles. Can be overridden per raffle.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="publish_winner_full_name"><?php esc_html_e( 'Publish full winner names', 'wpraffle' ); ?></label></th>
+                    <td>
+                        <label style="display:inline-flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="publish_winner_full_name" name="publish_winner_full_name" value="1" <?php checked( ! empty( $general['publish_winner_full_name'] ), true ); ?>>
+                            <?php esc_html_e( 'Show the winner\'s full name on public results pages', 'wpraffle' ); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e( 'When unchecked, only the winner\'s initials are shown publicly (e.g. "J.S.") — the same privacy applied to instant-win winners. The full name is still recorded in the audit log and winner email regardless of this setting.', 'wpraffle' ); ?></p>
                     </td>
                 </tr>
             </table>
@@ -1455,6 +1469,21 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                     <td>
                         <label><input type="checkbox" name="auto_update" value="1" <?php checked( $updates['auto_update'], 1 ); ?>> Automatically install updates when available</label>
                         <p class="description">When disabled, you will be notified of available updates but must install manually.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rs-card" style="margin-bottom:20px;">
+            <h2 class="rs-card-title">Anonymous Activation Notice</h2>
+            <table class="form-table" style="margin:0;">
+                <tr>
+                    <th scope="row">Usage Tracking</th>
+                    <td>
+                        <label><input type="checkbox" name="wpraffle_tracking_opted_out" value="1" <?php checked( get_option( 'wpraffle_tracking_opted_out' ), 1 ); ?>> Opt <strong>out</strong> of the anonymous activation notice</label>
+                        <p class="description">
+                            On first activation, WPRaffle sends a <strong>single, anonymous notice</strong> to <code>wpraffle.dev</code> so we can display a unique-install count on the marketing site. It sends <strong>only</strong> a random ID and the plugin version — <strong>no site URL, no user data, no personal information</strong>, and nothing else, ever. Uncheck to opt out; the notice is sent once per install and the count is deduped, so it can never be inflated.
+                        </p>
                     </td>
                 </tr>
             </table>

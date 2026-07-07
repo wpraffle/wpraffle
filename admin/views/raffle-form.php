@@ -85,19 +85,53 @@
                                     <tr>
                                         <th scope="row"><label for="packages">Ticket Packages *</label></th>
                                         <td>
-                                            <input name="packages" type="text" id="packages" class="regular-text" required
-                                                   placeholder="5,10,15,25"
-                                                   value="<?php echo $raffle ? esc_attr( $raffle->packages ? $raffle->packages : implode( ',', json_decode( $raffle->packages, true ) ?: array() ) ) : '5,10,15,25'; ?>">
-                                            <p class="description">
-                                                <?php esc_html_e( 'Simple: comma-separated quantities (e.g. 5,10,15,25 — standard ticket price each).', 'wpraffle' ); ?><br>
-                                                <?php esc_html_e( 'Bundles (optional): JSON array with custom pricing —', 'wpraffle' ); ?>
-                                                <code>[{"qty":5,"price":25,"label":"5 for £25","badge":"Popular"},{"qty":10,"price":45}]</code>
-                                            </p>
-                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;">
+                                            <?php
+                                            // Resolve the current packages value into a normalised array of
+                                            // bundle objects so the builder UI below can render existing rows.
+                                            // Supports bare ints [5,10], old [{"qty":5}], and full bundles.
+                                            $raw_packages = $raffle && $raffle->packages ? $raffle->packages : '[5,10,15,25]';
+                                            $bundles      = wpraffle_normalise_packages( $raw_packages );
+                                            if ( empty( $bundles ) ) {
+                                                $bundles = array(
+                                                    array( 'qty' => 5, 'price' => 0.0, 'label' => '', 'badge' => '' ),
+                                                    array( 'qty' => 10, 'price' => 0.0, 'label' => '', 'badge' => '' ),
+                                                    array( 'qty' => 15, 'price' => 0.0, 'label' => '', 'badge' => '' ),
+                                                    array( 'qty' => 25, 'price' => 0.0, 'label' => '', 'badge' => '' ),
+                                                );
+                                            }
+                                            $cur_symbol = function_exists( 'wpr_currency_symbol' ) ? wpr_currency_symbol() : '$';
+                                            ?>
+                                            <!-- Hidden field is the real source of truth submitted to the server.
+                                                 The builder UI syncs into it on every change. -->
+                                            <input type="hidden" name="packages" id="packages" value="<?php echo esc_attr( $raw_packages ); ?>">
+
+                                            <div id="rs-bundle-builder" style="max-width:680px;">
+                                                <div id="rs-bundle-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+                                                    <?php foreach ( $bundles as $b ) : ?>
+                                                        <div class="rs-bundle-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:8px;">
+                                                            <input type="number" class="rs-b-qty" min="1" step="1" placeholder="Qty" value="<?php echo esc_attr( $b['qty'] ); ?>" style="width:70px;" aria-label="Quantity">
+                                                            <span style="color:#50575e;font-size:12px;">tickets for</span>
+                                                            <span class="rs-b-price-wrap" style="display:flex;align-items:center;gap:2px;">
+                                                                <span style="color:#50575e;"><?php echo esc_html( $cur_symbol ); ?></span>
+                                                                <input type="number" class="rs-b-price" min="0" step="0.01" placeholder="Standard" value="<?php echo esc_attr( $b['price'] > 0 ? $b['price'] : '' ); ?>" style="width:90px;" aria-label="Bundle price (leave blank for standard price each)">
+                                                            </span>
+                                                            <input type="text" class="rs-b-label" placeholder="Label (e.g. 5 for £25)" value="<?php echo esc_attr( $b['label'] ); ?>" style="width:180px;" aria-label="Label">
+                                                            <input type="text" class="rs-b-badge" placeholder="Badge (e.g. Popular)" value="<?php echo esc_attr( $b['badge'] ); ?>" style="width:130px;" aria-label="Badge">
+                                                            <button type="button" class="button rs-b-remove" aria-label="Remove bundle">&times;</button>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <button type="button" class="button button-secondary" id="rs-add-bundle"><?php echo wpr_get_icon( 'plus', 'wpr-icon--xs' ); ?> Add Bundle</button>
+                                                <p class="description" style="margin-top:8px;">
+                                                    <?php esc_html_e( 'Each row is an entry option. Set a Quantity, and optionally a fixed Bundle Price (leave blank to charge the standard ticket price × qty). Label and Badge show on the entry button.', 'wpraffle' ); ?>
+                                                </p>
+                                            </div>
+
+                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;">
                                                 <input type="checkbox" name="enable_bundles" value="1" <?php checked( $raffle && ! empty( $raffle->enable_bundles ), true ); ?>>
                                                 <?php esc_html_e( 'Enable Bundle display (shows price + savings % on the entry buttons)', 'wpraffle' ); ?>
                                             </label>
-                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;margin-left:16px;">
+                                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;margin-left:16px;">
                                                 <input type="checkbox" name="enable_number_grid" value="1" <?php checked( $raffle && ! empty( $raffle->enable_number_grid ), true ); ?>>
                                                 <?php esc_html_e( 'Show visual Number Picker Grid (lets buyers choose specific ticket numbers)', 'wpraffle' ); ?>
                                             </label>

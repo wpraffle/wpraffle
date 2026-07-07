@@ -413,58 +413,6 @@ class Raffle_Charity {
        Display helpers / shortcode
        =================================================================== */
 
-    public static function render_badge( $raffle ) {
-        $info = self::get_raffle_charity( $raffle->id );
-        if ( ! $info ) {
-            return '';
-        }
-
-        $c = $info['charity'];
-        $raised  = self::get_live_raised_estimate( $raffle );
-        $pct     = $info['percent'];
-
-        ob_start();
-        ?>
-        <details class="wpr-charity-details-dropdown" style="margin: 15px 0; border: 1px solid var(--wpr-accent-border, #a7f3d0); border-radius: 12px; background: var(--wpr-accent-bg, #ecfdf5); overflow: hidden; font-family: inherit; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: left;">
-            <summary style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; list-style: none; outline: none; font-weight: 700; color: var(--wpr-accent-text, #065f46); font-size: 14px; user-select: none;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="color: var(--wpr-accent, #059669); flex-shrink: 0; display:inline-flex;"><?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?></span>
-                    <span><?php echo esc_html( $pct ); ?>% to <?php echo esc_html( $c->name ); ?></span>
-                    <?php if ( $raised > 0 ) : ?>
-                        <span style="font-size: 12px; color: var(--wpr-accent-text-dark, #047857); font-weight: 600; margin-left: 6px;">(<?php echo esc_html( wpr_price( $raised, 0 ) ); ?> raised so far)</span>
-                    <?php endif; ?>
-                </div>
-                <span class="wpr-dropdown-arrow" style="transition: transform 0.2s; flex-shrink: 0; display:inline-flex;"><?php echo wpr_get_icon( 'chevron-down', 'wpr-icon--xs' ); ?></span>
-            </summary>
-            
-            <div style="padding: 16px; border-top: 1px solid var(--wpr-accent-border, #a7f3d0); background: var(--wpr-bg-surface, #ffffff); display: flex; flex-direction: column; gap: 12px; text-align: left;">
-                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                    <?php if ( ! empty( $c->logo_url ) ) : ?>
-                        <img src="<?php echo esc_url( $c->logo_url ); ?>" alt="<?php echo esc_attr( $c->name ); ?>" style="width: 50px; height: 50px; object-fit: contain; border-radius: 8px; border: 1px solid var(--wpr-border-color, #e5e7eb); padding: 4px; background: #fff; flex-shrink: 0;">
-                    <?php endif; ?>
-                    <div style="flex-grow: 1;">
-                        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--wpr-text-primary, #1f2937);"><?php echo esc_html( $c->name ); ?></h4>
-                        <?php if ( ! empty( $c->registration_number ) ) : ?>
-                            <div style="font-size: 11px; color: var(--wpr-text-muted, #6b7280); font-weight: 600;">Registered Charity No. <?php echo esc_html( $c->registration_number ); ?></div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                
-                <?php if ( ! empty( $c->description ) ) : ?>
-                    <p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--wpr-text-secondary, #4b5563);"><?php echo esc_html( $c->description ); ?></p>
-                <?php endif; ?>
-                
-                <?php if ( ! empty( $c->website ) ) : ?>
-                    <div style="margin-top: 4px;">
-                        <a href="<?php echo esc_url( $c->website ); ?>" target="_blank" rel="noopener noreferrer" class="button alt" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; background: var(--wpr-accent, #6c5ce7); color: #fff;">Visit Website →</a>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </details>
-        <?php
-        return ob_get_clean();
-    }
-
     /**
      * Shortcode: [raffle_charities] — charity directory + live totals.
      * Totals are rendered server-side and refreshed client-side every 60s so a

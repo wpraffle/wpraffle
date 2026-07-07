@@ -4,6 +4,98 @@ All notable changes to WPRaffle are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-07-07
+
+A user-experience focused patch: fixes several bugs that harmed real users (notably
+the "YOU WON!" detection failure), and adds five high-impact UX improvements across
+the public site, account area, and admin.
+
+### Fixed
+
+- **"YOU WON!" badge never appeared in My Raffles (critical):** winner detection
+  compared the winning ticket's **row id** against the user's ticket **numbers**
+  (two different columns), so the celebration badge was effectively never shown to
+  real winners. Now resolved via a tickets-table JOIN that maps the stored row id to
+  the actual ticket number. (`public/views/my-raffles.php`)
+- **Ticket numbers sorted as strings** in My Raffles, so "100" appeared before "20".
+  Now cast to int before sorting. (`my-raffles.php`)
+- **Invisible instant-win "Available" badge:** the badge set `color` and `background`
+  to the same CSS variable, rendering the scarcity text invisible. Text now white.
+  (`raffle-display.php`)
+- **Charity totals stuck enlarged:** jQuery `.animate({transform})` is a no-op without
+  a plugin, leaving numbers at `scale(1.12)`. Replaced with a CSS keyframe pulse.
+  (`public.js`)
+- **Manual number grid stranded users on network error:** the AJAX load had no
+  `.fail()` handler, leaving "Loading numbers…" forever. Now shows a retry button.
+  (`public.js`)
+- **Silent number-selection loss:** when a 30s poll detected a selected number was
+  taken, it was removed without notice. Now surfaces a non-blocking toast. (`public.js`)
+- **Entry UI stayed live after the countdown hit zero:** buyers could click "Enter
+  Competition" only to be rejected by AJAX. The page now freezes the entry button +
+  hides the entry panel the instant the timer expires, and clears the interval.
+  (`public.js`)
+- **Shop cards weren't zero-padded** while the product page was — `9:5:3` vs `09:05:03`.
+  Shop countdowns now match. (`shop-countdown.js`)
+- **Hardcoded `$` in dashboard secondary KPIs** regardless of configured currency.
+  Now uses the configured currency symbol via `formatMoney()`. (`dashboard.php`)
+- **Clone redirect landed on the dashboard:** `action=edit` is served by the
+  `raffle-list` page slug, not `raffle-system`. Clone now redirects correctly to the
+  new raffle's edit screen. (`admin.js`)
+- **Lookup form promised an email that was never sent:** the `[raffle_lookup]`
+  shortcode said "a secure link will be sent" but no email was ever dispatched. Now
+  fully implemented — single-use, 30-minute token emailed on request; clicking the
+  link renders a read-only guest ticket view. Anti-enumeration response preserved.
+  (`class-raffle-public.php`, `class-raffle-email.php`)
+
+### Added
+
+- **Odds-of-winning display:** the product page and account ticket list now show
+  "1 in N" odds that update live as the buyer selects ticket quantity. (`raffle-display.php`,
+  `tickets.php`, `public.js`)
+- **Pending/processing purchases surfaced** in the account Tickets tab, so buyers
+  whose payment is still clearing see their entry rather than assuming it was lost.
+  (`tickets.php`)
+- **"View Results" link** from finished My Raffles entries back to the competition
+  page, plus draw date and a "view competition" link on the Wins tab. (`my-raffles.php`,
+  `wins.php`)
+- **SOLD OUT / ENDING SOON / ENDED badges** on shop cards, with expired/sold-out
+  cards visually de-emphasised and made non-clickable. Cards are now keyboard-focusable.
+  (`raffle-loop-card.php`, `shop-countdown.js`)
+- **Friendly Bundle Builder** replacing the raw JSON packages field — operators get a
+  repeatable qty/price/label/badge row UI (matching the Instant Wins builder) that
+  syncs to a hidden field, with live validation. The lean bare-int JSON shape is
+  preserved for simple raffles. (`raffle-form.php`, `admin.js`)
+- **Admin raffle list** now has search (by title), status filter (Live/Draft/Ended),
+  pagination, and a "Showing X of Y" indicator. (`raffle-list.php`)
+- **Buyers CSV export** from the raffle details page, plus a client-side buyer
+  search (name/email). (`raffle-details.php`, `class-raffle-admin.php`)
+- **Winner name privacy setting:** a new "Publish full winner names" toggle
+  (Settings → General, default ON for back-compat) reduces public winner names to
+  initials (e.g. "J.S.") when disabled — matching the instant-win treatment.
+  (`settings.php`, `class-raffle-admin.php`, `class-raffle-public.php`)
+- **Dashboard AJAX error handling:** a dismissible error banner now appears when
+  analytics requests fail, and the refresh spinner reflects real completion rather
+  than a fixed timer. (`dashboard.js`)
+
+### Changed — Accessibility
+
+- **Modal focus management:** focus now moves into the purchase dialog on open,
+  returns to the trigger button on close, and a Tab focus-trap keeps keyboard users
+  inside the dialog. The close controls are now real `<button>` elements (were
+  `<span role="button">`).
+- **`role="alert"`** added to modal error messages so screen readers announce them.
+- **Shop cards** gained keyboard (Enter/Space) activation and `role="link"`.
+
+### Developer
+
+- New static method: `Raffle_Public::winner_display_name( $full_name )` — resolves
+  the privacy-aware display name for public winner rendering.
+- New AJAX endpoint: `raffle_lookup_send` (guest ticket lookup email dispatch).
+- New admin action: `export_buyers` (CSV export of a raffle's buyers + ticket numbers).
+- New general setting: `publish_winner_full_name` (0/1).
+
+---
+
 ## [1.2.0] — 2026-07-05
 
 The biggest release in WPRaffle's history: a full security & compliance overhaul, five
@@ -175,6 +267,7 @@ Comprehensive security audit pass across the entire codebase.
 - Elementor widget pack (18 widgets), shortcodes, GitHub auto-updates.
 - Full GDPR export/erasure, rate limiting, responsible-gambling settings.
 
+[1.2.1]: https://github.com/wpraffle/wpraffle/releases/tag/v1.2.1
 [1.2.0]: https://github.com/wpraffle/wpraffle/releases/tag/v1.2.0
 [1.1.0]: https://github.com/wpraffle/wpraffle/releases/tag/v1.1.0
 [1.0.0]: https://github.com/wpraffle/wpraffle/releases/tag/v1.0.0

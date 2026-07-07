@@ -521,17 +521,4 @@ class Raffle_Privacy {
             'items_removed' => $result['items_removed'],
         ) );
     }
-
-    /* ===================================================================
-       WooCommerce Privacy Integration
-       =================================================================== */
-
-    /**
-     * Check if WooCommerce privacy tools are available.
-     * If so, raffle data export/erasure is handled automatically via
-     * the WP privacy hooks registered above (WC uses WP privacy tools).
-     */
-    public static function is_wc_privacy_available() {
-        return class_exists( 'WC_Privacy_Erasers' ) || class_exists( 'WP_Privacy_Data_Export_Requests_List_Table' );
-    }
 }

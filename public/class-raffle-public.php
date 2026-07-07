@@ -27,6 +27,10 @@ class Raffle_Public {
         // every entrant's full name to the public internet (GDPR breach).
         add_action( 'wp_ajax_raffle_download_entry_list', array( $this, 'ajax_download_entry_list' ) );
 
+        // Guest ticket lookup — sends a single-use secure-link email.
+        add_action( 'wp_ajax_raffle_lookup_send', array( $this, 'ajax_lookup_send' ) );
+        add_action( 'wp_ajax_nopriv_raffle_lookup_send', array( $this, 'ajax_lookup_send' ) );
+
         add_action( 'woocommerce_before_single_product', array( $this, 'maybe_override_product_layout' ) );
         add_filter( 'template_include', array( $this, 'override_single_product_template' ), 99 );
     }
@@ -147,47 +151,213 @@ class Raffle_Public {
 
     public function render_lookup_shortcode( $atts ) {
         if ( is_user_logged_in() ) {
-            return '<p>Please visit the <a href="' . esc_url( wc_get_account_endpoint_url( 'my-raffles' ) ) . '">My Raffles</a> section in your account dashboard.</p>';
+            return '<p>' . esc_html__( 'Please visit the', 'wpraffle' ) . ' <a href="' . esc_url( wc_get_account_endpoint_url( 'my-raffles' ) ) . '">' . esc_html__( 'My Raffles', 'wpraffle' ) . '</a> ' . esc_html__( 'section in your account dashboard.', 'wpraffle' ) . '</p>';
+        }
+
+        // ── Token-redemption flow: a guest clicked the secure link in the email.
+        // Validate the token and render their tickets if it's still valid.
+        if ( isset( $_GET['raffle_token'] ) && isset( $_GET['email'] ) ) {
+            $token = sanitize_text_field( wp_unslash( $_GET['raffle_token'] ) );
+            $email = sanitize_email( wp_unslash( $_GET['email'] ) );
+            return $this->render_lookup_token_view( $token, $email );
         }
 
         ob_start();
         ?>
         <div class="raffle-lookup-container" style="max-width: 400px; margin: 0 auto; padding: 20px; background: var(--wpr-bg-surface); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h3 style="margin-top: 0;">Lookup Your Tickets</h3>
-            <p>Enter the email address used during purchase to view your active tickets.</p>
-            <form method="post" action="" class="rs-lookup-form">
+            <h3 style="margin-top: 0;"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--md' ); ?> <?php esc_html_e( 'Lookup Your Tickets', 'wpraffle' ); ?></h3>
+            <p><?php esc_html_e( 'Enter the email address used during purchase and we\'ll email you a secure link to view your tickets.', 'wpraffle' ); ?></p>
+            <form class="rs-lookup-form" id="rs-lookup-form">
                 <?php wp_nonce_field( 'raffle_lookup_nonce', 'lookup_nonce' ); ?>
                 <div style="margin-bottom: 15px;">
-                    <input type="email" name="lookup_email" required placeholder="Enter your email" style="width: 100%; padding: 10px; border: 1px solid var(--wpr-border-color); border-radius: 4px;">
+                    <input type="email" name="lookup_email" id="rs-lookup-email" required placeholder="<?php esc_attr_e( 'Enter your email', 'wpraffle' ); ?>" style="width: 100%; padding: 10px; border: 1px solid var(--wpr-border-color); border-radius: 4px;">
                 </div>
-                <button type="submit" style="width: 100%; padding: 10px; background: var(--wpr-accent); color: var(--wpr-text-inverse); border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Lookup Tickets</button>
+                <button type="submit" id="rs-lookup-btn" style="width: 100%; padding: 10px; background: var(--wpr-accent); color: var(--wpr-text-inverse); border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                    <?php echo wpr_get_icon( 'mail', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Send me a link', 'wpraffle' ); ?>
+                </button>
             </form>
-            
-            <?php
-            if ( isset( $_POST['lookup_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['lookup_nonce'] ) ), 'raffle_lookup_nonce' ) ) {
-                $email = sanitize_email( wp_unslash( $_POST['lookup_email'] ) );
-                if ( is_email( $email ) ) {
-                    // SEC-A6 FIX: Always show the same response to prevent email enumeration.
-                    // In production, send a secure token link to the email if purchases exist.
-                    global $wpdb;
-                    $count = $wpdb->get_var( $wpdb->prepare(
-                        "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_purchases WHERE buyer_email = %s AND payment_status = 'completed'",
-                        $email
-                    ) );
-
-                    echo '<div style="margin-top: 15px; padding: 10px; background: var(--wpr-info-bg); color: var(--wpr-info-text); border-radius: 4px;">';
-                    echo 'If tickets are associated with this email address, a secure link will be sent to view them. Please check your inbox.';
-                    echo '</div>';
-
-                    // Only send the email if purchases actually exist
-                    if ( $count > 0 && class_exists( 'Raffle_Email' ) ) {
-                        // TODO: Implement secure token email for ticket lookup
-                    }
-                }
-            }
-            ?>
+            <div id="rs-lookup-status" style="margin-top: 15px; display:none; padding: 10px; border-radius: 4px; font-size: 14px;"></div>
         </div>
+        <script>
+        (function(){
+            var form = document.getElementById('rs-lookup-form');
+            if (!form) return;
+            var btn = document.getElementById('rs-lookup-btn');
+            var statusEl = document.getElementById('rs-lookup-status');
+            form.addEventListener('submit', function(e){
+                e.preventDefault();
+                var email = document.getElementById('rs-lookup-email').value;
+                btn.disabled = true; btn.style.opacity = '0.7';
+                statusEl.style.display = 'block';
+                statusEl.style.background = 'var(--wpr-info-bg, #e0f2fe)';
+                statusEl.style.color = 'var(--wpr-info-text, #075985)';
+                statusEl.textContent = '<?php esc_js( _e( 'Sending your link...', 'wpraffle' ) ); ?>';
+
+                jQuery.post((typeof rafflePublic !== 'undefined' ? rafflePublic.ajax_url : '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>'), {
+                    action: 'raffle_lookup_send',
+                    email: email
+                }, function(res){
+                    btn.disabled = false; btn.style.opacity = '1';
+                    // Always show the same confirmation to prevent email enumeration —
+                    // the AJAX handler sends the email server-side if tickets exist.
+                    statusEl.style.background = 'var(--wpr-success-bg, #dcfce7)';
+                    statusEl.style.color = 'var(--wpr-success-text, #166534)';
+                    statusEl.textContent = '<?php esc_js( __( 'If tickets are associated with this email, a secure link has been sent. Please check your inbox (and spam folder).', 'wpraffle' ) ); ?>';
+                }).fail(function(){
+                    btn.disabled = false; btn.style.opacity = '1';
+                    statusEl.style.background = 'var(--wpr-danger-bg, #fee2e2)';
+                    statusEl.style.color = 'var(--wpr-danger-text, #991b1b)';
+                    statusEl.textContent = '<?php esc_js( __( 'Something went wrong. Please try again.', 'wpraffle' ) ); ?>';
+                });
+            });
+        })();
+        </script>
         <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler: generate a single-use token + email the secure link.
+     * The response is identical whether or not the email has tickets, to
+     * prevent email enumeration (anti-phishing best practice).
+     */
+    public function ajax_lookup_send() {
+        $email = isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '';
+
+        if ( ! is_email( $email ) ) {
+            // Still return success to avoid revealing validity, but don't email.
+            wp_send_json_success( array( 'sent' => false ) );
+        }
+
+        global $wpdb;
+        // Only send if the email actually has purchases — avoids spamming
+        // arbitrary addresses entered into the form.
+        $has_purchases = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_purchases WHERE buyer_email = %s",
+            $email
+        ) );
+
+        if ( $has_purchases > 0 && class_exists( 'Raffle_Email' ) ) {
+            // Single-use token, valid 30 minutes, stored keyed on a hash of the
+            // email so it can't be brute-forced or reused.
+            $token    = wp_generate_password( 32, false );
+            $transient_key = 'wpraffle_lookup_' . md5( $email . '|' . $token );
+            set_transient( $transient_key, $email, 30 * MINUTE_IN_SECONDS );
+
+            $lookup_url = add_query_arg(
+                array(
+                    'raffle_token' => $token,
+                    'email'        => $email,
+                ),
+                $this->get_lookup_page_url()
+            );
+
+            Raffle_Email::send_ticket_lookup( $email, $lookup_url );
+        }
+
+        // Rate-limit: one request per email per 60s to deter abuse.
+        $rate_key = 'wpraffle_lookup_rl_' . md5( $email );
+        set_transient( $rate_key, 1, 60 );
+
+        wp_send_json_success( array( 'sent' => true ) );
+    }
+
+    /**
+     * Resolve the page URL hosting the [raffle_lookup] shortcode. Falls back
+     * to the site home URL if no dedicated page is configured.
+     */
+    private function get_lookup_page_url() {
+        $pages = get_option( 'wpraffle_pages', array() );
+        if ( ! empty( $pages['lookup'] ) && get_post_status( $pages['lookup'] ) ) {
+            return get_permalink( (int) $pages['lookup'] );
+        }
+        // Fall back to searching for any published page containing the shortcode.
+        $found = get_posts( array(
+            'post_type'      => 'page',
+            'post_status'    => 'publish',
+            'posts_per_page' => 1,
+            's'              => 'raffle_lookup',
+        ) );
+        if ( ! empty( $found ) ) {
+            return get_permalink( $found[0]->ID );
+        }
+        return home_url( '/' );
+    }
+
+    /**
+     * Render the guest ticket view after validating a lookup token. Shows a
+     * read-only summary of the buyer's completed purchases + ticket numbers.
+     * Single-use: the token transient is deleted after a successful redeem.
+     */
+    private function render_lookup_token_view( $token, $email ) {
+        if ( ! is_email( $email ) || empty( $token ) ) {
+            return '<div class="raffle-lookup-container" style="max-width:500px;margin:0 auto;padding:20px;background:var(--wpr-bg-surface);border-radius:8px;">'
+                . '<p style="color:var(--wpr-danger, #dc2626);">' . esc_html__( 'This link is invalid.', 'wpraffle' ) . '</p>'
+                . '</div>';
+        }
+
+        $transient_key = 'wpraffle_lookup_' . md5( $email . '|' . $token );
+        $stored_email = get_transient( $transient_key );
+
+        if ( ! $stored_email || $stored_email !== $email ) {
+            return '<div class="raffle-lookup-container" style="max-width:500px;margin:0 auto;padding:20px;background:var(--wpr-bg-surface);border-radius:8px;">'
+                . '<p style="color:var(--wpr-danger, #dc2626);">' . esc_html__( 'This link has expired or already been used. Please request a new one.', 'wpraffle' ) . '</p>'
+                . '<p><a href="' . esc_url( $this->get_lookup_page_url() ) . '">' . esc_html__( 'Request a new link', 'wpraffle' ) . '</a></p>'
+                . '</div>';
+        }
+
+        // Valid — consume the token so it can't be reused.
+        delete_transient( $transient_key );
+
+        global $wpdb;
+        $purchases = $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.*, r.title, r.status, r.draw_date, r.total_tickets, r.sold_tickets
+             FROM {$wpdb->prefix}raffle_purchases p
+             JOIN {$wpdb->prefix}raffles r ON p.raffle_id = r.id
+             WHERE p.buyer_email = %s AND p.payment_status = 'completed'
+             ORDER BY p.purchase_date DESC",
+            $email
+        ) );
+
+        ob_start();
+        echo '<div class="raffle-lookup-container" style="max-width:600px;margin:0 auto;padding:20px;background:var(--wpr-bg-surface);border-radius:8px;">';
+        echo '<h3 style="margin-top:0;">' . wpr_get_icon( 'ticket', 'wpr-icon--md' ) . ' ' . esc_html__( 'Your Tickets', 'wpraffle' ) . '</h3>';
+        echo '<p style="color:var(--wpr-text-muted);font-size:13px;">' . esc_html( $email ) . '</p>';
+
+        if ( empty( $purchases ) ) {
+            echo '<p class="woocommerce-info">' . esc_html__( 'No completed purchases found for this email address.', 'wpraffle' ) . '</p>';
+            echo '</div>';
+            return ob_get_clean();
+        }
+
+        foreach ( $purchases as $p ) {
+            $tickets = $wpdb->get_col( $wpdb->prepare(
+                "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d ORDER BY ticket_number ASC",
+                $p->id
+            ) );
+            $total_digits = strlen( (string) ( $p->total_tickets ?? 3 ) );
+            $is_live = ( Raffle_Public::get_raffle_state( $p ) === 'live' );
+            ?>
+            <div style="border:1px solid var(--wpr-border-color);border-radius:8px;padding:14px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <strong style="color:var(--wpr-text-primary);"><?php echo esc_html( $p->title ); ?></strong>
+                    <span style="font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700;text-transform:uppercase;background:<?php echo $is_live ? 'var(--wpr-success-bg)' : 'var(--wpr-bg-muted)'; ?>;color:<?php echo $is_live ? 'var(--wpr-success-text)' : 'var(--wpr-text-muted)'; ?>;">
+                        <?php echo $is_live ? esc_html__( 'Live', 'wpraffle' ) : esc_html__( 'Finished', 'wpraffle' ); ?>
+                    </span>
+                </div>
+                <div style="font-size:12px;color:var(--wpr-text-muted);margin-bottom:8px;">
+                    <?php echo count( $tickets ); ?> <?php esc_html_e( 'tickets', 'wpraffle' ); ?>
+                    <?php if ( $p->draw_date ) : ?> &bull; <?php esc_html_e( 'Draw:', 'wpraffle' ); ?> <strong><?php echo esc_html( date_i18n( 'j M Y', strtotime( $p->draw_date ) ) ); ?></strong><?php endif; ?>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                    <?php foreach ( $tickets as $t ) : ?>
+                        <code style="background:var(--wpr-bg-muted);color:var(--wpr-text-primary);padding:2px 6px;border-radius:3px;font-size:0.8em;"><?php echo esc_html( str_pad( $t, $total_digits, '0', STR_PAD_LEFT ) ); ?></code>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php
+        }
+        echo '</div>';
         return ob_get_clean();
     }
 
@@ -409,6 +579,35 @@ class Raffle_Public {
     }
 
     /**
+     * Resolve the winner display name according to the site's privacy setting.
+     * When 'publish_winner_full_name' is OFF, returns initials only (e.g. "J.S.")
+     * so main-draw winners get the same privacy treatment as instant-winners.
+     * The full name is still used in winner emails + the audit log regardless.
+     *
+     * @param string $full_name The buyer's full name as stored on the purchase.
+     * @return string Safe-to-display name (full or initials).
+     */
+    public static function winner_display_name( $full_name ) {
+        $general = wp_parse_args( get_option( 'wpraffle_general_settings', array() ), array(
+            'publish_winner_full_name' => 1,
+        ) );
+        if ( ! empty( $general['publish_winner_full_name'] ) ) {
+            return $full_name;
+        }
+        // Initials — reuse the instant-wins helper for consistency.
+        if ( class_exists( 'Raffle_Instant_Wins' ) ) {
+            $initials = Raffle_Instant_Wins::get_initials( $full_name );
+            return $initials !== '' ? $initials : __( 'Winner', 'wpraffle' );
+        }
+        // Fallback if the instant-wins class isn't loaded.
+        $parts = array_filter( explode( ' ', trim( (string) $full_name ) ) );
+        $initials = array_map( function ( $p ) {
+            return strtoupper( mb_substr( $p, 0, 1 ) );
+        }, $parts );
+        return $initials ? implode( '.', $initials ) : __( 'Winner', 'wpraffle' );
+    }
+
+    /**
      * [raffle_refer] — renders the current user's referral card for a raffle:
      * referral URL + share buttons + bonus entries earned. Requires login.
      *
@@ -525,6 +724,11 @@ class Raffle_Public {
         // Enqueue countdown JS for the shortcode page
         wp_enqueue_script( 'raffle-shop-countdown', RAFFLE_SYSTEM_URL . 'assets/js/shop-countdown.js', array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
 
+        // Batch instant-win counts for all cards in one query (avoids N+1).
+        $iw_counts = function_exists( 'wpraffle_batch_instant_win_counts' )
+            ? wpraffle_batch_instant_win_counts( wp_list_pluck( $raffles, 'id' ) )
+            : array();
+
         ob_start();
         ?>
         <div class="raffle-list-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; padding: 20px 0;">
@@ -537,6 +741,7 @@ class Raffle_Public {
                     $product = new stdClass();
                     $product->_fake = true;
                 }
+                $iw_count = isset( $iw_counts[ $r->id ] ) ? $iw_counts[ $r->id ] : null;
                 ?>
                 <div class="raffle-list-item">
                     <?php include RAFFLE_SYSTEM_PATH . 'public/views/raffle-loop-card.php'; ?>
@@ -712,7 +917,7 @@ class Raffle_Public {
                         <div style="background:var(--wpr-success-bg);border:1px solid var(--wpr-success-bg);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
                             <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
                             <?php if ( $winner_info ) : ?>
-                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( self::winner_display_name( $winner_info->buyer_name ) ); ?></span>
                                 <span style="font-size:12px;color:var(--wpr-text-muted);">Ticket: <span style="font-family:monospace;background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
                             <?php else : ?>
                                 <span style="font-size:13px;color:var(--wpr-text-muted);font-weight:600;">Draw pending</span>
@@ -789,7 +994,7 @@ class Raffle_Public {
                         <div style="background:var(--wpr-success-bg);border:1px solid var(--wpr-success-bg);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
                             <?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm', 'Winner' ); ?>
                             <?php if ( $winner_info ) : ?>
-                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( $winner_info->buyer_name ); ?></span>
+                                <span style="font-size:14px;font-weight:700;color:var(--wpr-success-text);"><?php echo esc_html( self::winner_display_name( $winner_info->buyer_name ) ); ?></span>
                                 <span style="font-size:12px;color:var(--wpr-text-muted);">Ticket: <span style="font-family:monospace;background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 6px;border-radius:4px;font-weight:bold;"><?php echo esc_html( $formatted_num ); ?></span></span>
                             <?php else : ?>
                                 <span style="font-size:13px;color:var(--wpr-text-muted);font-weight:600;">Draw pending</span>

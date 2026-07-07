@@ -183,9 +183,16 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
                 <div class="postbox">
                     <div class="postbox-header">
                         <h2 class="hndle"><?php wpr_icon( 'user', 'wpr-icon--sm' ); ?> Buyers & Ticket Holders (<?php echo count( $purchases ); ?>)</h2>
+                        <div class="handle-actions" style="display:flex; gap:8px; align-items:center; padding-right:10px;">
+                            <label for="rs-buyers-search" class="screen-reader-text"><?php esc_html_e( 'Search buyers', 'wpraffle' ); ?></label>
+                            <input type="search" id="rs-buyers-search" placeholder="<?php esc_attr_e( 'Search name or email…', 'wpraffle' ); ?>" style="font-size:12px; min-width:200px;">
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( "admin.php?page=raffle-list&action=export_buyers&id={$raffle->id}" ), 'export_buyers_' . $raffle->id ) ); ?>" class="button button-primary" style="font-size:12px;">
+                                <?php wpr_icon( 'refresh', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Export CSV', 'wpraffle' ); ?>
+                            </a>
+                        </div>
                     </div>
                     <div class="inside" style="padding:0; margin:0;">
-                        <table class="wp-list-table widefat striped posts" style="border:none; box-shadow:none;">
+                        <table class="wp-list-table widefat striped posts" id="rs-buyers-table" style="border:none; box-shadow:none;">
                             <thead>
                                 <tr>
                                     <th scope="col" style="padding-left:15px; width:60px;">ID</th>
@@ -248,3 +255,24 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
         </div>
     </div>
 </div>
+
+<script>
+// Client-side buyer search — filters table rows by name/email as you type.
+// Cheaper than a round-trip for the typical buyers-list size, and gives
+// instant feedback.
+(function(){
+    var input = document.getElementById('rs-buyers-search');
+    var table = document.getElementById('rs-buyers-table');
+    if (!input || !table) return;
+    input.addEventListener('input', function(){
+        var q = this.value.trim().toLowerCase();
+        var rows = table.querySelectorAll('tbody tr');
+        rows.forEach(function(row){
+            if (row.cells.length < 3) return; // skip the empty-state row
+            var name = (row.cells[1] ? row.cells[1].textContent : '').toLowerCase();
+            var email = (row.cells[2] ? row.cells[2].textContent : '').toLowerCase();
+            row.style.display = (name.indexOf(q) !== -1 || email.indexOf(q) !== -1) ? '' : 'none';
+        });
+    });
+})();
+</script>

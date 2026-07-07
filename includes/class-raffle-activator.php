@@ -11,6 +11,9 @@ class Raffle_Activator {
         self::create_default_pages();
         update_option( 'raffle_system_version', RAFFLE_SYSTEM_VERSION );
 
+        // Send a one-shot, anonymous activation notice (see Raffle_Tracker).
+        Raffle_Tracker::notify_activation();
+
         // Ensure WooCommerce rewrite endpoint is registered and rewrite rules are flushed
         add_rewrite_endpoint( 'my-raffles', EP_ROOT | EP_PAGES );
         flush_rewrite_rules();
@@ -125,7 +128,8 @@ class Raffle_Activator {
             draw_video_url varchar(500) DEFAULT '',
             verified_result text,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id)
+            PRIMARY KEY (id),
+            KEY status_dates (status, draw_date, start_date)
         ) {$charset_collate};
 
         CREATE TABLE {$table_purchases} (
@@ -142,6 +146,7 @@ class Raffle_Activator {
             entry_type varchar(20) NOT NULL DEFAULT 'paid',
             PRIMARY KEY (id),
             KEY raffle_id (raffle_id),
+            KEY buyer_email (buyer_email),
             KEY wc_order_id (wc_order_id),
             KEY referral_code (referral_code)
         ) {$charset_collate};

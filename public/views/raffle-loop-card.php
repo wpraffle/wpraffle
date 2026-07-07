@@ -20,16 +20,22 @@ if ( $product instanceof WC_Product ) {
 }
 
 
-// Cash alternative
+// Cash alternative — use wpr_price() so currency position/decimals match the
+// rest of the plugin (was a raw symbol + number_format, which ignored settings).
 $has_cash_alt  = ! empty( $raffle->enable_cash_alternative );
-$cash_alt_amt  = $has_cash_alt ? wpr_currency_symbol() . number_format( $raffle->cash_alternative_amount, 0 ) : '';
+$cash_alt_amt  = $has_cash_alt ? wpr_price( $raffle->cash_alternative_amount ) : '';
 
-// Instant wins count
-global $wpdb;
-$iw_count = (int) $wpdb->get_var( $wpdb->prepare(
-    "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_instant_wins WHERE raffle_id = %d",
-    $raffle->id
-) );
+// Instant wins count — prefer a precomputed value (batched by the caller to
+// avoid a per-card N+1 query); fall back to a single query if not provided.
+if ( ! isset( $iw_count ) ) {
+    global $wpdb;
+    $iw_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_instant_wins WHERE raffle_id = %d",
+        $raffle->id
+    ) );
+} else {
+    $iw_count = (int) $iw_count;
+}
 
 // Progress bar color (urgency-based coloring: green -> amber -> red)
 $bar_color = 'var(--wpr-success)';
@@ -42,13 +48,40 @@ if ( $progress >= 85 ) {
 // Draw date
 $has_draw_date = ! empty( $raffle->draw_date );
 $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->draw_date ) ) : '';
+
+// Card state — drives status badges and click/keyboard behaviour.
+$card_state       = Raffle_Public::get_raffle_state( $raffle );
+$is_sold_out      = ( $card_state === 'live' && $remaining <= 0 );
+$is_ended         = ( $card_state === 'ended' );
+$is_ending_soon   = ( $card_state === 'live' && $has_draw_date && ( strtotime( $raffle->draw_date ) - time() ) <= DAY_IN_SECONDS && ( strtotime( $raffle->draw_date ) - time() ) > 0 );
+$is_closed        = $is_sold_out || $is_ended;
+
+// Status badge to overlay on the image.
+$status_badge_label = '';
+$status_badge_mod   = '';
+if ( $is_ended ) {
+    $status_badge_label = __( 'ENDED', 'wpraffle' );
+    $status_badge_mod   = 'rc-card__status--ended';
+} elseif ( $is_sold_out ) {
+    $status_badge_label = __( 'SOLD OUT', 'wpraffle' );
+    $status_badge_mod   = 'rc-card__status--soldout';
+} elseif ( $is_ending_soon ) {
+    $status_badge_label = __( 'ENDING SOON', 'wpraffle' );
+    $status_badge_mod   = 'rc-card__status--soon';
+}
+
+// CTA label adapts to state.
+$cta_label = $is_closed ? __( 'VIEW RESULTS', 'wpraffle' ) : __( 'VIEW COMPETITION', 'wpraffle' );
 ?>
 
-<div class="rc-card" data-raffle-link="<?php echo esc_url( $link ); ?>">
+<div class="rc-card<?php echo $is_ended ? ' rc-card--expired' : ''; echo $is_sold_out ? ' rc-card--sold-out' : ''; echo $is_ending_soon ? ' rc-card--ending-soon' : ''; ?>"
+     data-raffle-link="<?php echo esc_url( $link ); ?>"
+     tabindex="0" role="link"
+     aria-label="<?php echo esc_attr( sprintf( __( 'View competition: %s', 'wpraffle' ), $raffle->title ) ); ?>">
 
-    <!-- Title -->
+    <!-- Title (uppercase via CSS so screen readers don't spell it out) -->
     <div class="rc-card__title">
-        <?php echo esc_html( strtoupper( $raffle->title ) ); ?>
+        <?php echo esc_html( $raffle->title ); ?>
         <?php if ( $has_cash_alt ) : ?>
             <span class="rc-card__title-alt">(OR <?php echo esc_html( $cash_alt_amt ); ?>)</span>
         <?php endif; ?>
@@ -65,7 +98,9 @@ $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->
             <div class="rc-card__image-placeholder"><?php echo wpr_get_icon( 'gift', 'wpr-icon--lg' ); ?></div>
         <?php endif; ?>
 
-        <?php if ( $iw_count > 0 ) : ?>
+        <?php if ( $status_badge_label ) : ?>
+            <div class="rc-card__status <?php echo esc_attr( $status_badge_mod ); ?>"><?php echo esc_html( $status_badge_label ); ?></div>
+        <?php elseif ( $iw_count > 0 ) : ?>
             <div class="rc-card__iw-badge">
                 <span>+<?php echo esc_html( $iw_count ); ?></span> INSTANT WINS
             </div>
@@ -81,9 +116,8 @@ $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->
     <?php endif; ?>
 
     <!-- Countdown -->
-    <?php 
-    $r_computed_state = Raffle_Public::get_raffle_state( $raffle );
-    if ( $has_draw_date && $r_computed_state === 'live' ) : 
+    <?php
+    if ( $has_draw_date && $card_state === 'live' ) :
     ?>
         <div class="rc-card__countdown" data-draw-date="<?php echo esc_attr( $draw_iso ); ?>">
             <div class="rc-card__cd-unit">
@@ -130,8 +164,16 @@ $draw_iso      = $has_draw_date ? gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->
     </div>
 
     <!-- Charity badge -->
-<?php if ( class_exists('Raffle_Charity' ) ) { $ci = Raffle_Charity::get_raffle_charity( $raffle->id ); if ( $ci ) { echo '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 0;margin-bottom:4px;font-size:11px;color:var(--wpr-accent-text-dark, var(--wpr-success-dark));font-weight:600;">'; echo '<svg class="wpr-icon wpr-icon--xs" style="flex-shrink:0;color:var(--wpr-accent);"><use href="#wpr-gift"></use></svg>'; echo esc_html( $ci['percent'] ) . '% to ' . esc_html( $ci['charity']->name ); echo '</div>'; } } ?>
+    <?php if ( class_exists( 'Raffle_Charity' ) ) :
+        $ci = Raffle_Charity::get_raffle_charity( $raffle->id );
+        if ( $ci ) : ?>
+            <div class="rc-card__charity">
+                <?php echo wpr_get_icon( 'gift', 'wpr-icon--xs' ); ?>
+                <span><?php echo esc_html( $ci['percent'] ); ?>% to <?php echo esc_html( $ci['charity']->name ); ?></span>
+            </div>
+        <?php endif;
+    endif; ?>
 
-<!-- CTA -->
-    <a href="<?php echo esc_url( $link ); ?>" class="rc-card__cta">VIEW COMPETITION</a>
+    <!-- CTA -->
+    <a href="<?php echo esc_url( $link ); ?>" class="rc-card__cta<?php echo $is_closed ? ' rc-card__cta--closed' : ''; ?>"><?php echo esc_html( $cta_label ); ?></a>
 </div>

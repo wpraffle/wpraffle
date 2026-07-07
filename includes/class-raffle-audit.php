@@ -180,18 +180,6 @@ class Raffle_Audit {
     }
 
     /**
-     * Generate a fairness proof hash for a draw.
-     *
-     * @param int    $raffle_id
-     * @param string $seed  Random seed used.
-     * @param int    $winning_ticket
-     * @return string SHA-256 hash.
-     */
-    public static function generate_fairness_proof( $raffle_id, $seed, $winning_ticket ) {
-        return hash( 'sha256', $raffle_id . '|' . $seed . '|' . $winning_ticket . '|' . wp_salt( 'auth' ) );
-    }
-
-    /**
      * Export logs as CSV for authority requests.
      */
     public static function export_csv( $args = array() ) {

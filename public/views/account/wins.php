@@ -10,7 +10,7 @@ $email        = $current_user->user_email;
 global $wpdb;
 
 $main_wins = $wpdb->get_results( $wpdb->prepare(
-    "SELECT r.id, r.title, r.prize_image, r.total_tickets, r.winner_ticket_id, r.enable_cash_alternative, r.cash_alternative_amount, r.draw_date,
+    "SELECT r.id, r.title, r.prize_image, r.total_tickets, r.winner_ticket_id, r.enable_cash_alternative, r.cash_alternative_amount, r.draw_date, r.wc_product_id,
             t.ticket_number, t.id as ticket_id
      FROM {$wpdb->prefix}raffles r
      JOIN {$wpdb->prefix}raffle_tickets t ON t.id = r.winner_ticket_id
@@ -55,11 +55,19 @@ $instant_wins = $wpdb->get_results( $wpdb->prepare(
                             <div style="font-size:0.75em;color:var(--wpr-text-muted);">
                                 Winning Ticket: <code style="font-weight:700;background:var(--wpr-bg-muted);color:var(--wpr-text-primary);"><?php echo esc_html( str_pad( $w->ticket_number, $td, '0', STR_PAD_LEFT ) ); ?></code>
                             </div>
+                            <?php if ( $w->draw_date ) : ?>
+                                <div style="font-size:0.75em;color:var(--wpr-text-muted);">Drawn: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $w->draw_date ) ) ); ?></strong></div>
+                            <?php endif; ?>
                             <?php if ( $w->enable_cash_alternative ) : ?>
                                 <div style="font-size:0.75em;color:var(--wpr-text-muted);">Cash alternative: <strong><?php echo esc_html( wpr_price( $w->cash_alternative_amount ) ); ?></strong></div>
                             <?php endif; ?>
                         </div>
-                        <span style="background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 8px;border-radius:10px;font-size:0.65em;font-weight:700;text-transform:uppercase;flex-shrink:0;">Won</span>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+                            <span style="background:var(--wpr-success-bg);color:var(--wpr-success-text);padding:2px 8px;border-radius:10px;font-size:0.65em;font-weight:700;text-transform:uppercase;">Won</span>
+                            <?php if ( ! empty( $w->wc_product_id ) && get_post_status( $w->wc_product_id ) ) : ?>
+                                <a href="<?php echo esc_url( get_permalink( (int) $w->wc_product_id ) ); ?>" style="font-size:0.7em;font-weight:600;color:var(--wpr-accent);text-decoration:none;">View competition &rsaquo;</a>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>

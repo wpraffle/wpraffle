@@ -180,6 +180,19 @@ if ( $progress >= 85 ) {
                 <?php endif; ?>
             </div>
 
+            <!-- Odds of winning (updates live as the buyer selects ticket quantity) -->
+            <div class="raffle-odds-box" id="raffle-odds-box"
+                 data-total="<?php echo esc_attr( (int) $raffle->total_tickets ); ?>"
+                 data-sold="<?php echo esc_attr( (int) $raffle->sold_tickets ); ?>"
+                 role="status" aria-live="polite">
+                <?php echo wpr_get_icon( 'star', 'wpr-icon--sm' ); ?>
+                <span class="raffle-odds-label"><?php esc_html_e( 'Your odds with', 'wpraffle' ); ?>
+                    <strong class="raffle-odds-qty">1</strong>
+                    <?php esc_html_e( 'ticket:', 'wpraffle' ); ?>
+                </span>
+                <strong class="raffle-odds-value">1 in <?php echo esc_html( number_format_i18n( max( 1, (int) $raffle->total_tickets ) ) ); ?></strong>
+            </div>
+
             <!-- Tabs Selection -->
             <div class="raffle-entry-tabs">
                 <button type="button" class="raffle-tab-btn active" data-tab="online">ONLINE ENTRY</button>
@@ -549,8 +562,8 @@ if ( $progress >= 85 ) {
                                     All claimed <?php echo $initials ? '(' . esc_html( $initials ) . ')' : ''; ?>
                                 </span>
                             <?php else : ?>
-                                <span style="background: var(--wpr-draw-color); color: var(--wpr-draw-color); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;<?php echo $iw_group['total'] > 1 ? '' : ' animation: rs-pulse 2s infinite;'; ?>">
-                                    <span style="width: 6px; height: 6px; background: var(--wpr-draw-color); border-radius: 50%;"></span> <?php echo $iw_group['total'] > 1 ? esc_html( $iw_group['available'] ) . ' left' : 'Available'; ?>
+                                <span style="background: var(--wpr-draw-color); color: #ffffff; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;<?php echo $iw_group['total'] > 1 ? '' : ' animation: rs-pulse 2s infinite;'; ?>">
+                                    <span style="width: 6px; height: 6px; background: #ffffff; border-radius: 50%;"></span> <?php echo $iw_group['total'] > 1 ? esc_html( $iw_group['available'] ) . ' left' : 'Available'; ?>
                                 </span>
                             <?php endif; ?>
                         </div>
@@ -716,12 +729,25 @@ if ( $progress >= 85 ) {
     <?php if ( $r_computed_state === 'live' ) : ?>
 
         <!-- Purchase Modal -->
-        <div class="raffle-modal" id="raffle-modal" style="display:none;">
+        <div class="raffle-modal" id="raffle-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="raffle-modal-title">
             <div class="raffle-modal-content">
-                <span class="raffle-modal-close">&times;</span>
+                <button type="button" class="raffle-modal-close" aria-label="Close">&times;</button>
                 <div class="raffle-modal-header">
-                    <h3>Complete Purchase</h3>
-                    <p class="raffle-modal-summary"></p>
+                    <h3 id="raffle-modal-title">Complete Purchase</h3>
+                </div>
+
+                <!-- Sticky live order summary: qty × price = total, with any bundle savings.
+                     Populated + updated by public.js refreshModalSummary() as the slider moves. -->
+                <div class="raffle-order-summary" aria-live="polite">
+                    <div class="raffle-order-summary__row">
+                        <span class="raffle-order-summary__label" data-summary="qty-label">1 ticket</span>
+                        <span class="raffle-order-summary__unit" data-summary="unit-price"></span>
+                    </div>
+                    <div class="raffle-order-summary__row raffle-order-summary__row--total">
+                        <span class="raffle-order-summary__label">Total</span>
+                        <span class="raffle-order-summary__total" data-summary="total"></span>
+                    </div>
+                    <div class="raffle-order-summary__savings" data-summary="savings" style="display:none;"></div>
                 </div>
                 <form id="raffle-purchase-form">
                     <input type="hidden" name="raffle_id" value="<?php echo esc_attr( $raffle->id ); ?>">
@@ -759,7 +785,7 @@ if ( $progress >= 85 ) {
         <!-- Confirmation -->
         <div class="raffle-confirmation" id="raffle-confirmation" style="display:none;">
             <div class="raffle-confirmation-content">
-                <span class="raffle-modal-close">&times;</span>
+                <button type="button" class="raffle-modal-close" aria-label="Close">&times;</button>
                 <div class="raffle-confirmation-icon"><?php echo wpr_get_icon( 'star', 'wpr-icon--2xl wpr-icon--primary', 'Success' ); ?></div>
                 <h3>Purchase Successful!</h3>
                 <p>Your ticket numbers:</p>

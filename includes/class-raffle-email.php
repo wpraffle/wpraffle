@@ -267,42 +267,6 @@ HTML;
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // 3. Instant Win Alert
-    // ─────────────────────────────────────────────────────────────────────
-
-    public static function send_instant_win_alert( $buyer_email, $buyer_name, $raffle, $instant_win ) {
-        $s   = self::get_settings();
-        $col = $s['accent_color'];
-
-        $formatted = str_pad( $instant_win->ticket_number, strlen( (string) $raffle->total_tickets ), '0', STR_PAD_LEFT );
-
-        $body = self::section_heading( '⚡ Instant Win — ' . esc_html( $instant_win->prize_name ) )
-            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, one of your tickets just won an instant prize in <strong>' . esc_html( $raffle->title ) . '</strong>!' )
-            . self::box(
-                '<table width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td style="padding:8px 0;">
-                        <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Winning Ticket</div>
-                        <div style="font-family:monospace;font-size:20px;font-weight:800;color:' . esc_attr( $col ) . ';">#' . esc_html( $formatted ) . '</div>
-                    </td>
-                    <td style="padding:8px 0;text-align:right;">
-                        <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Prize Won</div>
-                        <div style="font-size:18px;font-weight:800;color:#1f2937;">' . esc_html( $instant_win->prize_name ) . '</div>
-                    </td>
-                </tr></table>',
-                '#f0fff4', '#bbf7d0'
-            )
-            . self::muted_p( 'Our team will be in contact to arrange your prize. You are still entered in the main draw — good luck! 🍀' )
-            . self::cta_button( home_url( '/my-account/my-raffles/' ), 'View My Raffles', $col );
-
-        wp_mail(
-            $buyer_email,
-            '⚡ Instant Win! ' . $instant_win->prize_name . ' — ' . $raffle->title,
-            self::wrap( $body, 'You won an instant prize in ' . $raffle->title . '!' ),
-            self::get_headers( $s )
-        );
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
     // 4. Draw Reminder (24h before)
     // ─────────────────────────────────────────────────────────────────────
 
@@ -332,37 +296,6 @@ HTML;
             $buyer_email,
             '⏰ Draw Tomorrow: ' . $raffle->title,
             self::wrap( $body, 'The draw for ' . $raffle->title . ' is in 24 hours — good luck!' ),
-            self::get_headers( $s )
-        );
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // 5. Admin Sold-Out Notification
-    // ─────────────────────────────────────────────────────────────────────
-
-    public static function send_admin_sold_out( $raffle ) {
-        $s        = self::get_settings();
-        $col      = $s['accent_color'];
-        $admin    = get_option( 'admin_email' );
-        $edit_url = admin_url( 'admin.php?page=raffle-list&action=edit&id=' . $raffle->id );
-        $revenue  = wpr_currency_symbol() . number_format( (float) $raffle->sold_tickets * (float) $raffle->ticket_price, 2 );
-
-        $body = self::section_heading( '🎉 Raffle Sold Out: ' . esc_html( $raffle->title ) )
-            . self::muted_p( 'Great news! All tickets for <strong>' . esc_html( $raffle->title ) . '</strong> have been sold. Here\'s a summary:' )
-            . self::box(
-                '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
-                . self::stat_cell( $raffle->total_tickets, 'Total Tickets' )
-                . self::stat_cell( $revenue, 'Gross Revenue' )
-                . self::stat_cell( wpr_price( $raffle->ticket_price ), 'Per Ticket' )
-                . '</tr></table>'
-            )
-            . self::muted_p( 'You can now trigger the draw from the admin panel.' )
-            . self::cta_button( $edit_url, 'Go to Raffle Admin', $col );
-
-        wp_mail(
-            $admin,
-            '🎉 Sold Out: ' . $raffle->title,
-            self::wrap( $body, $raffle->title . ' has sold out. Time to draw the winner!' ),
             self::get_headers( $s )
         );
     }
@@ -449,6 +382,33 @@ HTML;
             $email,
             sprintf( __( 'Your %s consolation coupon', 'wpraffle' ), $discount ),
             self::wrap( $body, 'A thank-you from ' . $raffle->title ),
+            self::get_headers( $s )
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 9. Ticket lookup — secure link email (guest ticket recovery)
+    // Sent when a guest buyer uses the [raffle_lookup] shortcode. Contains a
+    // single-use, time-limited token URL that renders their tickets.
+    // ─────────────────────────────────────────────────────────────────────
+    public static function send_ticket_lookup( $email, $lookup_url ) {
+        $s   = self::get_settings();
+        $col = $s['accent_color'];
+
+        $body = self::section_heading( __( 'Your ticket lookup link', 'wpraffle' ) )
+            . self::muted_p( sprintf(
+                /* translators: %s: site name */
+                __( 'Someone requested a link to view their raffle tickets on <strong>%s</strong> using this email address.', 'wpraffle' ),
+                esc_html( get_bloginfo( 'name' ) )
+            ) )
+            . self::muted_p( __( 'Click the button below to view your entries. The link expires in <strong>30 minutes</strong> and can only be used once.', 'wpraffle' ) )
+            . self::cta_button( $lookup_url, __( 'View My Tickets', 'wpraffle' ), $col )
+            . self::muted_p( __( 'If you did not request this, you can safely ignore this email — your tickets are safe.', 'wpraffle' ) );
+
+        return wp_mail(
+            $email,
+            __( 'Your raffle ticket lookup link', 'wpraffle' ),
+            self::wrap( $body, __( 'Your ticket lookup link', 'wpraffle' ) ),
             self::get_headers( $s )
         );
     }

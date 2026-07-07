@@ -89,6 +89,11 @@ class Raffle_Widget_All_Competitions extends \Elementor\Widget_Base {
         // Enqueue countdown JS
         wp_enqueue_script( 'raffle-shop-countdown', RAFFLE_SYSTEM_URL . 'assets/js/shop-countdown.js', array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
 
+        // Batch instant-win counts for all cards in one query (avoids N+1).
+        $iw_counts = function_exists( 'wpraffle_batch_instant_win_counts' )
+            ? wpraffle_batch_instant_win_counts( wp_list_pluck( $raffles, 'id' ) )
+            : array();
+
         $col_pct = round( 100 / $cols );
         ?>
         <div class="raffle-list-grid" style="display:grid;grid-template-columns:repeat(<?php echo esc_attr( $cols ); ?>,1fr);gap:<?php echo esc_attr( $gap ); ?>px;padding:20px 0;">
@@ -99,6 +104,7 @@ class Raffle_Widget_All_Competitions extends \Elementor\Widget_Base {
                     $product = new stdClass();
                     $product->_fake = true;
                 }
+                $iw_count = isset( $iw_counts[ $r->id ] ) ? $iw_counts[ $r->id ] : null;
                 ?>
                 <div class="raffle-list-item">
                     <?php include RAFFLE_SYSTEM_PATH . 'public/views/raffle-loop-card.php'; ?>

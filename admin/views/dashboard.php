@@ -33,8 +33,8 @@
     <div style="display:flex; flex-wrap:wrap; gap:10px; margin: 15px 0;">
         <span id="kpi-active-raffles" style="background:#f0f6fc; color:#0969da; border:1px solid #d0e7ff; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">Active Raffles: <span>—</span></span>
         <span id="kpi-total-raffles" style="background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">Total Raffles: <span>—</span></span>
-        <span id="kpi-avg-price" style="background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">Average Price: $<span>—</span></span>
-        <span id="kpi-month-trend" style="background:#dafbe1; color:#1a7f37; border:1px solid #acf2bd; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">This Month: $<span>—</span></span>
+        <span id="kpi-avg-price" style="background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">Average Price: <span>—</span></span>
+        <span id="kpi-month-trend" style="background:#dafbe1; color:#1a7f37; border:1px solid #acf2bd; padding: 4px 10px; border-radius:4px; font-weight:500; font-size:12px;">This Month: <span>—</span></span>
     </div>
 
     <div id="poststuff">
