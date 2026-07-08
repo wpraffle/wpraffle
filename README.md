@@ -8,6 +8,11 @@
 
 <h1 align="center">WPRaffle</h1>
 
+
+<p align="center">
+  **AI NOTICE:** AI has written all the documentation, release notes, changelog info.
+</p>
+
 <p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
   Built on WooCommerce with full ticket management, live draws, instant wins, raffle lifecycle, charity fundraising, responsible-gambling controls, and UK compliance features.
