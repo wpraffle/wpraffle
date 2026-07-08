@@ -21,7 +21,7 @@
     <?php if ( empty( $templates ) ) : ?>
         <div class="rs-card" style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:40px 20px;text-align:center;">
             <div style="color:#6b7280;margin-bottom:16px;">
-                <?php echo wpr_get_icon( 'edit', 'wpr-icon--3xl' ); ?>
+                <?php wpr_icon( 'edit', 'wpr-icon--3xl' ); ?>
             </div>
             <h3 style="margin-top:0;"><?php esc_html_e( 'No templates yet', 'wpraffle' ); ?></h3>
             <p style="color:#6b7280;max-width:480px;margin:0 auto 16px;">
@@ -76,7 +76,10 @@
                             <strong><?php echo esc_html( $tpl->name ); ?></strong>
                             <?php if ( $iw_count > 0 ) : ?>
                                 <div style="font-size:11px;color:#6b7280;margin-top:2px;">
-                                    <?php echo esc_html( sprintf( _n( '%d instant win', '%d instant wins', $iw_count, 'wpraffle' ), $iw_count ) ); ?>
+                                    <?php
+                                    /* translators: %d: number of instant wins. */
+                                    echo esc_html( sprintf( _n( '%d instant win', '%d instant wins', $iw_count, 'wpraffle' ), $iw_count ) );
+                                    ?>
                                 </div>
                             <?php endif; ?>
                         </td>
@@ -85,11 +88,11 @@
                         <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $tpl->created_at ) ) ); ?></td>
                         <td style="text-align:right;">
                             <a href="<?php echo esc_url( $use_url ); ?>" class="button button-primary" style="display:inline-flex;align-items:center;gap:4px;">
-                                <?php echo wpr_get_icon( 'plus', 'wpr-icon--xs' ); ?>
+                                <?php wpr_icon( 'plus', 'wpr-icon--xs' ); ?>
                                 <?php esc_html_e( 'Use Template', 'wpraffle' ); ?>
                             </a>
                             <a href="<?php echo esc_url( $delete_url ); ?>" class="button button-link-delete" style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;" onclick="return confirm('<?php echo esc_js( __( 'Delete this template? This cannot be undone.', 'wpraffle' ) ); ?>');">
-                                <?php echo wpr_get_icon( 'x-circle', 'wpr-icon--xs' ); ?>
+                                <?php wpr_icon( 'x-circle', 'wpr-icon--xs' ); ?>
                                 <?php esc_html_e( 'Delete', 'wpraffle' ); ?>
                             </a>
                         </td>

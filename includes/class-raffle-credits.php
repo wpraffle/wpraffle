@@ -25,6 +25,7 @@ class Raffle_Credits {
     const TYPE_ADJUSTMENT  = 'adjustment';
     const TYPE_SPEND       = 'spend';
     const TYPE_PAYOUT      = 'payout';
+    const TYPE_INSTANT_WIN = 'instant_win';
 
     /* ===================================================================
        Read

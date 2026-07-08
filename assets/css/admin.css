@@ -1044,3 +1044,238 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================================================
+   1.2.2 — Inline form validation
+   ========================================================================== */
+.rs-field-error {
+    border-color: var(--rs-danger) !important;
+    box-shadow: 0 0 0 1px var(--rs-danger) !important;
+    outline: 1px solid var(--rs-danger);
+}
+
+.rs-inline-error {
+    color: var(--rs-danger);
+    font-size: 12px;
+    margin: 4px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+}
+
+.rs-form-errors ul {
+    font-size: 13px;
+    color: var(--rs-dark);
+}
+
+/* ==========================================================================
+   1.2.2 — Reusable modal / confirmation dialog
+   ========================================================================== */
+.rs-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100100; /* above WP admin menus (#100100) */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.rs-modal.rs-modal-open {
+    display: flex;
+}
+
+.rs-modal__overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    animation: rs-modal-fade 0.15s ease;
+}
+
+.rs-modal__dialog {
+    position: relative;
+    background: var(--rs-white);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    max-width: 440px;
+    width: 100%;
+    padding: 0;
+    animation: rs-modal-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+@keyframes rs-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes rs-modal-pop {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.rs-modal__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 24px 0;
+}
+
+.rs-modal__icon {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #fef3c7;
+    color: #92400e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rs-modal--danger .rs-modal__icon {
+    background: #fee2e2;
+    color: var(--rs-danger);
+}
+
+.rs-modal--info .rs-modal__icon {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.rs-modal--success .rs-modal__icon {
+    background: #dcfce7;
+    color: var(--rs-success);
+}
+
+.rs-modal__title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--rs-dark);
+    margin: 0;
+}
+
+.rs-modal__body {
+    padding: 12px 24px 20px;
+    color: var(--rs-text);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.rs-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 24px;
+    background: var(--rs-bg);
+    border-top: 1px solid var(--rs-border);
+}
+
+.rs-modal__btn--danger {
+    background: var(--rs-danger) !important;
+    border-color: var(--rs-danger) !important;
+    color: var(--rs-white) !important;
+    text-shadow: none !important;
+}
+
+.rs-modal__btn--danger:hover {
+    background: #b32d2e !important;
+    border-color: #b32d2e !important;
+}
+
+/* ==========================================================================
+   1.2.2 — Structured audit-log rendering
+   ========================================================================== */
+.rs-audit-row-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--rs-primary);
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.rs-audit-row-toggle .dashicons {
+    transition: transform 0.15s ease;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.rs-audit-row-toggle.rs-open .dashicons {
+    transform: rotate(90deg);
+}
+
+.rs-audit-detail-row td {
+    background: var(--rs-bg) !important;
+    padding: 16px 20px !important;
+    border-top: 1px solid var(--rs-border) !important;
+}
+
+dl.rs-audit-detail {
+    margin: 0;
+    display: grid;
+    grid-template-columns: minmax(120px, 200px) 1fr;
+    gap: 6px 16px;
+    font-size: 13px;
+}
+
+dl.rs-audit-detail dt {
+    color: var(--rs-text-muted);
+    font-weight: 600;
+}
+
+dl.rs-audit-detail dd {
+    margin: 0;
+    color: var(--rs-text);
+    word-break: break-word;
+}
+
+dl.rs-audit-detail code,
+.rs-audit-detail-row code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    background: #e5e7eb;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.rs-audit-proof {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.rs-audit-proof code {
+    font-size: 11px;
+    background: #e5e7eb;
+    padding: 3px 8px;
+    border-radius: 3px;
+    word-break: break-all;
+}
+
+.rs-copy-proof {
+    cursor: pointer;
+    border: 1px solid var(--rs-border);
+    background: var(--rs-white);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--rs-text);
+}
+
+.rs-copy-proof:hover {
+    background: var(--rs-bg);
+    border-color: var(--rs-primary);
+    color: var(--rs-primary);
+}
+
+.rs-copy-proof.copied {
+    color: var(--rs-success);
+    border-color: var(--rs-success);
+}

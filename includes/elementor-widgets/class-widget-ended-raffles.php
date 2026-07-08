@@ -7,6 +7,7 @@ class Raffle_Widget_Ended_Raffles extends \Elementor\Widget_Base {
     public function get_title() { return 'Ended Raffles Grid'; }
     public function get_icon() { return 'eicon-posts-grid'; }
     public function get_categories() { return array( 'raffle-system' ); }
+    public function get_keywords() { return array( 'raffle', 'ended', 'finished', 'past', 'results', 'grid' ); }
 
     protected function register_controls() {
 

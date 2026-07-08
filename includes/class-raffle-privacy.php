@@ -82,7 +82,7 @@ class Raffle_Privacy {
         // ── Purchases ──
         $purchases = $wpdb->get_results( $wpdb->prepare(
             "SELECT p.*, r.title as raffle_title
-             FROM {$tables['purchases']} p
+             FROM {$wpdb->prefix}raffle_purchases p
              LEFT JOIN {$wpdb->prefix}raffles r ON r.id = p.raffle_id
              WHERE p.buyer_email = %s
              ORDER BY p.purchase_date DESC
@@ -104,7 +104,7 @@ class Raffle_Privacy {
 
             // Get ticket numbers for this purchase
             $tickets = $wpdb->get_col( $wpdb->prepare(
-                "SELECT ticket_number FROM {$tables['tickets']} WHERE purchase_id = %d ORDER BY ticket_number",
+                "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d ORDER BY ticket_number",
                 $p->id
             ) );
             if ( ! empty( $tickets ) ) {
@@ -122,7 +122,7 @@ class Raffle_Privacy {
         // ── Free Entries ──
         $free = $wpdb->get_results( $wpdb->prepare(
             "SELECT fe.*, r.title as raffle_title
-             FROM {$tables['free_entries']} fe
+             FROM {$wpdb->prefix}raffle_free_entries fe
              LEFT JOIN {$wpdb->prefix}raffles r ON r.id = fe.raffle_id
              WHERE fe.buyer_email = %s
              ORDER BY fe.created_at DESC
@@ -148,7 +148,7 @@ class Raffle_Privacy {
 
         // ── Referrals ──
         $referrals = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$tables['referrals']} WHERE user_email = %s OR referred_email = %s ORDER BY created_at DESC LIMIT 500",
+            "SELECT * FROM {$wpdb->prefix}raffle_referrals WHERE user_email = %s OR referred_email = %s ORDER BY created_at DESC LIMIT 500",
             $email, $email
         ) );
 
@@ -170,7 +170,7 @@ class Raffle_Privacy {
         // ── Instant Wins ──
         $wins = $wpdb->get_results( $wpdb->prepare(
             "SELECT iw.*, r.title as raffle_title
-             FROM {$tables['instant_wins']} iw
+             FROM {$wpdb->prefix}raffle_instant_wins iw
              LEFT JOIN {$wpdb->prefix}raffles r ON r.id = iw.raffle_id
              WHERE iw.winner_email = %s
              ORDER BY iw.created_at DESC LIMIT 500",
@@ -231,14 +231,14 @@ class Raffle_Privacy {
         // ── Anonymize tickets (update buyer_email reference) ──
         $new_email = 'deleted_' . $anon_id . '@anonymous';
         $purchase_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT id FROM {$tables['purchases']} WHERE buyer_email = %s",
+            "SELECT id FROM {$wpdb->prefix}raffle_purchases WHERE buyer_email = %s",
             $new_email
         ) );
 
         if ( ! empty( $purchase_ids ) ) {
             $ids_placeholders = implode( ',', array_fill( 0, count( $purchase_ids ), '%d' ) );
             $wpdb->query( $wpdb->prepare(
-                "UPDATE {$tables['tickets']} SET buyer_email = %s WHERE purchase_id IN ({$ids_placeholders})",
+                "UPDATE {$wpdb->prefix}raffle_tickets SET buyer_email = %s WHERE purchase_id IN ({$ids_placeholders})",
                 array_merge( array( $new_email ), array_map( 'intval', $purchase_ids ) )
             ) );
         }

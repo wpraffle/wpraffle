@@ -32,23 +32,27 @@
         $where   .= ' AND title LIKE %s';
         $params[] = '%' . $wpdb->esc_like( $search ) . '%';
     }
-    if ( in_array( $status_filter, array( 'active', 'draft', 'finished' ), true ) ) {
+    if ( in_array( $status_filter, array( 'active', 'draft', 'finished', 'failed', 'extended' ), true ) ) {
         $where   .= ' AND status = %s';
         $params[] = $status_filter;
+    } elseif ( $status_filter === 'ended' ) {
+        // "Ended" groups finished + failed.
+        $where   .= ' AND status IN ( %s, %s )';
+        $params[] = 'finished';
+        $params[] = 'failed';
     }
 
-    $total_query = "SELECT COUNT(*) FROM {$wpdb->prefix}raffles WHERE {$where}";
     if ( $params ) {
-        $total_query = $wpdb->prepare( $total_query, $params );
+        $total_items = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}raffles WHERE {$where}", $params ) );
+    } else {
+        $total_items = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}raffles WHERE {$where}" );
     }
-    $total_items = (int) $wpdb->get_var( $total_query );
     $total_pages = max( 1, (int) ceil( $total_items / $per_page ) );
     $offset      = ( $paged - 1 ) * $per_page;
 
     // Paged query.
-    $list_query = "SELECT * FROM {$wpdb->prefix}raffles WHERE {$where} ORDER BY created_at DESC LIMIT %d OFFSET %d";
     $list_params = array_merge( $params, array( $per_page, $offset ) );
-    $raffles = $wpdb->get_results( $wpdb->prepare( $list_query, $list_params ) );
+    $raffles = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE {$where} ORDER BY created_at DESC LIMIT %d OFFSET %d", $list_params ) );
 
     // Helper to build a filter-preserving pagination URL.
     $base_url = admin_url( 'admin.php?page=raffle-list' );
@@ -67,7 +71,10 @@
             <option value="" <?php selected( $status_filter, '' ); ?>><?php esc_html_e( 'All statuses', 'wpraffle' ); ?></option>
             <option value="active" <?php selected( $status_filter, 'active' ); ?>><?php esc_html_e( 'Live', 'wpraffle' ); ?></option>
             <option value="draft" <?php selected( $status_filter, 'draft' ); ?>><?php esc_html_e( 'Draft', 'wpraffle' ); ?></option>
-            <option value="finished" <?php selected( $status_filter, 'finished' ); ?>><?php esc_html_e( 'Ended', 'wpraffle' ); ?></option>
+            <option value="ended" <?php selected( $status_filter, 'ended' ); ?>><?php esc_html_e( 'Ended', 'wpraffle' ); ?></option>
+            <option value="finished" <?php selected( $status_filter, 'finished' ); ?>><?php esc_html_e( 'Finished', 'wpraffle' ); ?></option>
+            <option value="failed" <?php selected( $status_filter, 'failed' ); ?>><?php esc_html_e( 'Failed', 'wpraffle' ); ?></option>
+            <option value="extended" <?php selected( $status_filter, 'extended' ); ?>><?php esc_html_e( 'Extended', 'wpraffle' ); ?></option>
         </select>
         <?php submit_button( __( 'Filter', 'wpraffle' ), '', 'filter_action', false ); ?>
         <?php if ( $search !== '' || $status_filter !== '' ) : ?>
@@ -76,7 +83,7 @@
         <span style="margin-left:auto; color:#646970; font-size:13px;">
             <?php
             /* translators: 1: shown count, 2: total count */
-            printf( esc_html__( 'Showing %1$s of %2$s', 'wpraffle' ), number_format_i18n( count( $raffles ) ), number_format_i18n( $total_items ) );
+            printf( esc_html__( 'Showing %1$s of %2$s', 'wpraffle' ), esc_html( number_format_i18n( count( $raffles ) ) ), esc_html( number_format_i18n( $total_items ) ) );
             ?>
         </span>
     </form>
@@ -162,19 +169,30 @@
                             </td>
                             <td>
                                 <?php
-                                $r_state = Raffle_Public::get_raffle_state( $r );
-                                if ( $r_state === 'live' ) {
-                                    $bg_color = '#dcfce7; color:#166534;';
-                                    $lbl = 'Live';
-                                } elseif ( $r_state === 'draft' ) {
-                                    $bg_color = '#fef3c7; color:#92400e;';
-                                    $lbl = 'Draft';
-                                } else {
+                                // 1.3.0 — prefer the explicit stored status (failed/extended)
+                                // over the derived runtime state when present.
+                                $stored = $r->status ?? '';
+                                if ( $stored === 'failed' ) {
                                     $bg_color = '#fee2e2; color:#991b1b;';
-                                    $lbl = 'Ended';
+                                    $lbl = 'Failed';
+                                } elseif ( $stored === 'extended' ) {
+                                    $bg_color = '#dbeafe; color:#1e40af;';
+                                    $lbl = 'Extended';
+                                } else {
+                                    $r_state = Raffle_Public::get_raffle_state( $r );
+                                    if ( $r_state === 'live' ) {
+                                        $bg_color = '#dcfce7; color:#166534;';
+                                        $lbl = 'Live';
+                                    } elseif ( $r_state === 'draft' ) {
+                                        $bg_color = '#fef3c7; color:#92400e;';
+                                        $lbl = 'Draft';
+                                    } else {
+                                        $bg_color = '#fee2e2; color:#991b1b;';
+                                        $lbl = 'Ended';
+                                    }
                                 }
                                 ?>
-                                <span style="background:<?php echo $bg_color; ?>; padding:3px 8px; border-radius:4px; font-weight:600; font-size:11px; display:inline-block; text-transform: uppercase;">
+                                <span style="background:<?php echo esc_attr( $bg_color ); ?>; padding:3px 8px; border-radius:4px; font-weight:600; font-size:11px; display:inline-block; text-transform: uppercase;">
                                     <?php echo esc_html( $lbl ); ?>
                                 </span>
                             </td>
@@ -194,7 +212,11 @@
     ?>
     <div class="tablenav bottom" style="margin-top:10px;">
         <div class="tablenav-pages">
-            <span class="displaying-num"><?php echo esc_html( sprintf( _n( '%s item', '%s items', $total_items, 'wpraffle' ), number_format_i18n( $total_items ) ) ); ?></span>
+            <span class="displaying-num"><?php echo esc_html( sprintf(
+                /* translators: %s: number of items. */
+                _n( '%s item', '%s items', $total_items, 'wpraffle' ),
+                number_format_i18n( $total_items )
+            ) ); ?></span>
             <span class="pagination-links">
                 <?php
                 $first_url = add_query_arg( array_merge( $filter_query_args, array( 'paged' => 1 ) ), $base_url );

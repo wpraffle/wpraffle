@@ -35,12 +35,12 @@ if ( $progress >= 85 ) {
     $r_computed_state = Raffle_Public::get_raffle_state( $raffle );
     if ( $r_computed_state === 'ended' ) : ?>
         <div class="raffle-finished-banner" style="background: var(--wpr-danger-bg); border: 1px solid var(--wpr-danger-border); color: var(--wpr-danger-text); padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
-            <?php echo wpr_get_icon( 'flag', 'wpr-icon--lg' ); ?>
+            <?php wpr_icon( 'flag', 'wpr-icon--lg' ); ?>
             <span>This raffle has ended</span>
         </div>
     <?php elseif ( $r_computed_state === 'draft' ) : ?>
         <div class="raffle-finished-banner" style="background: var(--wpr-warning-bg); border: 1px solid var(--wpr-warning-border); color: var(--wpr-warning-text); padding: 15px 20px; border-radius: 8px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 16px;">
-            <?php echo wpr_get_icon( 'edit', 'wpr-icon--lg' ); ?>
+            <?php wpr_icon( 'edit', 'wpr-icon--lg' ); ?>
             <span>PREVIEW: This raffle is in DRAFT / SCHEDULING mode</span>
         </div>
     <?php endif; ?>
@@ -48,17 +48,17 @@ if ( $progress >= 85 ) {
     <!-- Top Metadata Stats Header -->
     <div class="raffle-stats-header">
         <div class="raffle-stat-box">
-            <?php echo wpr_get_icon( 'ticket', 'wpr-icon--md' ); ?>
+            <?php wpr_icon( 'ticket', 'wpr-icon--md' ); ?>
             <span class="raffle-stat-text">Max <?php echo number_format( $max_tickets ); ?> tickets per user</span>
         </div>
         <div class="raffle-stat-box">
-            <?php echo wpr_get_icon( 'ticket', 'wpr-icon--md' ); ?>
+            <?php wpr_icon( 'ticket', 'wpr-icon--md' ); ?>
             <span class="raffle-stat-text"><?php echo number_format( $raffle->total_tickets ); ?> tickets available</span>
         </div>
         <?php if ( $raffle->draw_date ) : ?>
             <div class="raffle-stat-box">
-                <?php echo wpr_get_icon( 'calendar', 'wpr-icon--md' ); ?>
-                <span class="raffle-stat-text">Live Draw on <?php echo date_i18n( 'jS F @ g:iA', strtotime( $raffle->draw_date ) ); ?></span>
+                <?php wpr_icon( 'calendar', 'wpr-icon--md' ); ?>
+                <span class="raffle-stat-text">Live Draw on <?php echo esc_html( date_i18n( 'jS F @ g:iA', strtotime( $raffle->draw_date ) ) ); ?></span>
             </div>
         <?php endif; ?>
     </div>
@@ -82,7 +82,7 @@ if ( $progress >= 85 ) {
             <!-- Draw Date Banner -->
             <?php if ( $raffle->draw_date ) : ?>
                 <div class="raffle-draw-banner-green">
-                    DRAW <?php echo strtoupper( date_i18n( 'D jS M @ g:i A', strtotime( $raffle->draw_date ) ) ); ?>
+                    DRAW <?php echo esc_html( strtoupper( date_i18n( 'D jS M @ g:i A', strtotime( $raffle->draw_date ) ) ) ); ?>
                 </div>
             <?php endif; ?>
 
@@ -154,7 +154,7 @@ if ( $progress >= 85 ) {
             <!-- Scarcity badges (Phase 2.5) -->
             <?php if ( ! empty( $raffle->enable_viewers_now ) ) : ?>
             <div class="raffle-viewers-now" id="raffle-viewers-now" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>" style="display:none;">
-                <?php echo wpr_get_icon( 'users', 'wpr-icon--sm' ); ?>
+                <?php wpr_icon( 'users', 'wpr-icon--sm' ); ?>
                 <span class="raffle-viewers-count"><?php esc_html_e( 'Several people', 'wpraffle' ); ?></span>
                 <?php esc_html_e( 'viewing now', 'wpraffle' ); ?>
             </div>
@@ -171,7 +171,7 @@ if ( $progress >= 85 ) {
                 </div>
                 <?php if ( ! empty( $raffle->enable_scarcity ) && $remaining <= max( 5, round( $raffle->total_tickets * 0.05 ) ) && $remaining > 0 ) : ?>
                 <div class="raffle-scarcity-tag">
-                    <?php echo wpr_get_icon( 'flame', 'wpr-icon--sm' ); ?>
+                    <?php wpr_icon( 'flame', 'wpr-icon--sm' ); ?>
                     <?php
                     /* translators: %d: remaining tickets */
                     echo esc_html( sprintf( _n( 'Only %d ticket left — selling fast!', 'Only %d tickets left — selling fast!', $remaining, 'wpraffle' ), $remaining ) );
@@ -185,7 +185,7 @@ if ( $progress >= 85 ) {
                  data-total="<?php echo esc_attr( (int) $raffle->total_tickets ); ?>"
                  data-sold="<?php echo esc_attr( (int) $raffle->sold_tickets ); ?>"
                  role="status" aria-live="polite">
-                <?php echo wpr_get_icon( 'star', 'wpr-icon--sm' ); ?>
+                <?php wpr_icon( 'star', 'wpr-icon--sm' ); ?>
                 <span class="raffle-odds-label"><?php esc_html_e( 'Your odds with', 'wpraffle' ); ?>
                     <strong class="raffle-odds-qty">1</strong>
                     <?php esc_html_e( 'ticket:', 'wpraffle' ); ?>
@@ -226,7 +226,7 @@ if ( $progress >= 85 ) {
                         <!-- Ended State Results Card -->
                         <div class="raffle-ended-results-card" style="background: var(--wpr-bg-surface)fff; border: 1px solid var(--wpr-border-color); border-radius: 12px; padding: 25px; margin-top: 15px; box-shadow: 0 4px 6px var(--wpr-bg-overlay); display: flex; flex-direction: column; gap: 20px;">
                             
-                            <h4 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--wpr-text-primary); border-bottom: 1px solid var(--wpr-bg-muted); padding-bottom: 10px;"><?php echo wpr_get_icon( 'trophy', 'wpr-icon--sm' ); ?> COMPETITION RESULTS</h4>
+                            <h4 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--wpr-text-primary); border-bottom: 1px solid var(--wpr-bg-muted); padding-bottom: 10px;"><?php wpr_icon( 'trophy', 'wpr-icon--sm' ); ?> COMPETITION RESULTS</h4>
                             
                             <!-- Stats -->
                             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
@@ -272,7 +272,7 @@ if ( $progress >= 85 ) {
                             <!-- Instant Wins Grid -->
                             <div>
                                 <div style="font-size: 14px; font-weight: 700; color: var(--wpr-text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                                    <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> Claimed Instant Wins
+                                    <?php wpr_icon( 'gift', 'wpr-icon--sm' ); ?> Claimed Instant Wins
                                 </div>
                                 <?php
                                 $instant_wins = $wpdb->get_results( $wpdb->prepare(
@@ -318,7 +318,7 @@ if ( $progress >= 85 ) {
                             <!-- Verified Result -->
                             <?php if ( ! empty( $raffle->verified_result ) ) : ?>
                                 <div style="background: var(--wpr-info-bg); border: 1px solid var(--wpr-info-border); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--wpr-info-text); display: flex; align-items: flex-start; gap: 8px;">
-                                    <span style="flex-shrink: 0;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'Verified' ); ?></span>
+                                    <span style="flex-shrink: 0;"><?php wpr_icon( 'check-circle', 'wpr-icon--sm', 'Verified' ); ?></span>
                                     <span><?php echo esc_html( $raffle->verified_result ); ?></span>
                                 </div>
                             <?php endif; ?>
@@ -377,9 +377,17 @@ if ( $progress >= 85 ) {
                                         <?php if ( ! empty( $bundle['badge'] ) ) : ?>
                                             <span class="raffle-bundle-badge"><?php echo esc_html( $bundle['badge'] ); ?></span>
                                         <?php elseif ( $savings_pct > 0 ) : ?>
-                                            <span class="raffle-bundle-badge"><?php echo esc_html( sprintf( __( 'Save %d%%', 'wpraffle' ), $savings_pct ) ); ?></span>
+                                            <span class="raffle-bundle-badge"><?php echo esc_html( sprintf(
+                                                /* translators: %d: savings percentage. */
+                                                __( 'Save %d%%', 'wpraffle' ),
+                                                $savings_pct
+                                            ) ); ?></span>
                                         <?php endif; ?>
-                                        <span class="raffle-bundle-qty"><?php echo esc_html( $bundle['label'] ? $bundle['label'] : sprintf( _n( '%d Ticket', '%d Tickets', $b_qty, 'wpraffle' ), $b_qty ) ); ?></span>
+                                        <span class="raffle-bundle-qty"><?php echo esc_html( $bundle['label'] ? $bundle['label'] : sprintf(
+                                            /* translators: %d: number of tickets in the bundle. */
+                                            _n( '%d Ticket', '%d Tickets', $b_qty, 'wpraffle' ),
+                                            $b_qty
+                                        ) ); ?></span>
                                         <?php if ( $b_price > 0 ) : ?>
                                             <span class="raffle-bundle-price"><?php echo esc_html( wpr_price( $b_price ) ); ?></span>
                                         <?php endif; ?>
@@ -395,7 +403,7 @@ if ( $progress >= 85 ) {
                             <div class="raffle-number-grid-header">
                                 <span class="raffle-qty-heading"><?php esc_html_e( 'PICK YOUR NUMBERS', 'wpraffle' ); ?></span>
                                 <button type="button" class="rs-btn rs-btn-secondary raffle-number-grid-luckydip">
-                                    <?php echo wpr_get_icon( 'zap', 'wpr-icon--sm' ); ?>
+                                    <?php wpr_icon( 'zap', 'wpr-icon--sm' ); ?>
                                     <?php esc_html_e( 'Lucky Dip', 'wpraffle' ); ?>
                                 </button>
                             </div>
@@ -460,7 +468,7 @@ if ( $progress >= 85 ) {
                             </div>
                             
                             <div class="raffle-countdown-expired-inline" id="raffle-countdown-expired-inline" style="display:none; margin-top:20px;">
-                                <?php echo wpr_get_icon( 'zap', 'wpr-icon--md wpr-icon--primary', 'Draw' ); ?> It's draw time!
+                                <?php wpr_icon( 'zap', 'wpr-icon--md wpr-icon--primary', 'Draw' ); ?> It's draw time!
                                 <?php if ( $live_draw_url ) : ?>
                                     <div style="margin-top: 15px;">
                                         <iframe width="100%" height="315" src="<?php echo esc_url( $live_draw_url ); ?>" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
@@ -500,9 +508,9 @@ if ( $progress >= 85 ) {
 
         <!-- Trust -->
         <div class="raffle-trust" style="margin-top: 25px;">
-            <div class="raffle-trust-item"><?php echo wpr_get_icon( 'shield', 'wpr-icon--sm' ); ?> Secure purchase</div>
-            <div class="raffle-trust-item"><?php echo wpr_get_icon( 'mail', 'wpr-icon--sm' ); ?> Instant confirmation</div>
-            <div class="raffle-trust-item"><?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm' ); ?> Random numbers</div>
+            <div class="raffle-trust-item"><?php wpr_icon( 'shield', 'wpr-icon--sm' ); ?> Secure purchase</div>
+            <div class="raffle-trust-item"><?php wpr_icon( 'mail', 'wpr-icon--sm' ); ?> Instant confirmation</div>
+            <div class="raffle-trust-item"><?php wpr_icon( 'refresh', 'wpr-icon--sm' ); ?> Random numbers</div>
         </div>
 
     <?php endif; ?>
@@ -529,7 +537,7 @@ if ( $progress >= 85 ) {
     ?>
         <div class="raffle-instant-wins-section" style="margin-top: 30px; background: var(--wpr-bg-surface); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px var(--wpr-bg-overlay); border: 1px solid var(--wpr-bg-muted); text-align: left;">
             <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 700; color: var(--wpr-text-primary); display: flex; align-items: center; gap: 8px;">
-                <?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?> Instant Win Prizes
+                <?php wpr_icon( 'gift', 'wpr-icon--sm' ); ?> Instant Win Prizes
             </h3>
             <p style="margin-top: 0; margin-bottom: 20px; color: var(--wpr-text-muted); font-size: 14px;">Purchase tickets for this raffle and win any of these prizes instantly if your ticket number matches!</p>
             
@@ -613,23 +621,27 @@ if ( $progress >= 85 ) {
             $share_ref_code = Raffle_Referrals::get_referral_code( $raffle->id, wp_get_current_user()->user_email );
         }
         $share_url = $share_ref_code ? add_query_arg( 'ref', $share_ref_code, $share_url_base ) : $share_url_base;
-        $share_text = rawurlencode( sprintf( __( 'I\'ve entered %s — enter now!', 'wpraffle' ), $raffle->title ) );
+        $share_text = rawurlencode( sprintf(
+            /* translators: %s: raffle title. */
+            __( 'I\'ve entered %s — enter now!', 'wpraffle' ),
+            $raffle->title
+        ) );
         $share_url_enc = rawurlencode( $share_url );
     ?>
     <div class="raffle-share-section" style="margin-top: 30px;">
-        <span class="raffle-qty-heading"><?php echo wpr_get_icon( 'share', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'SHARE & EARN BONUS ENTRIES', 'wpraffle' ); ?></span>
+        <span class="raffle-qty-heading"><?php wpr_icon( 'share', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'SHARE & EARN BONUS ENTRIES', 'wpraffle' ); ?></span>
         <div class="raffle-share-buttons">
             <a class="raffle-share-btn raffle-share-whatsapp" href="https://wa.me/?text=<?php echo esc_attr( $share_text . '%20' . $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on WhatsApp', 'wpraffle' ); ?>">
-                <?php echo wpr_get_icon( 'share-whatsapp', 'wpr-icon--md' ); ?>
+                <?php wpr_icon( 'share-whatsapp', 'wpr-icon--md' ); ?>
             </a>
             <a class="raffle-share-btn raffle-share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on Facebook', 'wpraffle' ); ?>">
-                <?php echo wpr_get_icon( 'share-facebook', 'wpr-icon--md' ); ?>
+                <?php wpr_icon( 'share-facebook', 'wpr-icon--md' ); ?>
             </a>
             <a class="raffle-share-btn raffle-share-x" href="https://twitter.com/intent/tweet?text=<?php echo esc_attr( $share_text ); ?>&url=<?php echo esc_attr( $share_url_enc ); ?>" target="_blank" rel="noopener" aria-label="<?php esc_attr_e( 'Share on X', 'wpraffle' ); ?>">
-                <?php echo wpr_get_icon( 'share-x', 'wpr-icon--md' ); ?>
+                <?php wpr_icon( 'share-x', 'wpr-icon--md' ); ?>
             </a>
             <button type="button" class="raffle-share-btn raffle-share-copy" data-share-url="<?php echo esc_attr( $share_url ); ?>" aria-label="<?php esc_attr_e( 'Copy link', 'wpraffle' ); ?>">
-                <?php echo wpr_get_icon( 'link', 'wpr-icon--md' ); ?>
+                <?php wpr_icon( 'link', 'wpr-icon--md' ); ?>
             </button>
         </div>
         <?php if ( $share_ref_code ) : ?>
@@ -637,7 +649,7 @@ if ( $progress >= 85 ) {
         <?php else : ?>
             <p class="raffle-share-ref-info"><?php esc_html_e( 'Log in to get your personal referral link and earn bonus entries.', 'wpraffle' ); ?></p>
         <?php endif; ?>
-        <span class="raffle-share-copy-confirm" style="display:none;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Link copied!', 'wpraffle' ); ?></span>
+        <span class="raffle-share-copy-confirm" style="display:none;"><?php wpr_icon( 'check-circle', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Link copied!', 'wpraffle' ); ?></span>
     </div>
     <?php endif; ?>
 
@@ -648,7 +660,7 @@ if ( $progress >= 85 ) {
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Prize Description</span>
-                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
+                <?php wpr_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
                 <div style="color: var(--wpr-text-secondary); line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $raffle->description ) ); ?></div>
@@ -660,7 +672,7 @@ if ( $progress >= 85 ) {
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Raffle Rules</span>
-                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
+                <?php wpr_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
                 <div style="color: var(--wpr-text-secondary); line-height: 1.7; font-size: 15px;"><?php echo wp_kses_post( nl2br( $rules_text ) ); ?></div>
@@ -672,7 +684,7 @@ if ( $progress >= 85 ) {
         <div class="rs-accordion-item">
             <button type="button" class="rs-accordion-header" aria-expanded="false">
                 <span>Frequently Asked Questions</span>
-                <?php echo wpr_get_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
+                <?php wpr_icon( 'chevron-down', 'rs-accordion-chevron' ); ?>
             </button>
             <div class="rs-accordion-body">
                 <div class="rs-faq-list">
@@ -768,9 +780,9 @@ if ( $progress >= 85 ) {
                     </div>
                     <button type="submit" class="raffle-submit-btn">
                         <?php if ( Raffle_WooCommerce::is_available() ) : ?>
-                            <span class="raffle-submit-btn-icon"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--xs' ); ?></span> Proceed to Payment
+                            <span class="raffle-submit-btn-icon"><?php wpr_icon( 'ticket', 'wpr-icon--xs' ); ?></span> Proceed to Payment
                         <?php else : ?>
-                            <span class="raffle-submit-btn-icon"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--xs' ); ?></span> Confirm Purchase
+                            <span class="raffle-submit-btn-icon"><?php wpr_icon( 'ticket', 'wpr-icon--xs' ); ?></span> Confirm Purchase
                         <?php endif; ?>
                     </button>
                 </form>
@@ -778,7 +790,7 @@ if ( $progress >= 85 ) {
                     <div class="raffle-spinner"></div>
                     <span>Processing your purchase...</span>
                 </div>
-                <div class="raffle-modal-secure"><?php echo wpr_get_icon( 'shield', 'wpr-icon--xs' ); ?> Your data is protected</div>
+                <div class="raffle-modal-secure"><?php wpr_icon( 'shield', 'wpr-icon--xs' ); ?> Your data is protected</div>
             </div>
         </div>
 
@@ -786,12 +798,12 @@ if ( $progress >= 85 ) {
         <div class="raffle-confirmation" id="raffle-confirmation" style="display:none;">
             <div class="raffle-confirmation-content">
                 <button type="button" class="raffle-modal-close" aria-label="Close">&times;</button>
-                <div class="raffle-confirmation-icon"><?php echo wpr_get_icon( 'star', 'wpr-icon--2xl wpr-icon--primary', 'Success' ); ?></div>
+                <div class="raffle-confirmation-icon"><?php wpr_icon( 'star', 'wpr-icon--2xl wpr-icon--primary', 'Success' ); ?></div>
                 <h3>Purchase Successful!</h3>
                 <p>Your ticket numbers:</p>
                 <div class="raffle-ticket-numbers" id="raffle-ticket-numbers"></div>
                 <p class="raffle-confirmation-email">
-                    <?php echo wpr_get_icon( 'mail', 'wpr-icon--xs' ); ?> A confirmation email with your numbers has been sent.
+                    <?php wpr_icon( 'mail', 'wpr-icon--xs' ); ?> A confirmation email with your numbers has been sent.
                 </p>
             </div>
         </div>

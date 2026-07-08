@@ -9,15 +9,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Get current tab
 $tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general';
 $tabs = array(
-    'general'  => 'General',
-    'pages'    => 'Pages',
-    'email'    => 'Email',
-    'legal'    => 'Legal',
-    'sync'     => 'Sync',
-    'sync'     => 'Sync',
-    'advanced' => 'Advanced',
-    'styling'  => 'Styling',
-    'updates'  => 'Updates',
+    'general'       => 'General',
+    'pages'         => 'Pages',
+    'email'         => 'Email',
+    'legal'         => 'Legal',
+    'sync'          => 'Sync',
+    'compatibility' => 'Compatibility',
+    'advanced'      => 'Advanced',
+    'styling'       => 'Styling',
+    'updates'       => 'Updates',
 );
 
 // Load settings
@@ -68,6 +68,18 @@ $legal = wp_parse_args( get_option( 'wpraffle_legal_settings', array() ), array(
 $pages = get_option( 'wpraffle_pages', array() );
 $saved = isset( $_GET['saved'] ) && $_GET['saved'] === '1';
 
+// Settings validation error. The ecode is a stable identifier emitted by
+// Raffle_Admin_Validation::validate_settings(); map it to a human message.
+$has_error = isset( $_GET['error'] ) && $_GET['error'] === '1';
+$error_code = isset( $_GET['ecode'] ) ? sanitize_text_field( wp_unslash( $_GET['ecode'] ) ) : '';
+$error_messages = array(
+    'email_from'  => __( 'The "From" email address is required and must be a valid email.', 'wpraffle' ),
+    'email_name'  => __( 'The "From" name is required.', 'wpraffle' ),
+    'retention'   => __( 'Audit log retention must be at least 30 days.', 'wpraffle' ),
+    'rate_limit'  => __( 'Rate limit must be at least 1 per minute.', 'wpraffle' ),
+);
+$error_message = $has_error && isset( $error_messages[ $error_code ] ) ? $error_messages[ $error_code ] : __( 'Some settings were invalid and were not saved.', 'wpraffle' );
+
 // Styling settings
 $styling = wp_parse_args( get_option( 'wpraffle_styling_settings', array() ), array(
     'preset'                 => 'diamonds',
@@ -106,6 +118,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
     <?php endif; ?>
     <?php if ( $test_failed ) : ?>
         <div class="notice notice-error is-dismissible"><p><strong>Test email failed to send.</strong> Check your WordPress mail configuration (e.g. install WP Mail SMTP).</p></div>
+    <?php endif; ?>
+    <?php if ( $has_error ) : ?>
+        <div class="notice notice-error is-dismissible"><p><strong><?php esc_html_e( 'Settings not saved:', 'wpraffle' ); ?></strong> <?php echo esc_html( $error_message ); ?></p></div>
     <?php endif; ?>
 
     <!-- Tab Navigation -->
@@ -242,9 +257,9 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                         <td>
                             <?php
                             wp_dropdown_pages( array(
-                                'name'             => 'wpraffle_page_' . $key,
-                                'id'               => 'wpraffle_page_' . $key,
-                                'selected'         => $page_id ?: 0,
+                                'name'             => 'wpraffle_page_' . esc_attr( $key ),
+                                'id'               => 'wpraffle_page_' . esc_attr( $key ),
+                                'selected'         => absint( $page_id ),
                                 'show_option_none' => '— Select a page —',
                                 'option_none_value' => '0',
                                 'post_status'      => 'publish,private,draft',
@@ -605,6 +620,13 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                                 <p class="description">Shown in the footer of every email.</p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">Ticket PDF Attachment</th>
+                            <td>
+                                <label><input type="checkbox" name="attach_ticket_pdf" value="1" <?php checked( ! empty( $email['attach_ticket_pdf'] ) ); ?>> Attach a PDF copy of the ticket(s) to the purchase-confirmation email</label>
+                                <p class="description">Generates a branded single-ticket PDF and attaches it to the confirmation email.</p>
+                            </td>
+                        </tr>
                     </table>
                 </div>
 
@@ -616,25 +638,53 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
         <div style="position:sticky;top:32px;">
             <div class="rs-card" style="margin-bottom:20px;">
                 <h2 class="rs-card-title">Automated Email Types</h2>
-                <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;">
+                <p class="description" style="margin:0 0 16px;">Toggle any automated email off. All are enabled by default.</p>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <?php wp_nonce_field( 'wpraffle_save_email_toggles', 'wpraffle_email_toggles_nonce' ); ?>
+                    <input type="hidden" name="action" value="wpraffle_save_email_toggles">
                     <?php
                     $email_types = array(
-                        array( 'icon' => 'ticket', 'label' => 'Purchase Confirmation',  'desc' => 'Sent immediately after a successful order.' ),
-                        array( 'icon' => 'trophy', 'label' => 'Winner Notification',    'desc' => 'Sent to the winner when the draw is conducted.' ),
-                        array( 'icon' => 'zap',    'label' => 'Instant Win Alert',      'desc' => 'Sent when a ticket wins an instant prize.' ),
-                        array( 'icon' => 'clock',  'label' => 'Draw Reminder',          'desc' => 'Sent to all entrants 24h before the draw date.' ),
-                        array( 'icon' => 'alert',  'label' => 'Sold Out Admin Alert',   'desc' => 'Sent to admin when all tickets are sold.' ),
+                        'purchase'        => array( 'icon' => 'ticket', 'label' => 'Purchase Confirmation',  'desc' => 'Sent immediately after a successful order.' ),
+                        'winner'          => array( 'icon' => 'trophy', 'label' => 'Winner Notification',    'desc' => 'Sent to the winner when the draw is conducted.' ),
+                        'instant_win'     => array( 'icon' => 'zap',    'label' => 'Instant Win Alert',      'desc' => 'Sent when a ticket wins an instant prize.' ),
+                        'no_luck'         => array( 'icon' => 'clock',  'label' => 'Better Luck Next Time',  'desc' => 'Sent to non-winners after the draw.' ),
+                        'draw_reminder'   => array( 'icon' => 'clock',  'label' => 'Draw Reminder',          'desc' => 'Sent to all entrants 24h before the draw date.' ),
+                        'raffle_started'  => array( 'icon' => 'play',   'label' => 'Raffle Started',         'desc' => 'Sent when a raffle goes live.' ),
+                        'raffle_extended' => array( 'icon' => 'clock',  'label' => 'Raffle Extended',        'desc' => 'Sent to entrants when a draw date is pushed out.' ),
+                        'failed_participant' => array( 'icon' => 'alert', 'label' => 'Failed Raffle (entrant)', 'desc' => 'Sent to entrants when a raffle fails its minimum threshold.' ),
+                        'admin_sale'      => array( 'icon' => 'money',  'label' => 'Admin: New Sale',        'desc' => 'Sent to admins on each ticket sale.' ),
+                        'admin_draw'      => array( 'icon' => 'check',  'label' => 'Admin: Draw Complete',   'desc' => 'Sent to admins when a draw completes.' ),
+                        'admin_winner'    => array( 'icon' => 'trophy', 'label' => 'Admin: Winner Selected', 'desc' => 'Sent to admins when a winner is chosen.' ),
+                        'admin_failed'    => array( 'icon' => 'alert',  'label' => 'Admin: Raffle Failed',   'desc' => 'Sent to admins when a raffle fails.' ),
+                        'admin_started'   => array( 'icon' => 'play',   'label' => 'Admin: Raffle Started',  'desc' => 'Sent to admins when a raffle goes live.' ),
+                        'admin_relisted'  => array( 'icon' => 'refresh', 'label' => 'Admin: Raffle Relisted', 'desc' => 'Sent to admins when a raffle is relisted.' ),
                     );
-                    foreach ( $email_types as $et ) : ?>
-                        <li style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #f3f4f6;">
+                    $enabled_map = isset( $email['enabled'] ) && is_array( $email['enabled'] ) ? $email['enabled'] : array();
+                    foreach ( $email_types as $id => $et ) :
+                        $is_off = ! empty( $enabled_map[ $id ]['off'] );
+                        ?>
+                        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:#f9fafb;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;cursor:pointer;">
+                            <input type="checkbox" name="email_toggles[<?php echo esc_attr( $id ); ?>]" value="1" <?php checked( ! $is_off ); ?> style="margin-top:2px;">
                             <svg class="wpr-icon wpr-icon--md" style="color:#6c5ce7;flex-shrink:0;margin-top:2px;"><use href="#wpr-<?php echo esc_attr( $et['icon'] ); ?>"></use></svg>
                             <div>
                                 <div style="font-weight:700;font-size:13px;color:#1f2937;"><?php echo esc_html( $et['label'] ); ?></div>
                                 <div style="font-size:12px;color:#6b7280;margin-top:2px;"><?php echo esc_html( $et['desc'] ); ?></div>
                             </div>
-                        </li>
+                        </label>
                     <?php endforeach; ?>
-                </ul>
+                    <?php submit_button( 'Save Email Toggles', 'primary', '', false, array( 'style' => 'width:100%;margin-top:8px;' ) ); ?>
+                </form>
+            </div>
+
+            <div class="rs-card" style="margin-bottom:20px;">
+                <h2 class="rs-card-title">Admin Notification Recipients</h2>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <?php wp_nonce_field( 'wpraffle_save_admin_recipients', 'wpraffle_admin_recip_nonce' ); ?>
+                    <input type="hidden" name="action" value="wpraffle_save_admin_recipients">
+                    <p class="description" style="margin:0 0 8px;">Admin notifications go to the site admin email plus any addresses here (comma-separated).</p>
+                    <input type="text" name="admin_notify_emails" value="<?php echo esc_attr( isset( $email['admin_notify_emails'] ) ? $email['admin_notify_emails'] : '' ); ?>" class="regular-text" style="width:100%;margin-bottom:12px;">
+                    <?php submit_button( 'Save Recipients', 'secondary', '', false, array( 'style' => 'width:100%;' ) ); ?>
+                </form>
             </div>
 
             <div class="rs-card">
@@ -922,7 +972,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
 
         <div style="margin-bottom:16px;">
             <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wpraffle-settings&tab=sync&sync_all=1' ), 'wpraffle_sync_all', 'sync_nonce' ) ); ?>" class="button button-primary" onclick="return confirm('This will update all WooCommerce products to match their raffle data. Continue?');">
-                <?php echo wpr_get_icon( 'refresh', 'wpr-icon--sm', 'Sync' ); ?> Sync All
+                <?php wpr_icon( 'refresh', 'wpr-icon--sm', 'Sync' ); ?> Sync All
             </a>
         </div>
     </div>
@@ -996,7 +1046,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                                 <?php endforeach; ?>
                             </ul>
                         <?php else : ?>
-                            <span style="color:#16a34a;font-weight:600;"><?php echo wpr_get_icon( 'check-circle', 'wpr-icon--sm', 'OK' ); ?> OK</span>
+                            <span style="color:#16a34a;font-weight:600;"><?php wpr_icon( 'check-circle', 'wpr-icon--sm', 'OK' ); ?> OK</span>
                         <?php endif; ?>
                     </td>
                     <td>
@@ -1014,6 +1064,35 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                 <?php endforeach; ?>
             </tbody>
         </table>
+    </div>
+
+    <!-- 1.3.0 — Manual wallet/credit payout re-sync (global, separate form) -->
+    <div class="rs-card" style="margin-top:20px;">
+        <h2 class="rs-card-title">Wallet / Credit Payout Sync</h2>
+        <?php
+        $global_pending = class_exists( 'Raffle_Wallet_Adapter' ) ? Raffle_Wallet_Adapter::count_pending_payouts() : 0;
+        if ( isset( $_GET['wallet_sync_done'] ) ) {
+            $sync_msg = isset( $_GET['wallet_sync_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['wallet_sync_msg'] ) ) : __( 'Wallet payouts re-synced.', 'wpraffle' );
+            echo '<div class="notice notice-success is-dismissible" style="margin:0 0 12px;"><p>' . esc_html( $sync_msg ) . '</p></div>';
+        }
+        ?>
+        <p class="description" style="margin:0 0 12px;">
+            Re-processes any instant-win credit prizes across <strong>all raffles</strong> that were awarded but didn't reach the wallet (e.g. the wallet plugin was inactive at win time, or a transient failure left the payout pending). Idempotent and safe to run repeatedly — already-credited payouts are skipped.
+        </p>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <?php wp_nonce_field( 'wpraffle_sync_wallet', 'wpraffle_sync_wallet_nonce' ); ?>
+            <input type="hidden" name="action" value="wpraffle_sync_wallet_payouts">
+            <input type="hidden" name="raffle_id" value="0">
+            <?php if ( $global_pending > 0 ) : ?>
+                <span style="font-size:13px; color:#b45309; font-weight:600;"><?php
+                /* translators: %d: number of pending payouts. */
+                echo esc_html( sprintf( _n( '%d pending payout awaiting sync across all raffles.', '%d pending payouts awaiting sync across all raffles.', $global_pending, 'wpraffle' ), $global_pending ) );
+                ?></span>
+            <?php else : ?>
+                <span style="font-size:13px; color:#6b7280;">No pending payouts.</span>
+            <?php endif; ?>
+            <?php submit_button( __( 'Sync All Wallet Payouts', 'wpraffle' ), $global_pending > 0 ? 'primary' : 'secondary', '', false ); ?>
+        </form>
     </div>
 
 
@@ -1093,7 +1172,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                     <tr>
                         <td><?php echo esc_html( $label ); ?></td>
                         <td>Hourly</td>
-                        <td><?php echo $timestamp ? esc_html( date( 'Y-m-d H:i:s', $timestamp ) ) : '<em>Not scheduled</em>'; ?></td>
+                        <td><?php echo $timestamp ? esc_html( gmdate( 'Y-m-d H:i:s', $timestamp ) ) : '<em>Not scheduled</em>'; ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -1261,6 +1340,28 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
         <?php wp_nonce_field( 'wpraffle_save_settings', 'wpraffle_settings_nonce' ); ?>
         <input type="hidden" name="action" value="wpraffle_save_styling_settings">
 
+        <!-- Premium Theme Banner -->
+        <div class="rs-card" style="margin-bottom:24px;overflow:hidden;border:none;border-radius:12px;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%);color:#fff;position:relative;">
+            <div style="padding:28px 32px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+                <div style="flex:0 0 auto;color:#fbbf24;">
+                    <svg class="wpr-icon" style="width:42px;height:42px;color:#fbbf24;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block;"><use href="#wpr-image"></use></svg>
+                </div>
+                <div style="flex:1;min-width:240px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;background:rgba(255,255,255,0.15);padding:3px 10px;border-radius:20px;">Official Theme</span>
+                        <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;background:rgba(251,191,36,0.2);color:#fbbf24;padding:3px 10px;border-radius:20px;">Free &amp; Open Source</span>
+                    </div>
+                    <h2 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#fff;line-height:1.2;">WPRaffle Theme</h2>
+                    <p style="margin:0 0 16px;font-size:14px;color:#c7d2fe;line-height:1.5;max-width:540px;">
+                        A purpose-built WordPress theme designed exclusively for WPRaffle. A polished premium aesthetic with a full Elementor Theme Builder template set, Bootstrap 5.3, animated countdown timers, winner carousels, and deep plugin integration out of the box.
+                    </p>
+                    <a href="https://github.com/wpraffle/wpraffle-theme" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:#fff;color:#4c1d95;font-weight:700;font-size:14px;padding:10px 22px;border-radius:8px;text-decoration:none;">
+                        <?php wpr_icon( 'arrow-right', 'wpr-icon--sm' ); ?> View Theme on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Theme Integration -->
         <div class="rs-card" style="margin-bottom:20px;">
             <h2 class="rs-card-title">Theme Integration</h2>
@@ -1384,7 +1485,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
         <p class="description" style="margin-bottom:16px;">Theme developers can override any of these CSS variables in their theme's <code>style.css</code> or via Elementor custom CSS. These take precedence over the preset above.</p>
 
         <details open style="margin-bottom:16px;">
-            <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0;">View all <?php echo array_sum(array_map('count', $var_docs)); ?> CSS variables</summary>
+            <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0;">View all <?php echo esc_html( array_sum( array_map( 'count', $var_docs ) ) ); ?> CSS variables</summary>
             <div style="padding:12px 0;">
                 <?php foreach ( $var_docs as $category => $vars ) : ?>
                     <h4 style="font-size:12px;text-transform:uppercase;color:#6b7280;margin:16px 0 8px;letter-spacing:0.5px;"><?php echo esc_html( $category ); ?></h4>
@@ -1491,6 +1592,42 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
 
         <?php submit_button( 'Save Update Settings', 'primary' ); ?>
     </form>
+
+    <?php elseif ( $tab === 'compatibility' ) : ?>
+    <div class="rs-card" style="margin-bottom:20px;">
+        <h2 class="rs-card-title">Plugin &amp; Theme Compatibility</h2>
+        <p class="description" style="margin:0 0 16px;">
+            WPRaffle integrates automatically with the plugins and themes below when they are installed and active. There is nothing to configure — this tab reports which integrations are currently live. Inactive integrations impose zero overhead.
+        </p>
+        <table class="form-table" style="margin:0;">
+            <?php
+            $compat_report = array();
+            if ( class_exists( 'Raffle_Compat_Loader' ) ) {
+                $compat_report = Raffle_Compat_Loader::status_report();
+            }
+            if ( empty( $compat_report ) ) :
+                ?>
+                <tr><td><em>No compatibility adapters loaded.</em></td></tr>
+            <?php else : foreach ( $compat_report as $adapter ) : ?>
+                <tr>
+                    <th scope="row"><?php echo esc_html( $adapter['name'] ); ?></th>
+                    <td>
+                        <?php if ( ! empty( $adapter['active'] ) ) : ?>
+                            <span style="display:inline-flex;align-items:center;gap:6px;color:#00b894;font-weight:700;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:#00b894;display:inline-block;"></span>
+                                Active
+                            </span>
+                        <?php else : ?>
+                            <span style="display:inline-flex;align-items:center;gap:6px;color:#6b7280;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:#d1d5db;display:inline-block;"></span>
+                                Not detected
+                            </span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; endif; ?>
+        </table>
+    </div>
 
     <?php endif; ?>
 

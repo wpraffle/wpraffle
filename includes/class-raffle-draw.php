@@ -75,6 +75,18 @@ class Raffle_Draw {
             return new WP_Error( 'no_tickets', 'No tickets have been sold yet.' );
         }
 
+        // 1.3.0 — Min-tickets / min-unique-users gate. If the operator set a
+        // minimum subscription threshold and the raffle hasn't reached it, the
+        // draw FAILS rather than running: status flips to 'failed', the
+        // fail_reason is recorded, and the wpraffle_raffle_failed action fires
+        // (which the auto-refund listener in the lifecycle class handles).
+        if ( class_exists( 'Raffle_Lifecycle' ) ) {
+            $fail = Raffle_Lifecycle::evaluate_min_thresholds( $raffle );
+            if ( is_wp_error( $fail ) ) {
+                return $fail; // Already failed + fired its action inside the helper.
+            }
+        }
+
         // TRANSACTION: lock + atomic draw to prevent concurrent draws
         $wpdb->query( 'START TRANSACTION' );
 

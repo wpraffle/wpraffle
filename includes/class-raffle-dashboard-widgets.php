@@ -57,7 +57,7 @@ class Raffle_Dashboard_Widgets {
         wp_enqueue_style( 'raffle-dashboard-widgets' );
         wp_add_inline_style( 'raffle-dashboard-widgets', $this->get_widget_css() );
 
-        wp_register_script( 'raffle-dashboard-widgets', false, array( 'jquery' ), false, true );
+        wp_register_script( 'raffle-dashboard-widgets', false, array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
         wp_enqueue_script( 'raffle-dashboard-widgets' );
         wp_add_inline_script( 'raffle-dashboard-widgets', 'var raffleDW = { curSym: "' . esc_js( wpr_currency_symbol() ) . '" };' );
         wp_add_inline_script( 'raffle-dashboard-widgets', $this->get_widget_js() );

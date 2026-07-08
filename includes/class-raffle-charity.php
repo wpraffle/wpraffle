@@ -233,7 +233,7 @@ class Raffle_Charity {
         if ( $allocations_exists ) {
             $committed = (float) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COALESCE(SUM(a.allocated_amount), 0)
-                 FROM {$allocations_table} a
+                 FROM {$wpdb->prefix}raffle_charity_allocations a
                  WHERE a.charity_id IN ($placeholders)",
                 ...$ids
             ) );
@@ -246,7 +246,7 @@ class Raffle_Charity {
             $active_raffles = $wpdb->get_results( $wpdb->prepare(
                 "SELECT r.sold_tickets, r.ticket_price, r.charity_percent
                  FROM {$wpdb->prefix}raffles r
-                 LEFT JOIN {$allocations_table} a ON r.id = a.raffle_id
+                 LEFT JOIN {$wpdb->prefix}raffle_charity_allocations a ON r.id = a.raffle_id
                  WHERE r.charity_id IN ($placeholders)
                    AND r.charity_mode != 'none'
                    AND r.status != 'draft'
@@ -452,7 +452,7 @@ class Raffle_Charity {
                     <?php if ( ! empty( $c->logo_url ) ) : ?>
                         <img src="<?php echo esc_url( $c->logo_url ); ?>" alt="<?php echo esc_attr( $c->name ); ?>" style="width:64px;height:64px;object-fit:contain;margin:0 auto 12px;border-radius:8px;">
                     <?php else : ?>
-                        <div style="margin:0 auto 12px;color:var(--wpr-accent,#6c5ce7);"><?php echo wpr_get_icon( 'gift', 'wpr-icon--2xl' ); ?></div>
+                        <div style="margin:0 auto 12px;color:var(--wpr-accent,#6c5ce7);"><?php wpr_icon( 'gift', 'wpr-icon--2xl' ); ?></div>
                     <?php endif; ?>
                     <h3 style="margin:0 0 4px;font-size:16px;color:var(--wpr-text-primary,#1f2937);"><?php echo esc_html( $c->name ); ?></h3>
                     <?php if ( ! empty( $c->registration_number ) ) : ?>
@@ -466,7 +466,7 @@ class Raffle_Charity {
                         <div class="raffle-charity-total-amount" data-raw="<?php echo esc_attr( $total ); ?>" style="font-size:18px;font-weight:800;color:var(--wpr-accent-text-dark,#065f46);"><?php echo esc_html( wpr_price( $total, 0 ) ); ?></div>
                     </div>
                     <?php if ( ! empty( $c->website ) ) : ?>
-                        <a href="<?php echo esc_url( $c->website ); ?>" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:12px;color:var(--wpr-accent,#059669);font-weight:600;"><?php echo wpr_get_icon( 'arrow-right', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Visit website', 'wpraffle' ); ?></a>
+                        <a href="<?php echo esc_url( $c->website ); ?>" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:12px;color:var(--wpr-accent,#059669);font-weight:600;"><?php wpr_icon( 'arrow-right', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Visit website', 'wpraffle' ); ?></a>
                     <?php endif; ?>
                 </div>
             <?php endforeach; ?>
@@ -482,12 +482,10 @@ class Raffle_Charity {
     public static function ajax_get_charity_totals() {
         check_ajax_referer( 'raffle_charity_totals', 'nonce' );
 
-        $ids_param = isset( $_POST['charity_ids'] ) ? wp_unslash( $_POST['charity_ids'] ) : '';
+        $ids_param = isset( $_POST['charity_ids'] ) ? wp_unslash( $_POST['charity_ids'] ) : array();
         $ids = array();
         if ( is_array( $ids_param ) ) {
-            foreach ( $ids_param as $i ) {
-                $ids[] = absint( $i );
-            }
+            $ids = array_map( 'absint', $ids_param );
         } elseif ( is_string( $ids_param ) && $ids_param !== '' ) {
             foreach ( explode( ',', $ids_param ) as $i ) {
                 $ids[] = absint( $i );
@@ -618,7 +616,7 @@ class Raffle_Charity {
         $missing = $wpdb->get_col(
             "SELECT r.id
              FROM {$wpdb->prefix}raffles r
-             LEFT JOIN {$allocations_table} a ON r.id = a.raffle_id
+             LEFT JOIN {$wpdb->prefix}raffle_charity_allocations a ON r.id = a.raffle_id
              WHERE r.charity_id IS NOT NULL
                AND r.charity_mode != 'none'
                AND r.status = 'finished'

@@ -6,6 +6,7 @@ class Raffle_Widget_All_Competitions extends \Elementor\Widget_Base {
     public function get_title() { return 'All Competitions'; }
     public function get_icon() { return 'eicon-posts-grid'; }
     public function get_categories() { return array( 'raffle-system' ); }
+    public function get_keywords() { return array( 'raffle', 'competitions', 'grid', 'shop', 'list' ); }
 
     protected function register_controls() {
         $this->start_controls_section( 'content', array( 'label' => 'Content' ) );

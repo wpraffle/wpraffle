@@ -19,6 +19,16 @@ class Raffle_WooCommerce {
         add_action( 'woocommerce_order_status_completed', array( $this, 'on_payment_complete' ) );
         add_action( 'woocommerce_order_status_processing', array( $this, 'on_payment_complete' ) );
 
+        // Revert allocated tickets + instant-win prizes when an order is
+        // cancelled / refunded / failed. Previously there was no reversion
+        // path: allocated tickets and won prizes persisted even after the
+        // sale was undone. (Prereq A, 1.3.0.)
+        add_action( 'woocommerce_order_status_cancelled', array( $this, 'on_order_cancelled' ) );
+        add_action( 'woocommerce_order_status_failed', array( $this, 'on_order_failed' ) );
+        add_action( 'woocommerce_order_fully_refunded', array( $this, 'on_order_refunded' ) );
+        add_action( 'woocommerce_order_partially_refunded', array( $this, 'on_order_refunded' ) );
+        add_action( 'woocommerce_order_status_refunded', array( $this, 'on_order_refunded' ) );
+
         // Custom thank-you page content for raffle orders
         add_action( 'woocommerce_thankyou', array( $this, 'thankyou_raffle_tickets' ) );
 
@@ -107,6 +117,7 @@ class Raffle_WooCommerce {
         $raffle_tabs = array(
             ''                   => 'Tickets',
             'wins'               => 'Wins',
+            'my-coupons'         => 'My Coupons',
             'responsible-gambling' => 'Responsible Gambling',
             'data-privacy'       => 'Data & Privacy',
         );
@@ -116,13 +127,16 @@ class Raffle_WooCommerce {
         foreach ( $raffle_tabs as $key => $label ) {
             $active = ( $sub === $key ) ? 'border-bottom:3px solid var(--wpr-accent);color:var(--wpr-accent);font-weight:700;' : 'color:var(--wpr-text-muted);';
             $url = $key === '' ? $base_url : add_query_arg( 'sub', $key, $base_url );
-            echo '<a href="' . esc_url( $url ) . '" style="padding:10px 16px;text-decoration:none;font-size:14px;' . $active . 'margin-bottom:-2px;">' . esc_html( $label ) . '</a>';
+            echo '<a href="' . esc_url( $url ) . '" style="padding:10px 16px;text-decoration:none;font-size:14px;' . esc_attr( $active ) . 'margin-bottom:-2px;">' . esc_html( $label ) . '</a>';
         }
         echo '</div>';
 
         switch ( $sub ) {
             case 'wins':
                 include RAFFLE_SYSTEM_PATH . 'public/views/account/wins.php';
+                break;
+            case 'my-coupons':
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/my-coupons.php';
                 break;
             case 'responsible-gambling':
                 include RAFFLE_SYSTEM_PATH . 'public/views/account/responsible-gambling.php';
@@ -508,6 +522,7 @@ class Raffle_WooCommerce {
     }
 
     public function add_order_item_meta( $item, $cart_item_key, $values, $order ) {
+        // WooCommerce validates the checkout nonce before this hook fires.
         if ( isset( $values['raffle_id'] ) ) {
             $item->add_meta_data( '_raffle_id', $values['raffle_id'] );
 
@@ -711,6 +726,29 @@ class Raffle_WooCommerce {
 
             $wpdb->query( 'COMMIT' );
 
+            // Assign the actual prize artefacts (coupons / gift products /
+            // credit) for any wins, now that the transaction is committed.
+            // Done after COMMIT because prize assignment may create a coupon,
+            // add a gift line item, or write to the credits ledger — none of
+            // which should be inside the ticket-allocation transaction.
+            if ( ! empty( $instant_wins ) && class_exists( 'Raffle_Instant_Win_Prize_Types' ) ) {
+                $rg_user = (int) $order->get_user_id();
+                Raffle_Instant_Wins::assign_winning_prizes( $instant_wins, $order, array(
+                    'user_id' => $rg_user,
+                    'name'    => $buyer_name,
+                    'email'   => $buyer_email,
+                ) );
+                // Standalone instant-win email (1.3.0) — separate from the
+                // purchase confirmation, if enabled.
+                if ( class_exists( 'Raffle_Email' ) ) {
+                    $raffle_for_email = isset( $raffle ) ? $raffle : null;
+                    if ( ! $raffle_for_email ) {
+                        $raffle_for_email = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d", $raffle_id ) );
+                    }
+                    Raffle_Email::send_instant_win( $buyer_email, $buyer_name, $raffle_for_email, $instant_wins );
+                }
+            }
+
             // Virality: if a referral code was captured in the wpraffle_ref
             // cookie (set by the ?ref= query param), attribute the bonus to
             // the referrer now that this buyer has a genuine paid purchase.
@@ -734,6 +772,15 @@ class Raffle_WooCommerce {
             // Audit log for WC purchase
             if ( class_exists( 'Raffle_Audit' ) ) {
                 Raffle_Audit::log( $raffle_id, 'purchase', "WooCommerce purchase: {$quantity} ticket(s) by {$buyer_email} ({$buyer_name}). Order #{$order_id}, Purchase #{$purchase_id}.", '' );
+            }
+
+            // 1.3.0 — Admin sale notification (gated by per-email toggle).
+            if ( class_exists( 'Raffle_Email' ) ) {
+                $raffle_for_admin = isset( $raffle ) ? $raffle : null;
+                if ( ! $raffle_for_admin ) {
+                    $raffle_for_admin = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d", $raffle_id ) );
+                }
+                Raffle_Email::send_admin_sale( $raffle_for_admin, $buyer_name, $quantity );
             }
 
             $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d", $raffle_id ) );
@@ -768,6 +815,131 @@ class Raffle_WooCommerce {
         }
     }
 
+    /* ===================================================================
+       Order reversion (cancel / refund / fail) — Prereq A, 1.3.0
+       =================================================================== */
+
+    /**
+     * Revert allocated tickets and instant-win prizes when an order leaves the
+     * paid state. Idempotent: guarded by the _raffle_tickets_generated flag so
+     * it only runs for orders that actually had tickets allocated, and a
+     * _raffle_tickets_reverted flag so a repeated status change is a no-op.
+     *
+     * @param int      $order_id
+     * @param WC_Order $order    Optional preloaded order.
+     */
+    public function revert_order_items( $order_id, $order = null ) {
+        if ( ! $order ) {
+            $order = wc_get_order( $order_id );
+        }
+        if ( ! $order ) {
+            return;
+        }
+
+        // Only orders that have raffle items AND were already processed.
+        if ( $order->get_meta( '_has_raffle_items' ) !== 'yes' ) {
+            return;
+        }
+        if ( $order->get_meta( '_raffle_tickets_generated' ) !== 'yes' ) {
+            return;
+        }
+        // Idempotency: don't revert twice.
+        if ( $order->get_meta( '_raffle_tickets_reverted' ) === 'yes' ) {
+            return;
+        }
+
+        global $wpdb;
+        $table_purchases = $wpdb->prefix . 'raffle_purchases';
+        $table_tickets   = $wpdb->prefix . 'raffle_tickets';
+        $table_raffles   = $wpdb->prefix . 'raffles';
+
+        // Reverse instant-win prizes attached to this order first (deletes
+        // generated coupons, removes gift line items, reverses credits).
+        if ( class_exists( 'Raffle_Instant_Wins' ) ) {
+            Raffle_Instant_Wins::reverse_for_order( $order_id );
+        }
+
+        // Find every purchase row created for this order and revert each one.
+        $purchases = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, raffle_id, quantity FROM {$table_purchases} WHERE wc_order_id = %d",
+            $order_id
+        ) );
+
+        foreach ( $purchases as $purchase ) {
+            $qty         = (int) $purchase->quantity;
+            $raffle_id   = (int) $purchase->raffle_id;
+            $purchase_id = (int) $purchase->id;
+
+            $wpdb->query( 'START TRANSACTION' );
+
+            // Lock the raffle row so sold_tickets decrement is atomic.
+            $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT sold_tickets FROM {$table_raffles} WHERE id = %d FOR UPDATE", $raffle_id ) );
+            if ( ! $raffle ) {
+                $wpdb->query( 'ROLLBACK' );
+                continue;
+            }
+
+            // Delete the allocated tickets for this purchase.
+            $wpdb->delete( $table_tickets, array( 'purchase_id' => $purchase_id ), array( '%d' ) );
+
+            // Decrement sold_tickets, clamped at 0, and reopen the raffle if it
+            // had been auto-closed by the sellout path.
+            $new_sold = max( 0, (int) $raffle->sold_tickets - $qty );
+            $wpdb->update(
+                $table_raffles,
+                array(
+                    'sold_tickets' => $new_sold,
+                    'status'       => 'active', // reopening; safe since draws set 'finished' explicitly.
+                ),
+                array( 'id' => $raffle_id ),
+                array( '%d', '%s' ),
+                array( '%d' )
+            );
+
+            // Delete the purchase row.
+            $wpdb->delete( $table_purchases, array( 'id' => $purchase_id ), array( '%d' ) );
+
+            $wpdb->query( 'COMMIT' );
+
+            if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {
+                wpraffle_flush_raffle_cache( $raffle_id );
+            }
+            if ( class_exists( 'Raffle_Audit' ) ) {
+                Raffle_Audit::log( $raffle_id, 'tickets_reverted', array(
+                    'order'      => $order_id,
+                    'purchase'   => $purchase_id,
+                    'quantity'   => $qty,
+                ), 'system' );
+            }
+        }
+
+        // Mark reverted so a subsequent status transition (e.g. refund after
+        // cancel) is a no-op, and clear the generated flag so a re-payment
+        // could re-issue tickets idempotently.
+        $order->update_meta_data( '_raffle_tickets_reverted', 'yes' );
+        $order->update_meta_data( '_raffle_tickets_generated', 'no' );
+        $order->save();
+
+        $order->add_order_note( __( 'Raffle tickets and instant-win prizes reverted for this order.', 'wpraffle' ) );
+    }
+
+    /**
+     * Hooks for the individual status transitions — each delegates to the
+     * shared revert_order_items() method.
+     */
+    public function on_order_cancelled( $order_id ) {
+        $this->revert_order_items( $order_id );
+    }
+
+    public function on_order_failed( $order_id ) {
+        $this->revert_order_items( $order_id );
+    }
+
+    public function on_order_refunded( $order_id, $refund_id = null ) {
+        $this->revert_order_items( $order_id );
+    }
+
+
     /**
      * Show raffle tickets on the WooCommerce thank-you page.
      *
@@ -790,7 +962,7 @@ class Raffle_WooCommerce {
             ?>
             <section class="raffle-thankyou">
                 <div class="raffle-thankyou__header">
-                    <span class="raffle-thankyou__icon"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--2xl wpr-icon--white', 'Tickets' ); ?></span>
+                    <span class="raffle-thankyou__icon"><?php wpr_icon( 'ticket', 'wpr-icon--2xl wpr-icon--white', 'Tickets' ); ?></span>
                     <h2 class="raffle-thankyou__title"><?php esc_html_e( 'Your Raffle Tickets', 'wpraffle' ); ?></h2>
                     <p class="raffle-thankyou__count">
                         <?php
@@ -825,6 +997,7 @@ class Raffle_WooCommerce {
                     if ( ! $has_wins_html ) {
                         $wins_html .= '<div class="raffle-thankyou__wins">';
                         $wins_html .= '<div class="raffle-thankyou__wins-header">';
+                        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wpr_get_icon returns internally-escaped SVG; appended to a buffer echoed with a phpcs:ignore below.
                         $wins_html .= wpr_get_icon( 'gift', 'wpr-icon--md', 'Instant Win' );
                         $wins_html .= '<h3>' . esc_html__( 'You found instant wins!', 'wpraffle' ) . '</h3>';
                         $wins_html .= '</div><ul class="raffle-thankyou__wins-list">';
@@ -839,13 +1012,13 @@ class Raffle_WooCommerce {
                 }
                 if ( $has_wins_html ) {
                     $wins_html .= '</ul></div>';
-                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — built from escaped fragments above.
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped fragments above.
                     echo $wins_html;
                 }
                 ?>
 
                 <p class="raffle-thankyou__footer">
-                    <?php echo wpr_get_icon( 'mail', 'wpr-icon--xs' ); ?>
+                    <?php wpr_icon( 'mail', 'wpr-icon--xs' ); ?>
                     <?php esc_html_e( 'A confirmation email with your numbers has also been sent.', 'wpraffle' ); ?>
                 </p>
             </section>
@@ -856,7 +1029,7 @@ class Raffle_WooCommerce {
             if ( in_array( $status, array( 'pending', 'on-hold' ), true ) ) {
                 ?>
                 <section class="raffle-thankyou raffle-thankyou--pending">
-                    <span class="raffle-thankyou__pending-icon"><?php echo wpr_get_icon( 'clock', 'wpr-icon--lg', 'Processing' ); ?></span>
+                    <span class="raffle-thankyou__pending-icon"><?php wpr_icon( 'clock', 'wpr-icon--lg', 'Processing' ); ?></span>
                     <h2 class="raffle-thankyou__pending-title"><?php esc_html_e( 'Payment processing', 'wpraffle' ); ?></h2>
                     <p class="raffle-thankyou__pending-text"><?php esc_html_e( 'Your payment is being processed. You will receive your ticket numbers by email once it is confirmed.', 'wpraffle' ); ?></p>
                 </section>
@@ -1161,6 +1334,10 @@ class Raffle_WooCommerce {
      */
     public function validate_checkout_quantities() {
         if ( ! self::is_available() ) {
+            return;
+        }
+        // WooCommerce validates its own checkout nonce before this hook fires.
+        if ( ! isset( $_POST['woocommerce-process-checkout-nonce'] ) && ! isset( $_POST['_wpnonce'] ) ) {
             return;
         }
 
@@ -1681,6 +1858,10 @@ class Raffle_WooCommerce {
             return;
         }
         if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+            return;
+        }
+        // WooCommerce validates its own product-save nonce (woocommerce_save_products).
+        if ( ! isset( $_POST['woocommerce_meta_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['woocommerce_meta_nonce'] ) ), 'woocommerce_save_data' ) ) {
             return;
         }
 

@@ -16,6 +16,16 @@ class Raffle_Setup {
         self::migration_v10_charity_tables_backstop();
         self::migration_v10_charity_backfill();
         self::migration_v11_performance_indexes();
+        self::migration_v12_instant_win_engine();
+        self::migration_v13_raffle_lifecycle();
+        self::migration_v14_qa_and_ticket_numbering();
+        self::migration_v15_featured_winners();
+        // Flag-independent backstops: dbDelta silently no-op'd on some installs
+        // during v6, leaving raffle_payouts / raffle_credits missing even
+        // though raffle_system_db_migrated_v6 was set. These run on every
+        // admin_init and create the tables if absent, mirroring the v10 charity
+        // backstop. CRITICAL: wallet payouts + the credits ledger depend on them.
+        self::migration_v6_payouts_credits_backstop();
     }
 
     private static function migration_v6_tables() {
@@ -130,6 +140,82 @@ class Raffle_Setup {
         }
     }
 
+    /**
+     * v6 backstop — payouts + credits tables.
+     *
+     * dbDelta silently no-op'd on some installs during the original v6 run
+     * (formatting quirks are a known dbDelta footgun), leaving
+     * {prefix}raffle_payouts and {prefix}raffle_credits missing even though
+     * raffle_system_db_migrated_v6 was set to 1. Without these tables every
+     * wallet payout and credits-ledger write fails silently — instant-win
+     * credit prizes never reach the wallet and the sync finds nothing to
+     * recover. This backstop mirrors the v10 charity backstop: it runs on
+     * every admin_init regardless of any flag, checks SHOW TABLES, and creates
+     * the missing tables with dbDelta (which is safe to re-run).
+     */
+    private static function migration_v6_payouts_credits_backstop() {
+        global $wpdb;
+        $charset = $wpdb->get_charset_collate();
+
+        $missing = false;
+        foreach ( array( 'raffle_payouts', 'raffle_credits' ) as $tbl ) {
+            $found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . $tbl ) );
+            if ( $found !== $wpdb->prefix . $tbl ) {
+                $missing = true;
+                break;
+            }
+        }
+
+        if ( ! $missing ) {
+            return; // Both tables exist — nothing to do.
+        }
+
+        // dbDelta is fussy about formatting: lowercase types, two spaces
+        // between column name and type, KEY (not INDEX).
+        $sql = "CREATE TABLE {$wpdb->prefix}raffle_credits (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NOT NULL,
+  raffle_id bigint(20) unsigned DEFAULT NULL,
+  amount decimal(10,2) NOT NULL,
+  balance_after decimal(10,2) NOT NULL,
+  type varchar(20) NOT NULL,
+  reason varchar(255) DEFAULT '',
+  reference varchar(100) DEFAULT '',
+  created_by bigint(20) unsigned DEFAULT NULL,
+  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY  (id),
+  KEY user_id (user_id),
+  KEY type (type),
+  KEY raffle_id (raffle_id)
+) $charset;
+
+CREATE TABLE {$wpdb->prefix}raffle_payouts (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  raffle_id bigint(20) unsigned NOT NULL,
+  ticket_id bigint(20) unsigned NOT NULL,
+  user_id bigint(20) unsigned DEFAULT NULL,
+  user_email varchar(255) NOT NULL,
+  payout_type varchar(20) NOT NULL,
+  amount decimal(10,2) NOT NULL DEFAULT 0,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  idempotency_key varchar(100) NOT NULL,
+  provider varchar(50) DEFAULT '',
+  provider_txn_id varchar(100) DEFAULT '',
+  fairness_proof varchar(255) DEFAULT '',
+  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  credited_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY idempotency_key (idempotency_key),
+  KEY raffle_id (raffle_id),
+  KEY ticket_id (ticket_id),
+  KEY user_email (user_email),
+  KEY status (status)
+) $charset;";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta( $sql );
+    }
+
     private static function migration_v7_raffle_charity_cols() {
         if ( get_option( 'raffle_system_db_migrated_v7' ) ) {
             return;
@@ -147,6 +233,7 @@ class Raffle_Setup {
         foreach ( $cols as $col => $sql ) {
             $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
             if ( empty( $exists ) ) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals, cannot use placeholders.
                 $wpdb->query( $sql );
             }
         }
@@ -230,6 +317,7 @@ class Raffle_Setup {
         foreach ( $cols as $col => $sql ) {
             $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
             if ( empty( $exists ) ) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals, cannot use placeholders.
                 $wpdb->query( $sql );
             }
         }
@@ -647,5 +735,212 @@ CREATE TABLE {$wpdb->prefix}raffle_charity_allocations (
         }
 
         update_option( 'raffle_system_db_migrated_v11', 1 );
+    }
+
+    /**
+     * v12 — Instant-win engine overhaul.
+     *
+     * Adds prize_type / prize_config / prize_group_id / image_id / won_at to
+     * raffle_instant_wins so a ticket-number slot can deliver a coupon, gift
+     * product, store credit, or custom prize (previously only a free-text
+     * prize_name). Also introduces the raffle_instant_win_groups table for
+     * grouping prizes with a shared image/config. Existing rows backfill to
+     * prize_type='physical' so the legacy prize_name keeps working unchanged.
+     */
+    private static function migration_v12_instant_win_engine() {
+        if ( get_option( 'raffle_system_db_migrated_v12' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $instant = $wpdb->prefix . 'raffle_instant_wins';
+
+        $cols = array(
+            'prize_type'    => "ALTER TABLE {$instant} ADD COLUMN prize_type varchar(20) NOT NULL DEFAULT 'physical'",
+            'prize_config'  => "ALTER TABLE {$instant} ADD COLUMN prize_config longtext",
+            'prize_group_id' => "ALTER TABLE {$instant} ADD COLUMN prize_group_id bigint(20) UNSIGNED DEFAULT NULL",
+            'image_id'      => "ALTER TABLE {$instant} ADD COLUMN image_id bigint(20) UNSIGNED DEFAULT NULL",
+            'won_at'        => "ALTER TABLE {$instant} ADD COLUMN won_at datetime DEFAULT NULL",
+        );
+
+        foreach ( $cols as $col => $sql ) {
+            $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$instant} LIKE %s", $col ) );
+            if ( empty( $exists ) ) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL built from hardcoded literals.
+                $wpdb->query( $sql );
+            }
+        }
+
+        $idx = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM {$instant} WHERE Key_name = %s", 'prize_group_id' ) );
+        if ( empty( $idx ) ) {
+            $wpdb->query( "ALTER TABLE {$instant} ADD KEY prize_group_id (prize_group_id)" );
+        }
+
+        // Prize groups table.
+        $charset = $wpdb->get_charset_collate();
+        $groups  = $wpdb->prefix . 'raffle_instant_win_groups';
+        $exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $groups ) ) === $groups;
+        if ( ! $exists ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL with interpolated table name + charset only.
+            $wpdb->query( "CREATE TABLE {$groups} (
+                id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                raffle_id bigint(20) UNSIGNED NOT NULL,
+                name varchar(255) NOT NULL,
+                image_id bigint(20) UNSIGNED DEFAULT NULL,
+                display_config longtext,
+                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                KEY raffle_id (raffle_id)
+            ) {$charset};" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v12', 1 );
+    }
+
+    /**
+     * v13 — Raffle lifecycle (min-tickets fail, extend, relist).
+     *
+     * Adds min_tickets / min_unique_users / fail_reason / extended_from to
+     * raffles so an undersubscribed draw can "fail" (and auto-refund) rather
+     * than silently draw, and introduces a raffle_relists history table.
+     */
+    private static function migration_v13_raffle_lifecycle() {
+        if ( get_option( 'raffle_system_db_migrated_v13' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $raffles = $wpdb->prefix . 'raffles';
+
+        $cols = array(
+            'min_tickets'         => "ALTER TABLE {$raffles} ADD COLUMN min_tickets int(11) NOT NULL DEFAULT 0",
+            'min_unique_users'    => "ALTER TABLE {$raffles} ADD COLUMN min_unique_users int(11) NOT NULL DEFAULT 0",
+            'fail_reason'         => "ALTER TABLE {$raffles} ADD COLUMN fail_reason varchar(20) NOT NULL DEFAULT ''",
+            'extended_from'       => "ALTER TABLE {$raffles} ADD COLUMN extended_from datetime DEFAULT NULL",
+            'auto_refund_on_fail' => "ALTER TABLE {$raffles} ADD COLUMN auto_refund_on_fail tinyint(1) NOT NULL DEFAULT 0",
+            'relist_config'       => "ALTER TABLE {$raffles} ADD COLUMN relist_config longtext",
+        );
+
+        foreach ( $cols as $col => $sql ) {
+            $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$raffles} LIKE %s", $col ) );
+            if ( empty( $exists ) ) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL built from hardcoded literals.
+                $wpdb->query( $sql );
+            }
+        }
+
+        // Composite index for the lifecycle cron's WHERE status IN (...)
+        // AND draw_date <= now scan.
+        $idx = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM {$raffles} WHERE Key_name = %s", 'status_draw' ) );
+        if ( empty( $idx ) ) {
+            $wpdb->query( "ALTER TABLE {$raffles} ADD KEY status_draw (status, draw_date)" );
+        }
+
+        // Relist history table.
+        $relists = $wpdb->prefix . 'raffle_relists';
+        $exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $relists ) ) === $relists;
+        if ( ! $exists ) {
+            $cs = $wpdb->get_charset_collate();
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL with interpolated table name + charset only.
+            $wpdb->query( "CREATE TABLE {$relists} (
+                id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                raffle_id bigint(20) UNSIGNED NOT NULL,
+                snapshot longtext,
+                ticket_count int(11) NOT NULL DEFAULT 0,
+                status varchar(20) NOT NULL DEFAULT '',
+                relisted_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                KEY raffle_id (raffle_id)
+            ) {$cs};" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v13', 1 );
+    }
+
+    /**
+     * v14 — Question/answer limits + ticket numbering modes.
+     *
+     * Adds qa_time_limit / qa_max_attempts for compliance-grade skill
+     * questions, and ticket_numbering / ticket_prefix / ticket_suffix /
+     * ticket_start_number so tickets can be sequential/shuffled/prefixed
+     * rather than only random.
+     */
+    private static function migration_v14_qa_and_ticket_numbering() {
+        if ( get_option( 'raffle_system_db_migrated_v14' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $raffles = $wpdb->prefix . 'raffles';
+
+        $cols = array(
+            'qa_time_limit'      => "ALTER TABLE {$raffles} ADD COLUMN qa_time_limit int(11) NOT NULL DEFAULT 0",
+            'qa_max_attempts'    => "ALTER TABLE {$raffles} ADD COLUMN qa_max_attempts int(11) NOT NULL DEFAULT 0",
+            'ticket_numbering'   => "ALTER TABLE {$raffles} ADD COLUMN ticket_numbering varchar(20) NOT NULL DEFAULT 'random'",
+            'ticket_prefix'      => "ALTER TABLE {$raffles} ADD COLUMN ticket_prefix varchar(20) NOT NULL DEFAULT ''",
+            'ticket_suffix'      => "ALTER TABLE {$raffles} ADD COLUMN ticket_suffix varchar(20) NOT NULL DEFAULT ''",
+            'ticket_start_number' => "ALTER TABLE {$raffles} ADD COLUMN ticket_start_number int(11) NOT NULL DEFAULT 1",
+        );
+
+        foreach ( $cols as $col => $sql ) {
+            $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$raffles} LIKE %s", $col ) );
+            if ( empty( $exists ) ) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL built from hardcoded literals.
+                $wpdb->query( $sql );
+            }
+        }
+
+        // Per-raffle sequence cursor for sequential/shuffled numbering.
+        $seq     = $wpdb->prefix . 'raffle_ticket_sequences';
+        $exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $seq ) ) === $seq;
+        if ( ! $exists ) {
+            $cs = $wpdb->get_charset_collate();
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL with interpolated table name + charset only.
+            $wpdb->query( "CREATE TABLE {$seq} (
+                raffle_id bigint(20) UNSIGNED NOT NULL,
+                next_seq int(11) NOT NULL DEFAULT 1,
+                PRIMARY KEY  (raffle_id)
+            ) {$cs};" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v14', 1 );
+    }
+
+    /**
+     * v15 — Featured winners table.
+     *
+     * Stores featured-winner data (a flag, the winner's photo attachment ID,
+     * an optional testimonial/quote) for finished raffles. One featured-winner
+     * row per raffle. Queryable for a future "Featured Winners" carousel.
+     */
+    private static function migration_v15_featured_winners() {
+        if ( get_option( 'raffle_system_db_migrated_v15' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $charset = $wpdb->get_charset_collate();
+        $table   = $wpdb->prefix . 'raffle_featured_winners';
+        $exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
+
+        if ( ! $exists ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL with interpolated table name + charset only.
+            $wpdb->query( "CREATE TABLE {$table} (
+                id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                raffle_id bigint(20) UNSIGNED NOT NULL,
+                winner_name varchar(255) NOT NULL DEFAULT '',
+                winner_email varchar(255) NOT NULL DEFAULT '',
+                winner_photo_id bigint(20) UNSIGNED DEFAULT NULL,
+                is_featured tinyint(1) NOT NULL DEFAULT 0,
+                testimonial text,
+                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                UNIQUE KEY raffle_id (raffle_id),
+                KEY is_featured (is_featured)
+            ) {$charset};" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v15', 1 );
     }
 }

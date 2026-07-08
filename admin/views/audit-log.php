@@ -9,6 +9,7 @@ if ( isset( $_GET['export_csv'] ) && $_GET['export_csv'] === '1' ) {
     Raffle_Audit::export_csv( array(
         'raffle_id'   => isset( $_GET['raffle_id'] ) ? absint( $_GET['raffle_id'] ) : 0,
         'action_type' => isset( $_GET['action_type'] ) ? sanitize_text_field( wp_unslash( $_GET['action_type'] ) ) : '',
+        'user_id'     => isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0,
         'date_from'   => isset( $_GET['date_from'] ) ? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) : '',
         'date_to'     => isset( $_GET['date_to'] ) ? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) : '',
     ) );
@@ -17,6 +18,7 @@ if ( isset( $_GET['export_csv'] ) && $_GET['export_csv'] === '1' ) {
 // Filters
 $filter_raffle   = isset( $_GET['raffle_id'] ) ? absint( $_GET['raffle_id'] ) : 0;
 $filter_action   = isset( $_GET['action_type'] ) ? sanitize_text_field( wp_unslash( $_GET['action_type'] ) ) : '';
+$filter_user     = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0;
 $filter_from     = isset( $_GET['date_from'] ) ? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) : '';
 $filter_to       = isset( $_GET['date_to'] ) ? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) : '';
 $current_page    = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
@@ -25,6 +27,7 @@ $per_page        = 50;
 $args = array(
     'raffle_id'   => $filter_raffle,
     'action_type' => $filter_action,
+    'user_id'     => $filter_user,
     'date_from'   => $filter_from,
     'date_to'     => $filter_to,
     'limit'       => $per_page,
@@ -35,6 +38,7 @@ $logs       = Raffle_Audit::get_logs( $args );
 $total      = Raffle_Audit::get_total_count( $args );
 $total_pages = ceil( $total / $per_page );
 $action_types = Raffle_Audit::get_action_types();
+$actors       = Raffle_Audit::get_actors();
 
 // Raffles for filter dropdown
 global $wpdb;
@@ -94,6 +98,15 @@ $action_text_colors = array(
                 <?php endforeach; ?>
             </select>
 
+            <select name="user_id" style="min-width:180px;">
+                <option value="0">All Users</option>
+                <?php foreach ( $actors as $actor ) : ?>
+                    <option value="<?php echo esc_attr( $actor->user_id ); ?>" <?php selected( $filter_user, $actor->user_id ); ?>>
+                        <?php echo esc_html( $actor->display_name ?: 'User #' . $actor->user_id ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
             <input type="date" name="date_from" value="<?php echo esc_attr( $filter_from ); ?>" placeholder="From date" style="min-width:140px;">
             <input type="date" name="date_to" value="<?php echo esc_attr( $filter_to ); ?>" placeholder="To date" style="min-width:140px;">
 
@@ -126,19 +139,20 @@ $action_text_colors = array(
     <table class="wp-list-table widefat fixed striped posts">
         <thead>
             <tr>
+                <th style="width:40px;"></th>
                 <th style="width:60px;">ID</th>
                 <th style="width:160px;">Date/Time</th>
                 <th>Raffle</th>
                 <th style="width:140px;">Action</th>
                 <th style="width:130px;">User</th>
                 <th>Details</th>
-                <th style="width:200px;">Fairness Proof</th>
+                <th style="width:180px;">Fairness Proof</th>
             </tr>
         </thead>
         <tbody>
             <?php if ( empty( $logs ) ) : ?>
                 <tr>
-                    <td colspan="7" style="text-align:center;padding:30px;color:#6b7280;">
+                    <td colspan="8" style="text-align:center;padding:30px;color:#6b7280;">
                         <span class="dashicons dashicons-shield" style="font-size:30px;width:30px;height:30px;display:block;margin:0 auto 10px;"></span>
                         No audit log entries found. Entries will appear here automatically when purchases, draws, or admin actions occur.
                     </td>
@@ -147,8 +161,16 @@ $action_text_colors = array(
                 <?php foreach ( $logs as $log ) :
                     $bg = $action_colors[ $log->action_type ] ?? '#f3f4f6';
                     $tc = $action_text_colors[ $log->action_type ] ?? '#374151';
+                    $has_expandable = ( $log->details && strlen( $log->details ) > 60 ) || $log->fairness_proof;
                 ?>
                     <tr>
+                        <td>
+                            <?php if ( $has_expandable ) : ?>
+                                <span class="rs-audit-row-toggle" tabindex="0" role="button" aria-expanded="false">
+                                    <span class="dashicons dashicons-arrow-right"></span>
+                                </span>
+                            <?php endif; ?>
+                        </td>
                         <td><strong>#<?php echo esc_html( $log->id ); ?></strong></td>
                         <td style="font-size:12px;color:#6b7280;">
                             <?php echo esc_html( date_i18n( 'd M Y H:i:s', strtotime( $log->created_at ) ) ); ?>
@@ -180,27 +202,36 @@ $action_text_colors = array(
                             }
                             ?>
                         </td>
-                        <td style="font-size:13px;max-width:350px;">
-                            <?php
-                            // Try to parse JSON details
-                            $decoded = json_decode( $log->details, true );
-                            if ( is_array( $decoded ) ) {
-                                echo '<code style="font-size:11px;background:#f3f4f6;padding:2px 6px;border-radius:3px;">' . esc_html( substr( $log->details, 0, 200 ) ) . '</code>';
-                            } else {
-                                echo esc_html( substr( $log->details, 0, 250 ) );
-                            }
-                            ?>
+                        <td style="font-size:13px;max-width:380px;">
+                            <?php echo Raffle_Audit::render_details( $log->details, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- returns pre-escaped HTML. ?>
                         </td>
                         <td style="font-size:11px;font-family:monospace;">
                             <?php if ( $log->fairness_proof ) : ?>
-                                <span title="<?php echo esc_attr( $log->fairness_proof ); ?>" style="cursor:help;">
-                                    <?php echo esc_html( substr( $log->fairness_proof, 0, 20 ) ); ?>...
-                                </span>
+                                <code title="<?php echo esc_attr( $log->fairness_proof ); ?>"><?php echo esc_html( substr( $log->fairness_proof, 0, 16 ) ); ?>…</code>
                             <?php else : ?>
                                 <span style="color:#d1d5db;">—</span>
                             <?php endif; ?>
                         </td>
                     </tr>
+                    <?php if ( $has_expandable ) : ?>
+                    <tr class="rs-audit-detail-row" style="display:none;">
+                        <td colspan="8">
+                            <?php echo Raffle_Audit::render_details( $log->details, true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- returns pre-escaped HTML. ?>
+                            <?php if ( $log->fairness_proof ) : ?>
+                                <div style="margin-top:12px;">
+                                    <strong style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Fairness Proof (SHA-256)</strong>
+                                    <div class="rs-audit-proof">
+                                        <code data-proof="<?php echo esc_attr( $log->fairness_proof ); ?>"><?php echo esc_html( $log->fairness_proof ); ?></code>
+                                        <button type="button" class="rs-copy-proof" data-copy="<?php echo esc_attr( $log->fairness_proof ); ?>">
+                                            <span class="dashicons dashicons-clipboard" style="font-size:13px;width:13px;height:13px;vertical-align:middle;"></span>
+                                            Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             <?php endif; ?>
         </tbody>
@@ -217,6 +248,7 @@ $action_text_colors = array(
                     'page'        => 'raffle-audit',
                     'raffle_id'   => $filter_raffle,
                     'action_type' => $filter_action,
+                    'user_id'     => $filter_user,
                     'date_from'   => $filter_from,
                     'date_to'     => $filter_to,
                 ), admin_url( 'admin.php' ) );
@@ -224,7 +256,7 @@ $action_text_colors = array(
                 if ( $current_page > 1 ) {
                     echo '<a class="button" href="' . esc_url( add_query_arg( 'paged', $current_page - 1, $base_url ) ) . '">&lsaquo; Prev</a> ';
                 }
-                echo '<span class="paging-input" style="padding:0 10px;">Page ' . $current_page . ' of ' . $total_pages . '</span>';
+                echo '<span class="paging-input" style="padding:0 10px;">Page ' . esc_html( $current_page ) . ' of ' . esc_html( $total_pages ) . '</span>';
                 if ( $current_page < $total_pages ) {
                     echo ' <a class="button" href="' . esc_url( add_query_arg( 'paged', $current_page + 1, $base_url ) ) . '">Next &rsaquo;</a>';
                 }

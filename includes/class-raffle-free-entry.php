@@ -22,7 +22,7 @@ class Raffle_Free_Entry {
         $raffle_id   = absint( $_POST['raffle_id'] ?? 0 );
         $buyer_name  = sanitize_text_field( wp_unslash( $_POST['buyer_name'] ?? '' ) );
         $buyer_email = sanitize_email( wp_unslash( $_POST['buyer_email'] ?? '' ) );
-        $answer_index = (int) ( $_POST['answer_index'] ?? -1 );
+        $answer_index = (int) ( wp_unslash( $_POST['answer_index'] ?? -1 ) );
 
         if ( ! $raffle_id || ! $buyer_name || ! $buyer_email ) {
             wp_send_json_error( array( 'message' => 'All fields are required.' ) );
@@ -55,11 +55,43 @@ class Raffle_Free_Entry {
             wp_send_json_error( array( 'message' => 'This competition is not available in your region.' ) );
         }
 
-        // Validate using main skill question (UK Regulations section)
-        if ( ! empty( $raffle->enable_question ) && ! empty( $raffle->question_answers ) ) {
-            $correct_index = (int) $raffle->correct_answer_index;
-            if ( $answer_index !== $correct_index ) {
-                wp_send_json_error( array( 'message' => 'Incorrect answer. Please try again.' ) );
+        // 1.3.0 — Skill-question time limit + attempt limit (compliance).
+        // Operators can now require the question to be answered within a
+        // countdown and cap the number of wrong attempts per entrant.
+        if ( ! empty( $raffle->enable_question ) ) {
+            $attempt_key = 'wpraffle_qa_attempts_' . $raffle_id . '_' . md5( strtolower( $buyer_email ) );
+            $attempts    = (int) get_transient( $attempt_key );
+
+            // Attempt limit.
+            $max_attempts = isset( $raffle->qa_max_attempts ) ? (int) $raffle->qa_max_attempts : 0;
+            if ( $max_attempts > 0 && $attempts >= $max_attempts ) {
+                wp_send_json_error( array( 'message' => 'You have reached the maximum number of attempts for this question.' ) );
+            }
+
+            // Time limit: a per-entrant window starts when they first view the
+            // question (recorded by the frontend via a separate transient).
+            $time_limit = isset( $raffle->qa_time_limit ) ? (int) $raffle->qa_time_limit : 0;
+            if ( $time_limit > 0 ) {
+                $started_key = 'wpraffle_qa_started_' . $raffle_id . '_' . md5( strtolower( $buyer_email ) );
+                $started     = (int) get_transient( $started_key );
+                if ( $started && ( time() - $started ) > $time_limit ) {
+                    set_transient( $attempt_key, $max_attempts, DAY_IN_SECONDS ); // Lock further attempts.
+                    wp_send_json_error( array( 'message' => 'The time limit for this question has expired.' ) );
+                }
+            }
+
+            // Validate using main skill question (UK Regulations section)
+            if ( ! empty( $raffle->question_answers ) ) {
+                $correct_index = (int) $raffle->correct_answer_index;
+                if ( $answer_index !== $correct_index ) {
+                    // Record a failed attempt.
+                    set_transient( $attempt_key, $attempts + 1, DAY_IN_SECONDS );
+                    $remaining = ( $max_attempts > 0 ) ? max( 0, $max_attempts - $attempts - 1 ) : null;
+                    $msg = $remaining !== null
+                        ? sprintf( 'Incorrect answer. %d attempt(s) remaining.', $remaining )
+                        : 'Incorrect answer. Please try again.';
+                    wp_send_json_error( array( 'message' => $msg ) );
+                }
             }
         }
 

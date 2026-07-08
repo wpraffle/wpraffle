@@ -35,7 +35,7 @@ class Raffle_Account {
         check_ajax_referer( 'raffle_rg_nonce', 'nonce' );
 
         $period = sanitize_text_field( wp_unslash( $_POST['period'] ?? 'month' ) );
-        $amount = (float) ( $_POST['amount'] ?? 0 );
+        $amount = (float) ( wp_unslash( $_POST['amount'] ?? 0 ) );
 
         $result = Raffle_Responsible_Gambling::set_spend_limit( get_current_user_id(), $period, $amount );
         if ( is_wp_error( $result ) ) {
@@ -55,7 +55,7 @@ class Raffle_Account {
             wp_send_json_error( array( 'message' => 'Invalid exclusion period.' ) );
         }
 
-        $until = date( 'Y-m-d H:i:s', strtotime( "+{$days} days" ) );
+        $until = gmdate( 'Y-m-d H:i:s', strtotime( "+{$days} days" ) );
         $result = Raffle_Responsible_Gambling::self_exclude( get_current_user_id(), $until );
         if ( is_wp_error( $result ) ) {
             wp_send_json_error( array( 'message' => $result->get_error_message() ) );

@@ -259,6 +259,7 @@ class Raffle_Styling {
             wp_add_inline_style( 'raffle-public', $css );
         } else {
             add_action( 'wp_head', function() use ($css) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated CSS from sanitised hex-colour settings (see build_css above).
                 echo '<style id="wpraffle-styling">' . $css . '</style>' . "\n";
             }, 100 );
         }

@@ -78,6 +78,7 @@ class Raffle_Audit {
         $defaults = array(
             'raffle_id'   => 0,
             'action_type' => '',
+            'user_id'     => 0,
             'date_from'   => '',
             'date_to'     => '',
             'limit'       => 100,
@@ -96,6 +97,10 @@ class Raffle_Audit {
             $where[] = 'a.action_type = %s';
             $params[] = sanitize_text_field( $args['action_type'] );
         }
+        if ( ! empty( $args['user_id'] ) ) {
+            $where[] = 'a.user_id = %d';
+            $params[] = absint( $args['user_id'] );
+        }
         if ( ! empty( $args['date_from'] ) ) {
             $where[] = 'a.created_at >= %s';
             $params[] = $args['date_from'] . ' 00:00:00';
@@ -105,24 +110,26 @@ class Raffle_Audit {
             $params[] = $args['date_to'] . ' 23:59:59';
         }
 
-        $where_clause = implode( ' AND ', $where );
         $limit  = absint( $args['limit'] );
         $offset = absint( $args['offset'] );
 
-        $sql = "SELECT a.*, r.title as raffle_title, u.display_name as user_display
-                FROM {$table} a
-                LEFT JOIN {$wpdb->prefix}raffles r ON a.raffle_id = r.id
-                LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
-                WHERE {$where_clause}
-                ORDER BY a.created_at DESC
-                LIMIT %d OFFSET %d";
-
-        // SEC-9 FIX: Always use $wpdb->prepare() including LIMIT/OFFSET
+        // SEC-9 FIX: Always use $wpdb->prepare() including LIMIT/OFFSET.
         $params[] = $limit;
         $params[] = $offset;
-        $sql = $wpdb->prepare( $sql, $params );
 
-        return $wpdb->get_results( $sql );
+        // The WHERE clause is built from hardcoded SQL fragments only; all
+        // dynamic values are passed as $params placeholders. implode() is
+        // inlined so no intermediate variable is flagged.
+        $query = "SELECT a.*, r.title as raffle_title, u.display_name as user_display
+             FROM {$wpdb->prefix}raffle_audit_log a
+             LEFT JOIN {$wpdb->prefix}raffles r ON a.raffle_id = r.id
+             LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
+             WHERE " . implode( ' AND ', $where ) . "
+             ORDER BY a.created_at DESC
+             LIMIT %d OFFSET %d";
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- $query is passed through $wpdb->prepare() with $params placeholders; the WHERE clause is built from hardcoded fragments only.
+        return $wpdb->get_results( $wpdb->prepare( $query, $params ) );
     }
 
     /**
@@ -135,6 +142,7 @@ class Raffle_Audit {
         $defaults = array(
             'raffle_id'   => 0,
             'action_type' => '',
+            'user_id'     => 0,
             'date_from'   => '',
             'date_to'     => '',
         );
@@ -151,6 +159,10 @@ class Raffle_Audit {
             $where[] = 'action_type = %s';
             $params[] = sanitize_text_field( $args['action_type'] );
         }
+        if ( ! empty( $args['user_id'] ) ) {
+            $where[] = 'user_id = %d';
+            $params[] = absint( $args['user_id'] );
+        }
         if ( ! empty( $args['date_from'] ) ) {
             $where[] = 'created_at >= %s';
             $params[] = $args['date_from'] . ' 00:00:00';
@@ -160,14 +172,14 @@ class Raffle_Audit {
             $params[] = $args['date_to'] . ' 23:59:59';
         }
 
-        $where_clause = implode( ' AND ', $where );
-        $sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_clause}";
-
         if ( ! empty( $params ) ) {
-            $sql = $wpdb->prepare( $sql, $params );
+            $query = "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_audit_log WHERE " . implode( ' AND ', $where );
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- $query is passed through $wpdb->prepare() with $params placeholders; the WHERE clause is built from hardcoded fragments only.
+            return (int) $wpdb->get_var( $wpdb->prepare( $query, $params ) );
         }
 
-        return (int) $wpdb->get_var( $sql );
+        // No filters: $where is just array( '1=1' ), so the query is static.
+        return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_audit_log WHERE 1=1" );
     }
 
     /**
@@ -176,7 +188,95 @@ class Raffle_Audit {
     public static function get_action_types() {
         global $wpdb;
         $table = $wpdb->prefix . 'raffle_audit_log';
-        return $wpdb->get_col( "SELECT DISTINCT action_type FROM {$table} ORDER BY action_type" );
+        return $wpdb->get_col( "SELECT DISTINCT action_type FROM {$wpdb->prefix}raffle_audit_log ORDER BY action_type" );
+    }
+
+    /**
+     * Get distinct actors (users) who appear in the log, for the actor filter.
+     * Returns rows of {user_id, display_name}.
+     */
+    public static function get_actors() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'raffle_audit_log';
+        return $wpdb->get_results(
+            "SELECT DISTINCT a.user_id, u.display_name
+             FROM {$wpdb->prefix}raffle_audit_log a
+             LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
+             WHERE a.user_id > 0
+             ORDER BY u.display_name"
+        );
+    }
+
+    /**
+     * Render a log entry's details field as structured HTML.
+     *
+     * JSON details are decoded and rendered as a labelled definition list with
+     * known keys mapped to human labels; unknown keys fall back to a generic
+     * key/value row. Non-JSON details are returned esc_html'd as-is.
+     *
+     * @param string $details Raw details string (plain text or JSON).
+     * @param bool   $full    When true, render the complete content (used in the
+     *                        expandable detail row). When false, render a compact
+     *                        summary for the main table cell.
+     * @return string HTML (already escaped).
+     */
+    public static function render_details( $details, $full = false ) {
+        if ( $details === null || $details === '' ) {
+            return '<span style="color:#9ca3af;">—</span>';
+        }
+
+        $decoded = json_decode( $details, true );
+
+        // Non-JSON — render as plain text (truncated in summary mode).
+        if ( ! is_array( $decoded ) ) {
+            return $full
+                ? '<span>' . esc_html( $details ) . '</span>'
+                : '<span>' . esc_html( wp_trim_words( $details, 18 ) ) . '</span>';
+        }
+
+        // Map known keys to human labels.
+        $labels = array(
+            'ticket'       => __( 'Winning Ticket', 'wpraffle' ),
+            'proof'        => __( 'Fairness Proof', 'wpraffle' ),
+            'email'        => __( 'Email', 'wpraffle' ),
+            'code'         => __( 'Coupon Code', 'wpraffle' ),
+            'amount'       => __( 'Amount', 'wpraffle' ),
+            'type'         => __( 'Type', 'wpraffle' ),
+            'title'        => __( 'Raffle', 'wpraffle' ),
+            'pre_seed'     => __( 'Pre-draw Seed', 'wpraffle' ),
+            'pre_proof'    => __( 'Pre-draw Proof', 'wpraffle' ),
+            'expiry_days'  => __( 'Expiry (days)', 'wpraffle' ),
+            'status'       => __( 'Status', 'wpraffle' ),
+        );
+
+        $rows = array();
+        foreach ( $decoded as $key => $value ) {
+            $label = isset( $labels[ $key ] ) ? $labels[ $key ] : ucfirst( str_replace( '_', ' ', $key ) );
+
+            if ( is_array( $value ) ) {
+                // Render nested arrays as a comma-separated, escaped list.
+                $value = esc_html( implode( ', ', array_map( 'strval', $value ) ) );
+            } else {
+                $value = esc_html( (string) $value );
+            }
+
+            // Truncate long hash-like values in summary mode.
+            if ( ! $full && preg_match( '/^[0-9a-f]{40,}$/i', (string) $decoded[ $key ] ) ) {
+                $value = '<code>' . esc_html( substr( (string) $decoded[ $key ], 0, 20 ) ) . '…</code>';
+            }
+
+            $rows[] = '<dt>' . esc_html( $label ) . '</dt><dd>' . $value . '</dd>';
+
+            if ( ! $full && count( $rows ) >= 3 ) {
+                $more = count( $decoded ) - 3;
+                if ( $more > 0 ) {
+                    $rows[] = '<dt></dt><dd style="color:#6b7280;font-style:italic;">+' . $more . ' more</dd>';
+                }
+                break;
+            }
+        }
+
+        return '<dl class="rs-audit-detail">' . implode( '', $rows ) . '</dl>';
     }
 
     /**
@@ -190,11 +290,12 @@ class Raffle_Audit {
 
         $logs = self::get_logs( array_merge( $args, array( 'limit' => 10000 ) ) );
 
-        $filename = 'raffle-audit-log-' . date( 'Y-m-d-His' ) . '.csv';
+        $filename = 'raffle-audit-log-' . gmdate( 'Y-m-d-His' ) . '.csv';
 
         header( 'Content-Type: text/csv; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename=' . $filename );
 
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- audit CSV export streams to php://output.
         $output = fopen( 'php://output', 'w' );
 
         // CSV headers
@@ -213,6 +314,7 @@ class Raffle_Audit {
             ) );
         }
 
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closing the php://output stream for CSV export.
         fclose( $output );
         exit;
     }

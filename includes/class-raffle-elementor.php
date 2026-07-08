@@ -31,63 +31,97 @@ class Raffle_Elementor {
 
     /**
      * Register all raffle widgets.
+     *
+     * Uses a glob-based autoloader: any `class-widget-*.php` file in the
+     * widgets directory is auto-discovered. The class name is derived from
+     * the filename by converting `class-widget-enter-btn.php` →
+     * `Raffle_Widget_Enter_Btn` (each hyphen-separated segment capitalised,
+     * joined with underscores). Adding a widget = dropping in a file.
      */
     public function register_widgets( $widgets_manager ) {
-        $widget_files = array(
-            'class-widget-image.php',
-            'class-widget-title.php',
-            'class-widget-price.php',
-            'class-widget-progress.php',
-            'class-widget-countdown.php',
-            'class-widget-quantity.php',
-            'class-widget-enter-btn.php',
-            'class-widget-question.php',
-            'class-widget-instant-wins.php',
-            'class-widget-description.php',
-            'class-widget-stats-header.php',
-            'class-widget-tabs.php',
-            'class-widget-trust.php',
-            'class-widget-modal.php',
-            'class-widget-full-page.php',
-            'class-widget-all-competitions.php',
-            'class-widget-ended-raffles.php',
-            'class-widget-entry-list.php',
-        );
+        $dir   = RAFFLE_SYSTEM_PATH . 'includes/elementor-widgets/';
+        $files = glob( $dir . 'class-widget-*.php' );
 
-        foreach ( $widget_files as $file ) {
-            $path = RAFFLE_SYSTEM_PATH . 'includes/elementor-widgets/' . $file;
-            if ( file_exists( $path ) ) {
-                require_once $path;
-            }
+        if ( empty( $files ) ) {
+            return;
         }
 
-        // Instantiate each widget class
-        $widget_classes = array(
-            'Raffle_Widget_Image',
-            'Raffle_Widget_Title',
-            'Raffle_Widget_Price',
-            'Raffle_Widget_Progress',
-            'Raffle_Widget_Countdown',
-            'Raffle_Widget_Quantity',
-            'Raffle_Widget_Enter_Btn',
-            'Raffle_Widget_Question',
-            'Raffle_Widget_Instant_Wins',
-            'Raffle_Widget_Description',
-            'Raffle_Widget_Stats_Header',
-            'Raffle_Widget_Tabs',
-            'Raffle_Widget_Trust',
-            'Raffle_Widget_Modal',
-            'Raffle_Widget_Full_Page',
-            'Raffle_Widget_All_Competitions',
-            'Raffle_Widget_Ended_Raffles',
-            'Raffle_Widget_Entry_List',
-        );
+        foreach ( $files as $file ) {
+            require_once $file;
 
-        foreach ( $widget_classes as $class ) {
+            // class-widget-enter-btn.php → Raffle_Widget_Enter_Btn
+            $basename = basename( $file, '.php' );                  // class-widget-enter-btn
+            $basename = str_replace( 'class-widget-', '', $basename ); // enter-btn
+            $segments = array_map( 'ucfirst', explode( '-', $basename ) );
+            $class    = 'Raffle_Widget_' . implode( '_', $segments );
+
             if ( class_exists( $class ) ) {
                 $widgets_manager->register( new $class() );
             }
         }
+    }
+
+    /**
+     * Register the shared "Raffle" control used by every single-raffle widget.
+     *
+     * Lets the operator pick a specific raffle in the editor (so the widget
+     * renders in the canvas even when there is no current product page). When
+     * unset, the widget falls back to the current product's linked raffle.
+     * Must be called from inside a widget's register_controls() while a
+     * section is open.
+     */
+    public static function register_raffle_id_control( $widget ) {
+        global $wpdb;
+        $table  = $wpdb->prefix . 'raffles';
+        $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) ) === $table;
+
+        $options = array( '' => '— Use current page —' );
+        if ( $exists ) {
+            $raffles = $wpdb->get_results( "SELECT id, title FROM {$table} ORDER BY created_at DESC LIMIT 200" );
+            if ( is_array( $raffles ) ) {
+                foreach ( $raffles as $r ) {
+                    $options[ $r->id ] = '#' . $r->id . ' — ' . $r->title;
+                }
+            }
+        }
+
+        $widget->add_control( 'raffle_id', array(
+            'label'       => __( 'Raffle', 'wpraffle' ),
+            'type'        => \Elementor\Controls_Manager::SELECT,
+            'default'     => '',
+            'options'     => $options,
+            'description' => __( 'Pick a specific raffle to display, or leave on "current page" to use the raffle linked to this product.', 'wpraffle' ),
+        ) );
+    }
+
+    /**
+     * Resolve the raffle for a widget instance.
+     *
+     * Uses the widget's `raffle_id` control when set; otherwise falls back to
+     * the current product's linked raffle. Data access goes through the cached
+     * wpraffle_get_raffle() helper so repeated widget renders on a page share
+     * a single DB lookup.
+     *
+     * @param \Elementor\Widget_Base $widget
+     * @return object|false Raffle row object or false.
+     */
+    public static function get_raffle_for_widget( $widget ) {
+        $settings  = $widget->get_settings_for_display();
+        $raffle_id = isset( $settings['raffle_id'] ) ? absint( $settings['raffle_id'] ) : 0;
+
+        if ( $raffle_id ) {
+            if ( function_exists( 'wpraffle_get_raffle' ) ) {
+                return wpraffle_get_raffle( $raffle_id ) ?: false;
+            }
+            global $wpdb;
+            return $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
+                $raffle_id
+            ) );
+        }
+
+        // Fall back to the current product's linked raffle.
+        return self::get_current_raffle();
     }
 
     /**

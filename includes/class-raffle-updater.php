@@ -243,8 +243,15 @@ class Raffle_Updater {
         // Ensure correct folder name
         $desired = dirname( RAFFLE_SYSTEM_PATH ) . '/wpraffle';
         if ( $result['destination'] !== $desired ) {
-            $renamed = rename( $result['destination'], $desired );
-            if ( $renamed ) {
+            // Use the WP_Filesystem API rather than PHP's rename() for
+            // portability across hosting environments.
+            global $wp_filesystem;
+            if ( ! $wp_filesystem ) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                WP_Filesystem();
+            }
+            $moved = $wp_filesystem && $wp_filesystem->move( $result['destination'], $desired );
+            if ( $moved ) {
                 $result['destination'] = $desired;
             } else {
                 return new WP_Error( 'rename_failed', 'Could not rename plugin folder to "wpraffle". Please rename manually.' );

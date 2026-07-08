@@ -1,4 +1,26 @@
-<?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
+<?php if ( ! defined( 'ABSPATH' ) ) exit;
+
+/**
+ * Inline-validation helpers. When handle_form_submission() detects errors it
+ * re-renders this view with $errors populated (a map of field_key => message).
+ * The rs_error_msg() helper emits the message markup for a field, if any.
+ */
+if ( ! isset( $errors ) ) {
+    $errors = array();
+}
+
+/**
+ * Echo the inline error message for a field, if any.
+ *
+ * @param string $field Field key in $errors.
+ */
+function rs_error_msg( $field ) {
+    global $errors;
+    if ( ! empty( $errors[ $field ] ) ) {
+        echo '<p class="rs-inline-error" id="' . esc_attr( $field . '-error' ) . '">' . esc_html( $errors[ $field ] ) . '</p>';
+    }
+}
+?>
 
 <div class="wrap">
     <h1 class="wp-heading-inline"><?php echo $raffle ? ( $is_template ? 'Create Raffle from Template' : 'Edit Raffle' ) : 'Create New Raffle'; ?></h1>
@@ -14,6 +36,24 @@
             <br>
             <?php esc_html_e( 'Configuration has been pre-filled. Add a title, prize details and dates, then publish. Instant wins from the template will be added when you save.', 'wpraffle' ); ?>
         </p>
+    </div>
+    <?php endif; ?>
+
+    <?php if ( ! empty( $errors ) ) : ?>
+    <div class="notice notice-error rs-form-errors" role="alert">
+        <p>
+            <?php wpr_icon( 'info', 'wpr-icon--sm' ); ?>
+            <strong><?php echo esc_html( sprintf(
+                /* translators: %s: number of validation errors. */
+                _n( 'Please fix %s error before saving:', 'Please fix %s errors before saving:', count( $errors ), 'wpraffle' ),
+                number_format_i18n( count( $errors ) )
+            ) ); ?></strong>
+        </p>
+        <ul style="margin: 6px 0 0 18px;">
+            <?php foreach ( $errors as $msg ) : ?>
+                <li><?php echo esc_html( $msg ); ?></li>
+            <?php endforeach; ?>
+        </ul>
     </div>
     <?php endif; ?>
 
@@ -42,9 +82,11 @@
                                     <tr>
                                         <th scope="row"><label for="title">Title *</label></th>
                                         <td>
-                                            <input name="title" type="text" id="title" class="regular-text" required
+                                            <input name="title" type="text" id="title" required
+                                                <?php echo empty( $errors['title'] ) ? 'class="regular-text"' : 'class="regular-text rs-field-error" aria-invalid="true" aria-describedby="title-error"'; ?>
                                                    value="<?php echo $raffle ? esc_attr( $raffle->title ) : ''; ?>"
                                                    placeholder="e.g. iPhone 17 Pro Max">
+                                            <?php rs_error_msg( 'title' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -57,29 +99,32 @@
                                     <tr>
                                         <th scope="row"><label for="prize_value">Prize Value (<?php echo esc_html( wpr_currency_symbol() ); ?>) *</label></th>
                                         <td>
-                                            <input name="prize_value" type="number" id="prize_value" class="regular-text" step="0.01" min="0" required
+                                            <input name="prize_value" type="number" id="prize_value" <?php echo empty( $errors['prize_value'] ) ? 'class="regular-text"' : 'class="regular-text rs-field-error" aria-invalid="true" aria-describedby="prize_value-error"'; ?> step="0.01" min="0" required
                                                    value="<?php echo $raffle ? esc_attr( $raffle->prize_value ) : ''; ?>"
                                                    placeholder="e.g. 1000">
+                                            <?php rs_error_msg( 'prize_value' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th scope="row"><label for="ticket_price">Price per Ticket (<?php echo esc_html( wpr_currency_symbol() ); ?>) *</label></th>
                                         <td>
-                                            <input name="ticket_price" type="number" id="ticket_price" class="regular-text" step="0.01" min="0" required
+                                            <input name="ticket_price" type="number" id="ticket_price" <?php echo empty( $errors['ticket_price'] ) ? 'class="regular-text"' : 'class="regular-text rs-field-error" aria-invalid="true" aria-describedby="ticket_price-error"'; ?> step="0.01" min="0" required
                                                    value="<?php echo $raffle ? esc_attr( $raffle->ticket_price ) : ''; ?>"
                                                    placeholder="e.g. 5">
+                                            <?php rs_error_msg( 'ticket_price' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th scope="row"><label for="total_tickets">Total Tickets *</label></th>
                                         <td>
-                                            <input name="total_tickets" type="number" id="total_tickets" class="regular-text" min="1" required
+                                            <input name="total_tickets" type="number" id="total_tickets" <?php echo empty( $errors['total_tickets'] ) ? 'class="regular-text"' : 'class="regular-text rs-field-error" aria-invalid="true" aria-describedby="total_tickets-error"'; ?> min="1" required
                                                    value="<?php echo $raffle ? esc_attr( $raffle->total_tickets ) : ''; ?>"
                                                    placeholder="e.g. 1000"
-                                                   <?php echo ( $raffle && $raffle->sold_tickets > 0 ) ? 'readonly' : ''; ?>>
-                                            <?php if ( $raffle && $raffle->sold_tickets > 0 ) : ?>
+                                                   <?php echo ( $raffle && isset( $raffle->sold_tickets ) && $raffle->sold_tickets > 0 ) ? 'readonly' : ''; ?>>
+                                            <?php if ( $raffle && isset( $raffle->sold_tickets ) && $raffle->sold_tickets > 0 ) : ?>
                                                 <p class="description" style="color: #b32d2e;"><?php wpr_icon( 'lock', 'wpr-icon--sm' ); ?> Locked: Tickets have already been sold.</p>
                                             <?php endif; ?>
+                                            <?php rs_error_msg( 'total_tickets' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -121,7 +166,7 @@
                                                         </div>
                                                     <?php endforeach; ?>
                                                 </div>
-                                                <button type="button" class="button button-secondary" id="rs-add-bundle"><?php echo wpr_get_icon( 'plus', 'wpr-icon--xs' ); ?> Add Bundle</button>
+                                                <button type="button" class="button button-secondary" id="rs-add-bundle"><?php wpr_icon( 'plus', 'wpr-icon--xs' ); ?> Add Bundle</button>
                                                 <p class="description" style="margin-top:8px;">
                                                     <?php esc_html_e( 'Each row is an entry option. Set a Quantity, and optionally a fixed Bundle Price (leave blank to charge the standard ticket price × qty). Label and Badge show on the entry button.', 'wpraffle' ); ?>
                                                 </p>
@@ -135,6 +180,7 @@
                                                 <input type="checkbox" name="enable_number_grid" value="1" <?php checked( $raffle && ! empty( $raffle->enable_number_grid ), true ); ?>>
                                                 <?php esc_html_e( 'Show visual Number Picker Grid (lets buyers choose specific ticket numbers)', 'wpraffle' ); ?>
                                             </label>
+                                            <?php rs_error_msg( 'packages' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -180,6 +226,35 @@
                                         </td>
                                     </tr>
                                     <tr>
+                                        <th scope="row"><label for="ticket_numbering">Ticket Numbering Mode</label></th>
+                                        <td>
+                                            <select name="ticket_numbering" id="ticket_numbering">
+                                                <option value="random" <?php selected( $raffle ? ( $raffle->ticket_numbering ?? 'random' ) : 'random', 'random' ); ?>>Random (cryptographically secure)</option>
+                                                <option value="sequential" <?php selected( $raffle ? ( $raffle->ticket_numbering ?? '' ) : '', 'sequential' ); ?>>Sequential (1, 2, 3…)</option>
+                                                <option value="shuffled" <?php selected( $raffle ? ( $raffle->ticket_numbering ?? '' ) : '', 'shuffled' ); ?>>Shuffled (randomised deck)</option>
+                                            </select>
+                                            <p class="description">How ticket numbers are generated when the system assigns them. Manual selection mode ignores this.</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><label for="ticket_start_number">Sequential Start Number</label></th>
+                                        <td>
+                                            <input name="ticket_start_number" type="number" id="ticket_start_number" class="small-text" min="1"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->ticket_start_number ?? 1 ) : '1'; ?>">
+                                            <p class="description">First ticket number for sequential/shuffled numbering (default 1).</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><label for="ticket_prefix">Ticket Number Prefix / Suffix</label></th>
+                                        <td>
+                                            <input name="ticket_prefix" type="text" id="ticket_prefix" class="small-text" maxlength="20" placeholder="e.g. SUMMER-"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->ticket_prefix ?? '' ) : ''; ?>">
+                                            <input name="ticket_suffix" type="text" id="ticket_suffix" class="small-text" maxlength="20" placeholder="suffix e.g. -A"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->ticket_suffix ?? '' ) : ''; ?>">
+                                            <p class="description">Optional display-only prefix/suffix wrapped around the zero-padded number (e.g. <code>SUMMER-0042-A</code>).</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
                                         <th scope="row"><label for="jackpot_type">Prize Type</label></th>
                                         <td>
                                             <select name="jackpot_type" id="jackpot_type">
@@ -191,9 +266,10 @@
                                     <tr>
                                         <th scope="row"><label for="jackpot_percent">Progressive Pot %</label></th>
                                         <td>
-                                            <input name="jackpot_percent" type="number" id="jackpot_percent" min="1" max="100" class="small-text"
+                                            <input name="jackpot_percent" type="number" id="jackpot_percent" min="1" max="100" <?php echo empty( $errors['jackpot_percent'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="jackpot_percent-error"'; ?>
                                                    value="<?php echo $raffle ? esc_attr( $raffle->jackpot_percent ) : '50'; ?>">
                                             <p class="description">Percentage of pot going to winner if progressive type is chosen.</p>
+                                            <?php rs_error_msg( 'jackpot_percent' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -208,9 +284,10 @@
                                     <tr>
                                         <th scope="row"><label for="cash_alternative_amount">Cash Alternative Amount (<?php echo esc_html( wpr_currency_symbol() ); ?>)</label></th>
                                         <td>
-                                            <input name="cash_alternative_amount" type="number" id="cash_alternative_amount" class="regular-text" step="0.01" min="0"
+                                            <input name="cash_alternative_amount" type="number" id="cash_alternative_amount" <?php echo empty( $errors['cash_alternative_amount'] ) ? 'class="regular-text"' : 'class="regular-text rs-field-error" aria-invalid="true" aria-describedby="cash_alternative_amount-error"'; ?> step="0.01" min="0"
                                                    value="<?php echo $raffle ? esc_attr( $raffle->cash_alternative_amount ) : '0'; ?>"
                                                    placeholder="e.g. 500">
+                                            <?php rs_error_msg( 'cash_alternative_amount' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -233,15 +310,17 @@
                                     <tr>
                                         <th scope="row"><label for="start_date">Start Date & Time</label></th>
                                         <td>
-                                            <input name="start_date" type="datetime-local" id="start_date"
-                                                   value="<?php echo ( $raffle && $raffle->start_date ) ? esc_attr( date( 'Y-m-d\TH:i', strtotime( $raffle->start_date ) ) ) : ''; ?>">
+                                            <input name="start_date" type="datetime-local" id="start_date" <?php echo empty( $errors['start_date'] ) ? '' : 'class="rs-field-error" aria-invalid="true" aria-describedby="start_date-error"'; ?>
+                                                   value="<?php echo ( $raffle && $raffle->start_date ) ? esc_attr( gmdate( 'Y-m-d\TH:i', strtotime( $raffle->start_date ) ) ) : ''; ?>">
+                                            <?php rs_error_msg( 'start_date' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th scope="row"><label for="draw_date">Draw Date & Time</label></th>
                                         <td>
-                                            <input name="draw_date" type="datetime-local" id="draw_date"
-                                                   value="<?php echo ( $raffle && $raffle->draw_date ) ? esc_attr( date( 'Y-m-d\TH:i', strtotime( $raffle->draw_date ) ) ) : ''; ?>">
+                                            <input name="draw_date" type="datetime-local" id="draw_date" <?php echo empty( $errors['draw_date'] ) ? '' : 'class="rs-field-error" aria-invalid="true" aria-describedby="draw_date-error"'; ?>
+                                                   value="<?php echo ( $raffle && $raffle->draw_date ) ? esc_attr( gmdate( 'Y-m-d\TH:i', strtotime( $raffle->draw_date ) ) ) : ''; ?>">
+                                            <?php rs_error_msg( 'draw_date' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -257,8 +336,9 @@
                                     <tr>
                                         <th scope="row"><label for="max_tickets_per_user">Max Tickets Per User</label></th>
                                         <td>
-                                            <input name="max_tickets_per_user" type="number" id="max_tickets_per_user" class="small-text" min="1"
+                                            <input name="max_tickets_per_user" type="number" id="max_tickets_per_user" <?php echo empty( $errors['max_tickets_per_user'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="max_tickets_per_user-error"'; ?> min="1"
                                                    value="<?php echo $raffle ? esc_attr( $raffle->max_tickets_per_user ) : '100'; ?>">
+                                            <?php rs_error_msg( 'max_tickets_per_user' ); ?>
                                         </td>
                                     </tr>
                                     <?php
@@ -268,7 +348,7 @@
                                         'hide_empty' => false,
                                     ) ) : array();
                                     $selected_cats = array();
-                                    if ( $raffle && $raffle->wc_product_id ) {
+                                    if ( $raffle && isset( $raffle->wc_product_id ) && $raffle->wc_product_id ) {
                                         $selected_cats = wp_get_post_terms( $raffle->wc_product_id, 'product_cat', array( 'fields' => 'ids' ) );
                                         if ( is_wp_error( $selected_cats ) ) $selected_cats = array();
                                     }
@@ -277,7 +357,7 @@
                                         'hide_empty' => false,
                                     ) ) : array();
                                     $selected_tags = array();
-                                    if ( $raffle && $raffle->wc_product_id ) {
+                                    if ( $raffle && isset( $raffle->wc_product_id ) && $raffle->wc_product_id ) {
                                         $selected_tags = wp_get_post_terms( $raffle->wc_product_id, 'product_tag', array( 'fields' => 'ids' ) );
                                         if ( is_wp_error( $selected_tags ) ) $selected_tags = array();
                                     }
@@ -334,7 +414,7 @@
                                                 <?php esc_html_e( 'Email a WooCommerce coupon to every non-winning entrant after the draw.', 'wpraffle' ); ?>
                                             </label>
                                             <?php
-                                            $consolation_config = $raffle && $raffle->consolation_config ? json_decode( $raffle->consolation_config, true ) : array();
+                                            $consolation_config = $raffle && ( $raffle->consolation_config ?? '' ) ? json_decode( $raffle->consolation_config, true ) : array();
                                             $consolation_config = wp_parse_args( $consolation_config, array( 'type' => 'percent', 'amount' => 10, 'expiry_days' => 30 ) );
                                             ?>
                                             <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">
@@ -345,13 +425,15 @@
                                                     </select>
                                                 </label>
                                                 <label><?php esc_html_e( 'Amount:', 'wpraffle' ); ?>
-                                                    <input type="number" name="consolation_amount" class="small-text" min="0" step="0.01" value="<?php echo esc_attr( $consolation_config['amount'] ); ?>">
+                                                    <input type="number" name="consolation_amount" <?php echo empty( $errors['consolation_amount'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="consolation_amount-error"'; ?> min="0" step="0.01" value="<?php echo esc_attr( $consolation_config['amount'] ); ?>">
                                                 </label>
                                                 <label><?php esc_html_e( 'Expiry (days):', 'wpraffle' ); ?>
-                                                    <input type="number" name="consolation_expiry_days" class="small-text" min="1" value="<?php echo esc_attr( $consolation_config['expiry_days'] ); ?>">
+                                                    <input type="number" name="consolation_expiry_days" <?php echo empty( $errors['consolation_expiry_days'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="consolation_expiry_days-error"'; ?> min="1" value="<?php echo esc_attr( $consolation_config['expiry_days'] ); ?>">
                                                 </label>
                                             </div>
                                             <p class="description"><?php esc_html_e( 'Coupons are single-use, locked to each entrant\'s email, and issued once per draw.', 'wpraffle' ); ?></p>
+                                            <?php rs_error_msg( 'consolation_amount' ); ?>
+                                            <?php rs_error_msg( 'consolation_expiry_days' ); ?>
                                         </td>
                                     </tr>
                                     <tr>
@@ -379,6 +461,77 @@
                                                 <input type="checkbox" name="enable_share" value="1" <?php checked( $raffle && ! empty( $raffle->enable_share ), true ); ?>>
                                                 <?php esc_html_e( 'Show social share buttons (WhatsApp, Facebook, X, copy-link) on the entry page.', 'wpraffle' ); ?>
                                             </label>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Meta Box: Lifecycle & Relist (1.3.0) -->
+                    <div class="postbox">
+                        <div class="postbox-header">
+                            <h2 class="hndle"><?php wpr_icon( 'clock', 'wpr-icon--sm' ); ?> <?php esc_html_e( 'Lifecycle & Relist', 'wpraffle' ); ?></h2>
+                        </div>
+                        <div class="inside">
+                            <table class="form-table" role="presentation">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row"><label for="min_tickets">Minimum Tickets to Draw</label></th>
+                                        <td>
+                                            <input name="min_tickets" type="number" id="min_tickets" class="small-text" min="0"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->min_tickets ?? 0 ) : '0'; ?>">
+                                            <p class="description">If the raffle hasn't sold this many tickets by its draw date, it <strong>fails</strong> instead of drawing. 0 = no minimum.</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><label for="min_unique_users">Minimum Unique Entrants</label></th>
+                                        <td>
+                                            <input name="min_unique_users" type="number" id="min_unique_users" class="small-text" min="0"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->min_unique_users ?? 0 ) : '0'; ?>">
+                                            <p class="description">Minimum number of distinct buyers required for the draw to run. 0 = no minimum.</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Auto-refund on Fail', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="auto_refund_on_fail" value="1" <?php checked( $raffle && ! empty( $raffle->auto_refund_on_fail ), true ); ?>>
+                                                <?php esc_html_e( 'Automatically refund all participants via WooCommerce if the raffle fails its minimum threshold.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Auto-Relist', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="enable_auto_relist" id="enable_auto_relist" value="1" <?php checked( $raffle && ! empty( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['auto_relist'] ), true ); ?>>
+                                                <?php esc_html_e( 'Automatically relist this raffle when it finishes or fails.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr class="relist-only-field" style="<?php echo ( $raffle && ! empty( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['auto_relist'] ) ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="relist_days">Relist Duration (days)</label></th>
+                                        <td>
+                                            <input name="relist_days" type="number" id="relist_days" class="small-text" min="1"
+                                                   value="<?php echo esc_attr( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['relist_days'] ?? 7 ); ?>">
+                                            <p class="description">How many days the new run runs for.</p>
+                                        </td>
+                                    </tr>
+                                    <tr class="relist-only-field" style="<?php echo ( $raffle && ! empty( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['auto_relist'] ) ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="relist_pause_days">Pause Between Runs (days)</label></th>
+                                        <td>
+                                            <input name="relist_pause_days" type="number" id="relist_pause_days" class="small-text" min="0"
+                                                   value="<?php echo esc_attr( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['relist_pause_days'] ?? 0 ); ?>">
+                                            <p class="description">Days to wait between a finish and the next run. 0 = relist immediately.</p>
+                                        </td>
+                                    </tr>
+                                    <tr class="relist-only-field" style="<?php echo ( $raffle && ! empty( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['auto_relist'] ) ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="relist_count">Max Relists</label></th>
+                                        <td>
+                                            <input name="relist_count" type="number" id="relist_count" class="small-text" min="0"
+                                                   value="<?php echo esc_attr( ( json_decode( $raffle->relist_config ?? '', true ) ?: array() )['relist_count'] ?? 0 ); ?>">
+                                            <p class="description">Total relists allowed before auto-relist turns off. 0 = unlimited.</p>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -437,6 +590,22 @@
                                             </select>
                                         </td>
                                     </tr>
+                                    <tr class="question-only-field" style="<?php echo ( $raffle && $raffle->enable_question ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="qa_time_limit">Question Time Limit (seconds)</label></th>
+                                        <td>
+                                            <input name="qa_time_limit" type="number" id="qa_time_limit" class="small-text" min="0"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->qa_time_limit ?? 0 ) : '0'; ?>">
+                                            <p class="description">Seconds the buyer has to answer once they view the question. 0 = no limit.</p>
+                                        </td>
+                                    </tr>
+                                    <tr class="question-only-field" style="<?php echo ( $raffle && $raffle->enable_question ) ? '' : 'display:none;'; ?>">
+                                        <th scope="row"><label for="qa_max_attempts">Max Wrong Attempts</label></th>
+                                        <td>
+                                            <input name="qa_max_attempts" type="number" id="qa_max_attempts" class="small-text" min="0"
+                                                   value="<?php echo $raffle ? esc_attr( $raffle->qa_max_attempts ?? 0 ) : '0'; ?>">
+                                            <p class="description">Lock the buyer out after this many wrong answers. 0 = unlimited.</p>
+                                        </td>
+                                    </tr>
                                     <tr>
                                         <th scope="row"><label for="postal_instructions">Postal Entry Instructions</label></th>
                                         <td>
@@ -475,9 +644,10 @@
                                     <tr id="num-winners-row" style="<?php echo ( $raffle && $raffle->multi_winner ) ? '' : 'display:none;'; ?>">
                                         <th scope="row"><label for="number_of_winners">Number of Winners</label></th>
                                         <td>
-                                            <input name="number_of_winners" type="number" id="number_of_winners" class="small-text" min="2" max="20"
+                                            <input name="number_of_winners" type="number" id="number_of_winners" <?php echo empty( $errors['number_of_winners'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="number_of_winners-error"'; ?> min="2" max="20"
                                                    value="<?php echo $raffle ? esc_attr( $raffle->number_of_winners ) : '2'; ?>">
                                             <p class="description">Each winner gets a different prize position (1st, 2nd, 3rd...)</p>
+                                            <?php rs_error_msg( 'number_of_winners' ); ?>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -490,7 +660,7 @@
                                 <div id="prizes-list">
                                     <?php foreach ( $prizes as $i => $prize ) : ?>
                                     <div class="prize-row" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-                                        <span class="prize-position" style="font-weight:700;width:30px;"><?php echo $i + 1; ?>.</span>
+                                        <span class="prize-position" style="font-weight:700;width:30px;"><?php echo esc_html( $i + 1 ); ?>.</span>
                                         <input type="text" name="prize_name[]" class="regular-text" value="<?php echo esc_attr( $prize->prize_name ); ?>" placeholder="Prize name (e.g. $500 Gift Card)">
                                         <input type="number" name="prize_value[]" class="small-text" step="0.01" min="0" value="<?php echo esc_attr( $prize->prize_value ); ?>" placeholder="Value">
                                         <button type="button" class="button remove-prize-btn" title="Remove">×</button>
@@ -544,7 +714,7 @@
                                 ) );
                             ?>
                             <div class="free-entry-field" style="margin-top:10px;padding:12px;background:#f0f6fc;border:1px solid #c3daf0;border-radius:4px;">
-                                <strong>Free Entries Used:</strong> <?php echo $free_count; ?>
+                                <strong>Free Entries Used:</strong> <?php echo esc_html( $free_count ); ?>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -657,9 +827,10 @@
                                     <tr id="charity-percent-row" style="<?php echo ( $raffle && $raffle->charity_mode === 'partial' ) ? '' : 'display:none;'; ?>">
                                         <th scope="row"><label for="charity_percent">Donation Percentage</label></th>
                                         <td>
-                                            <input name="charity_percent" type="number" id="charity_percent" class="small-text" min="1" max="100"
+                                            <input name="charity_percent" type="number" id="charity_percent" <?php echo empty( $errors['charity_percent'] ) ? 'class="small-text"' : 'class="small-text rs-field-error" aria-invalid="true" aria-describedby="charity_percent-error"'; ?> min="1" max="100"
                                                    value="<?php echo $raffle ? esc_attr( $raffle->charity_percent ?? 100 ) : 100; ?>">%
                                             <p class="description">Percentage of gross ticket sales donated to the charity.</p>
+                                            <?php rs_error_msg( 'charity_percent' ); ?>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -705,10 +876,15 @@
                                 <h2 class="hndle"><?php wpr_icon( 'gift', 'wpr-icon--sm' ); ?> Configure Instant Wins</h2>
                             </div>
                             <div class="inside">
-                                <p class="description" style="margin-bottom: 15px;">Instant Wins allow users to win specific prizes immediately when they purchase the matching ticket number.</p>
-                                
-                                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center; background: #f6f7f7; padding: 15px; border:1px solid #c3c4c7; border-radius: 4px;">
-                                    <input type="text" id="iw-prize-name" placeholder="Prize Name (e.g. $50 Gift Card)" style="flex:1; height: 35px;">
+                                <p class="description" style="margin-bottom: 15px;">Instant Wins allow users to win specific prizes immediately when they purchase the matching ticket number. Choose a prize type to deliver coupons, gift products, or site credit automatically.</p>
+
+                                <div style="margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap:wrap; background: #f6f7f7; padding: 15px; border:1px solid #c3c4c7; border-radius: 4px;">
+                                    <input type="text" id="iw-prize-name" placeholder="Prize Name (e.g. $50 Gift Card)" style="flex:1; min-width:200px; height: 35px;">
+                                    <select id="iw-prize-type" style="height:35px;">
+                                        <?php foreach ( Raffle_Instant_Win_Prize_Types::get_types() as $type_key => $type_label ) : ?>
+                                            <option value="<?php echo esc_attr( $type_key ); ?>"><?php echo esc_html( $type_label ); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                     <input type="number" id="iw-ticket-number" placeholder="Ticket # (blank=random)" style="width: 180px; height: 35px;">
                                     <input type="number" id="iw-quantity" placeholder="Qty" value="1" min="1" max="100" style="width: 70px; height: 35px;">
                                     <button type="button" id="add-instant-win-btn" class="button button-primary" data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>" style="height: 35px; line-height: 33px;">
@@ -716,12 +892,50 @@
                                     </button>
                                 </div>
 
+                                <!-- Prize-type config (revealed by JS based on selection) -->
+                                <div id="iw-prize-config" style="margin-bottom:12px; padding:12px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; display:none;">
+                                    <!-- coupon -->
+                                    <div class="iw-cfg iw-cfg-coupon" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                        <select id="iw-coupon-type" style="height:32px;">
+                                            <option value="fixed_cart">Fixed cart discount</option>
+                                            <option value="percent">Percentage</option>
+                                            <option value="fixed_product">Fixed product discount</option>
+                                        </select>
+                                        <input type="number" id="iw-coupon-amount" placeholder="Amount" step="0.01" min="0" style="width:110px; height:32px;">
+                                        <input type="number" id="iw-coupon-expiry" placeholder="Expiry (days)" min="0" style="width:130px; height:32px;">
+                                        <label><input type="checkbox" id="iw-coupon-freeship"> Free shipping</label>
+                                    </div>
+                                    <!-- product -->
+                                    <div class="iw-cfg iw-cfg-product" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                        <input type="number" id="iw-gift-product-id" placeholder="WC Product ID" min="1" style="width:160px; height:32px;">
+                                        <input type="number" id="iw-gift-qty" placeholder="Qty" min="1" value="1" style="width:80px; height:32px;">
+                                    </div>
+                                    <!-- credit -->
+                                    <div class="iw-cfg iw-cfg-credit" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                        <input type="number" id="iw-credit-amount" placeholder="Credit amount" step="0.01" min="0" style="width:160px; height:32px;">
+                                    </div>
+                                </div>
+
+                                <!-- CSV import (1.3.0) -->
+                                <details style="margin-bottom:15px;">
+                                    <summary style="cursor:pointer; font-weight:600; font-size:12px; color:#6c5ce7;">Bulk-import instant wins from CSV</summary>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <?php wp_nonce_field( 'wpraffle_import_iw', 'wpraffle_import_iw_nonce' ); ?>
+                                        <input type="hidden" name="action" value="wpraffle_import_instant_wins">
+                                        <input type="hidden" name="raffle_id" value="<?php echo esc_attr( $raffle->id ); ?>">
+                                        <input type="file" name="import_file" accept=".csv" required style="font-size:12px;">
+                                        <?php submit_button( 'Import CSV', 'secondary', '', false, array( 'style' => 'height:32px; line-height:30px;' ) ); ?>
+                                        <span style="font-size:11px; color:#6b7280;">Columns: Ticket Number, Prize Name, Prize Type, Prize Config (JSON). Ticket Number may be blank for auto-assign.</span>
+                                    </form>
+                                </details>
+
                                 <table class="wp-list-table widefat fixed striped posts">
                                     <thead>
                                         <tr>
                                             <th>ID</th>
                                             <th>Ticket Number</th>
                                             <th>Prize Name</th>
+                                            <th>Type</th>
                                             <th>Status</th>
                                             <th>Winner Email</th>
                                             <th style="width:80px;">Actions</th>
@@ -729,13 +943,14 @@
                                     </thead>
                                     <tbody>
                                         <?php if ( empty( $instant_wins ) ) : ?>
-                                            <tr><td colspan="6" style="text-align:center; padding: 15px; color:#64748b;">No instant wins configured.</td></tr>
+                                            <tr><td colspan="7" style="text-align:center; padding: 15px; color:#64748b;">No instant wins configured.</td></tr>
                                         <?php else : ?>
                                             <?php foreach ( $instant_wins as $iw ) : ?>
                                                 <tr>
                                                     <td>#<?php echo esc_html( $iw->id ); ?></td>
-                                                    <td><strong><?php echo esc_html( Raffle_Tickets::format_ticket_number( $iw->ticket_number, $raffle->total_tickets ) ); ?></strong></td>
+                                                    <td><strong><?php echo esc_html( Raffle_Tickets::format_ticket_number( $iw->ticket_number, $raffle->total_tickets, $raffle ) ); ?></strong></td>
                                                     <td><?php echo esc_html( $iw->prize_name ); ?></td>
+                                                    <td><span style="font-size:11px; color:#6b7280;"><?php echo esc_html( ucfirst( $iw->prize_type ?? 'physical' ) ); ?></span></td>
                                                     <td>
                                                         <span style="background:<?php echo $iw->status === 'won' ? '#dcfce7; color:#166534;' : '#fef3c7; color:#92400e;'; ?>; padding:3px 8px; border-radius:4px; font-weight:600; font-size:11px;">
                                                             <?php echo esc_html( ucfirst( $iw->status ) ); ?>
@@ -814,6 +1029,15 @@ jQuery(function($){
         } else {
             $('#charity-select-row').show();
             $('#charity-percent-row').show();
+        }
+    });
+
+    // 1.3.0 — Auto-relist toggle: show/hide the relist config rows.
+    $('#enable_auto_relist').on('change', function(){
+        if ( $(this).is(':checked') ) {
+            $('.relist-only-field').show();
+        } else {
+            $('.relist-only-field').hide();
         }
     });
 });

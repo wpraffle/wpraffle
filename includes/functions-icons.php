@@ -18,6 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @param string $title   Optional accessible title
  */
 function wpr_icon( $name, $classes = '', $title = '' ) {
+    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wpr_get_icon() returns SVG markup with all dynamic parts escaped via esc_attr()/esc_html().
     echo wpr_get_icon( $name, $classes, $title );
 }
 
@@ -151,7 +152,7 @@ function wpr_output_icon_sprite() {
     if ( file_exists( $sprite_file ) ) {
         // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         echo '<div style="display:none;" id="wpr-icon-sprite">';
-        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile, WordPress.Security.EscapeOutput.OutputNotEscaped -- streaming a bundled local SVG sprite (trusted, plugin-authored).
         readfile( $sprite_file );
         echo '</div>';
     }

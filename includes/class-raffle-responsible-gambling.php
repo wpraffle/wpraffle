@@ -216,7 +216,7 @@ class Raffle_Responsible_Gambling {
 
         $days_map = array( 'day' => 1, 'week' => 7, 'month' => 30 );
         $days     = $days_map[ $period ] ?? 30;
-        $since    = date( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
+        $since    = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
 
         return (float) $wpdb->get_var( $wpdb->prepare(
             "SELECT COALESCE(SUM(total_amount), 0)
@@ -281,7 +281,7 @@ class Raffle_Responsible_Gambling {
             // Increase → 24h cool-off. Keep the effective (old) limit, park
             // the new one in pending_spend_limit_amount.
             $data['pending_spend_limit_amount'] = $amount;
-            $data['cool_off_change_until']      = date( 'Y-m-d H:i:s', strtotime( '+24 hours' ) );
+            $data['cool_off_change_until']      = gmdate( 'Y-m-d H:i:s', strtotime( '+24 hours' ) );
             $format[] = '%f';
             $format[] = '%s';
         } else {
@@ -338,7 +338,7 @@ class Raffle_Responsible_Gambling {
         global $wpdb;
         $wpdb->update(
             $wpdb->prefix . 'raffle_rg_settings',
-            array( 'self_excluded_until' => date( 'Y-m-d H:i:s', $until_ts ) ),
+            array( 'self_excluded_until' => gmdate( 'Y-m-d H:i:s', $until_ts ) ),
             array( 'user_id' => $user_id ),
             array( '%s' ),
             array( '%d' )
@@ -387,7 +387,7 @@ class Raffle_Responsible_Gambling {
             }
             $wpdb->update(
                 $wpdb->prefix . 'raffle_rg_settings',
-                array( 'self_excluded_until' => date( 'Y-m-d H:i:s', $until_ts ) ),
+                array( 'self_excluded_until' => gmdate( 'Y-m-d H:i:s', $until_ts ) ),
                 array( 'user_id' => $synthetic_id ),
                 array( '%s' ),
                 array( '%d' )
@@ -398,7 +398,7 @@ class Raffle_Responsible_Gambling {
                 array(
                     'user_id'             => $synthetic_id,
                     'buyer_email'         => $email,
-                    'self_excluded_until' => date( 'Y-m-d H:i:s', $until_ts ),
+                    'self_excluded_until' => gmdate( 'Y-m-d H:i:s', $until_ts ),
                 ),
                 array( '%d', '%s', '%s' )
             );

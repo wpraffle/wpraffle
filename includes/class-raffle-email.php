@@ -37,6 +37,77 @@ class Raffle_Email {
         );
     }
 
+    /**
+     * Whether a given email type is enabled. The wpraffle_email_settings
+     * option holds an `enabled` map keyed by email id (e.g. 'instant_win',
+     * 'no_luck', 'admin_winner'). Emails are ENABLED BY DEFAULT until the
+     * operator explicitly turns them off in the Email settings tab — so a
+     * fresh install sends the full lifecycle suite without configuration,
+     * matching the previous behaviour for the legacy sends.
+     *
+     * @param string $email_id
+     * @return bool
+     */
+    public static function is_email_enabled( $email_id ) {
+        $settings = get_option( 'wpraffle_email_settings', array() );
+        if ( ! isset( $settings['enabled'] ) || ! is_array( $settings['enabled'] ) ) {
+            return true; // Default: enabled (no toggle map configured yet).
+        }
+        // Explicit off wins; absent key = enabled.
+        return empty( $settings['enabled'][ $email_id ]['off'] );
+    }
+
+    /**
+     * Admin notification recipients. Defaults to the site admin email plus any
+     * configured additional addresses (comma-separated in settings).
+     *
+     * @return array
+     */
+    public static function get_admin_recipients() {
+        $settings = get_option( 'wpraffle_email_settings', array() );
+        $emails   = array( get_option( 'admin_email' ) );
+        if ( ! empty( $settings['admin_notify_emails'] ) ) {
+            $extra = array_filter( array_map( 'trim', explode( ',', $settings['admin_notify_emails'] ) ) );
+            foreach ( $extra as $e ) {
+                if ( is_email( $e ) ) {
+                    $emails[] = $e;
+                }
+            }
+        }
+        return array_unique( array_filter( $emails ) );
+    }
+
+    /**
+     * Attach a generated string (e.g. a PDF) to the next wp_mail() call. Uses
+     * the standard phpmailer_init pattern: registers a one-shot filter that
+     * calls addStringAttachment then removes itself, so only the immediately
+     * following wp_mail() gets the attachment.
+     *
+     * MUST be called immediately before wp_mail() in the same request.
+     *
+     * @param string $content  Raw file content (e.g. PDF bytes).
+     * @param string $filename Attachment filename.
+     * @param string $encoding Encoding type (default base64).
+     * @param string $type     MIME type.
+     */
+    public static function attach_string_once( $content, $filename, $encoding = 'base64', $type = 'application/pdf' ) {
+        if ( empty( $content ) ) {
+            return;
+        }
+        add_action( 'phpmailer_init', $cb = function ( $phpmailer ) use ( $content, $filename, $encoding, $type ) {
+            try {
+                $phpmailer->addStringAttachment( $content, $filename, $encoding, $type );
+            } catch ( Exception $e ) {
+                // Attachment failure should not block the email itself.
+            }
+        } );
+        // Remove immediately after the next wp_mail so subsequent emails aren't
+        // double-attached. The 11 priority ensures it runs after the default 10.
+        add_action( 'phpmailer_init', function () use ( $cb ) {
+            remove_action( 'phpmailer_init', $cb );
+        }, 11 );
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Base HTML template
     // ─────────────────────────────────────────────────────────────────────
@@ -50,7 +121,7 @@ class Raffle_Email {
         $url  = esc_url( $s['site_url'] );
         $col  = esc_attr( $s['accent_color'] );
         $foot = wp_kses_post( $s['footer_text'] );
-        $year = date( 'Y' );
+        $year = gmdate( 'Y' );
 
         $logo_html = $s['logo_url']
             ? '<img src="' . esc_url( $s['logo_url'] ) . '" alt="' . $name . '" style="max-height:50px;max-width:180px;display:block;margin:0 auto;">'
@@ -60,18 +131,17 @@ class Raffle_Email {
             ? '<div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#f4f5f7;">' . esc_html( $preheader ) . '&nbsp;&zwnj;&nbsp;</div>'
             : '';
 
-        return <<<HTML
-<!DOCTYPE html>
+        return '<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>{$name}</title>
+<title>' . $name . '</title>
 <!--[if mso]><style>table{border-collapse:collapse}td,th{font-family:Arial,sans-serif}</style><![endif]-->
 </head>
-<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
-{$pre}
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;">
+' . $pre . '
 
 <!-- Wrapper -->
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f2f5;">
@@ -82,23 +152,23 @@ class Raffle_Email {
 
     <!-- Header -->
     <tr>
-      <td style="background:linear-gradient(135deg,{$col},#a29bfe);padding:36px 40px;text-align:center;">
-        <a href="{$url}" style="text-decoration:none;">{$logo_html}</a>
+      <td style="background:linear-gradient(135deg,' . $col . ',#a29bfe);padding:36px 40px;text-align:center;">
+        <a href="' . $url . '" style="text-decoration:none;">' . $logo_html . '</a>
       </td>
     </tr>
 
     <!-- Body -->
     <tr>
       <td style="padding:40px 40px 32px;">
-        {$content}
+        ' . $content . '
       </td>
     </tr>
 
     <!-- Footer -->
     <tr>
       <td style="background:#f8f9fa;border-top:1px solid #e9ecef;padding:24px 40px;text-align:center;">
-        <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">{$foot}</p>
-        <p style="margin:0;font-size:12px;color:#c4c9d4;">&copy; {$year} {$name} &mdash; <a href="{$url}" style="color:#9ca3af;text-decoration:none;">{$url}</a></p>
+        <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">' . $foot . '</p>
+        <p style="margin:0;font-size:12px;color:#c4c9d4;">&copy; ' . $year . ' ' . $name . ' &mdash; <a href="' . $url . '" style="color:#9ca3af;text-decoration:none;">' . $url . '</a></p>
       </td>
     </tr>
 
@@ -106,8 +176,7 @@ class Raffle_Email {
 </td></tr>
 </table>
 </body>
-</html>
-HTML;
+</html>';
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -223,6 +292,16 @@ HTML;
 
         $subject = 'Entry confirmed: ' . $raffle->title . ' — ' . $qty . ' ticket' . ( $qty > 1 ? 's' : '' );
 
+        // 1.3.0 — Attach a single-ticket PDF when enabled (gated by the
+        // 'purchase' toggle, which already gates this whole email, plus a
+        // dedicated 'attach_ticket_pdf' setting).
+        $attach_pdf = ! empty( $s['attach_ticket_pdf'] ) && class_exists( 'WPRaffle_PDF' );
+        if ( $attach_pdf ) {
+            $pdf = WPRaffle_PDF::ticket( $raffle, $tickets, $purchase->buyer_name );
+            $slug = sanitize_title( $raffle->title );
+            self::attach_string_once( $pdf, 'tickets-' . $slug . '-' . $purchase_id . '.pdf' );
+        }
+
         wp_mail(
             $purchase->buyer_email,
             $subject,
@@ -264,6 +343,198 @@ HTML;
             self::wrap( $body, 'Congratulations! Your ticket won ' . $raffle->title . '.' ),
             self::get_headers( $s )
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 3. Instant-Win Notification (standalone, 1.3.0)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Standalone instant-win email. Previously instant wins were only surfaced
+     * inside the purchase-confirmation email; this gives them their own
+     * dedicated notification (so coupon codes / gift notices aren't buried
+     * under a ticket list). Fired from on_payment_complete after prizes are
+     * assigned. Gated by the per-email toggle (Phase 3 wiring).
+     *
+     * @param string $buyer_email
+     * @param string $buyer_name
+     * @param object $raffle
+     * @param array  $wins        Won instant-win rows.
+     */
+    public static function send_instant_win( $buyer_email, $buyer_name, $raffle, $wins ) {
+        if ( empty( $wins ) || empty( $buyer_email ) ) {
+            return;
+        }
+        if ( ! self::is_email_enabled( 'instant_win' ) ) {
+            return;
+        }
+
+        $s   = self::get_settings();
+        $col = $s['accent_color'];
+
+        $iw_items = '';
+        foreach ( $wins as $win ) {
+            $win_num = str_pad( $win->ticket_number, strlen( (string) $raffle->total_tickets ), '0', STR_PAD_LEFT );
+            // For coupon-type prizes, surface the generated code.
+            $extra = '';
+            $config = isset( $win->prize_config ) ? json_decode( $win->prize_config, true ) : array();
+            if ( ! empty( $config['coupon_code'] ) ) {
+                $extra = '<div style="margin-top:6px;font-size:13px;color:#6b7280;">Your code: <strong style="font-family:monospace;color:' . esc_attr( $col ) . ';">' . esc_html( $config['coupon_code'] ) . '</strong></div>';
+            }
+            $iw_items .= '<tr><td style="padding:10px 0;border-bottom:1px solid #fde68a;">
+                <strong style="color:#92400e;">Ticket #' . esc_html( $win_num ) . '</strong> &mdash; ' . esc_html( $win->prize_name )
+                . $extra .
+            '</td></tr>';
+        }
+
+        $body = self::section_heading( '🎉 You Won an Instant Prize!' )
+            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, congratulations! Your entry for <strong>' . esc_html( $raffle->title ) . '</strong> triggered an instant win:' )
+            . self::box(
+                '<table width="100%" cellpadding="0" cellspacing="0">' . $iw_items . '</table>',
+                '#fffbeb', '#fde68a'
+            )
+            . self::muted_p( 'Any coupon codes above are ready to use at checkout. Physical prizes will be arranged by our team.' )
+            . self::cta_button( function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url(), 'Continue', $col );
+
+        wp_mail(
+            $buyer_email,
+            '🎉 Instant Win: ' . $raffle->title,
+            self::wrap( $body, 'You won an instant prize in ' . $raffle->title . '!' ),
+            self::get_headers( $s )
+        );
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * 1.3.0 — Lifecycle email suite
+     * Each send is gated by is_email_enabled() so the operator can turn any
+     * individual email off from the Email settings tab. All follow the same
+     * wrap() + component-builder pattern as the legacy sends.
+     * ──────────────────────────────────────────────────────────────────── */
+
+    public static function send_no_luck( $buyer_email, $buyer_name, $raffle ) {
+        if ( empty( $buyer_email ) || ! self::is_email_enabled( 'no_luck' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'Better Luck Next Time!' )
+            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, the draw for <strong>' . esc_html( $raffle->title ) . '</strong> has taken place and unfortunately your ticket was not selected this time.' )
+            . self::muted_p( 'Thank you for taking part — your support means a lot. Keep an eye out for our next competition.' )
+            . self::cta_button( home_url(), 'View More Competitions', $s['accent_color'] );
+        wp_mail( $buyer_email, 'Draw complete: ' . $raffle->title, self::wrap( $body, 'The draw for ' . $raffle->title . ' is complete.' ), self::get_headers( $s ) );
+    }
+
+    public static function send_raffle_started( $buyer_email, $buyer_name, $raffle ) {
+        if ( empty( $buyer_email ) || ! self::is_email_enabled( 'raffle_started' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'A New Competition is Live!' )
+            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, <strong>' . esc_html( $raffle->title ) . '</strong> is now open for entries.' )
+            . self::cta_button( get_permalink( $raffle->wc_product_id ) ?: home_url(), 'Enter Now', $s['accent_color'] );
+        wp_mail( $buyer_email, 'Now live: ' . $raffle->title, self::wrap( $body, $raffle->title . ' is now open.' ), self::get_headers( $s ) );
+    }
+
+    public static function send_raffle_extended( $buyer_email, $buyer_name, $raffle, $new_draw_date ) {
+        if ( empty( $buyer_email ) || ! self::is_email_enabled( 'raffle_extended' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $formatted = $new_draw_date ? date_i18n( 'l jS F Y \a\t g:i a', strtotime( $new_draw_date ) ) : 'soon';
+        $body = self::section_heading( 'Extended Deadline!' )
+            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, good news! The draw for <strong>' . esc_html( $raffle->title ) . '</strong> has been extended. You now have until <strong>' . esc_html( $formatted ) . '</strong> to enter.' )
+            . self::cta_button( get_permalink( $raffle->wc_product_id ) ?: home_url(), 'Enter More Tickets', $s['accent_color'] );
+        wp_mail( $buyer_email, 'Extended: ' . $raffle->title, self::wrap( $body, $raffle->title . ' has been extended.' ), self::get_headers( $s ) );
+    }
+
+    public static function send_failed_participant( $buyer_email, $buyer_name, $raffle, $fail_reason ) {
+        if ( empty( $buyer_email ) || ! self::is_email_enabled( 'failed_participant' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $reason_text = ( 'min_tickets' === $fail_reason ) ? 'it did not reach the minimum number of tickets required' : 'it did not reach the minimum number of entrants required';
+        $refund_note = ! empty( $raffle->auto_refund_on_fail ) ? ' A refund for your entry is being processed automatically.' : ' Please contact us if you have any questions about your entry.';
+        $body = self::section_heading( 'Competition Update' )
+            . self::muted_p( 'Hi <strong>' . esc_html( $buyer_name ) . '</strong>, unfortunately <strong>' . esc_html( $raffle->title ) . '</strong> did not go ahead because ' . $reason_text . '.' . $refund_note );
+        wp_mail( $buyer_email, 'Update: ' . $raffle->title, self::wrap( $body, 'An update on ' . $raffle->title . '.' ), self::get_headers( $s ) );
+    }
+
+    /* Admin notifications (sent to get_admin_recipients()). */
+
+    public static function send_admin_sale( $raffle, $buyer_name, $quantity ) {
+        if ( ! self::is_email_enabled( 'admin_sale' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'New Ticket Sale' )
+            . self::muted_p( '<strong>' . esc_html( $quantity ) . '</strong> ticket(s) sold in <strong>' . esc_html( $raffle->title ) . '</strong> to ' . esc_html( $buyer_name ) . '.' );
+        self::mail_admins( 'New sale: ' . $raffle->title, $body, $s );
+    }
+
+    public static function send_admin_draw( $raffle ) {
+        if ( ! self::is_email_enabled( 'admin_draw' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'Draw Completed' )
+            . self::muted_p( 'The draw for <strong>' . esc_html( $raffle->title ) . '</strong> has completed and a winner has been selected.' )
+            . self::cta_button( admin_url( 'admin.php?page=raffle-list&action=view&id=' . $raffle->id ), 'View Raffle', $s['accent_color'] );
+        self::mail_admins( 'Draw complete: ' . $raffle->title, $body, $s );
+    }
+
+    public static function send_admin_winner( $raffle, $winner_ticket ) {
+        if ( ! self::is_email_enabled( 'admin_winner' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $winner_name = isset( $winner_ticket->buyer_name ) ? $winner_ticket->buyer_name : 'a participant';
+        $body = self::section_heading( 'Winner Selected' )
+            . self::muted_p( 'Winner of <strong>' . esc_html( $raffle->title ) . '</strong>: ' . esc_html( $winner_name ) . '.' )
+            . self::cta_button( admin_url( 'admin.php?page=raffle-list&action=view&id=' . $raffle->id ), 'View Winner', $s['accent_color'] );
+        self::mail_admins( 'Winner: ' . $raffle->title, $body, $s );
+    }
+
+    public static function send_admin_failed( $raffle, $fail_reason ) {
+        if ( ! self::is_email_enabled( 'admin_failed' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'Raffle Failed' )
+            . self::muted_p( '<strong>' . esc_html( $raffle->title ) . '</strong> failed its draw because the ' . esc_html( $fail_reason ) . ' threshold was not met.' )
+            . self::cta_button( admin_url( 'admin.php?page=raffle-list&action=view&id=' . $raffle->id ), 'Review Raffle', $s['accent_color'] );
+        self::mail_admins( 'Failed: ' . $raffle->title, $body, $s );
+    }
+
+    public static function send_admin_started( $raffle ) {
+        if ( ! self::is_email_enabled( 'admin_started' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'Raffle Started' )
+            . self::muted_p( '<strong>' . esc_html( $raffle->title ) . '</strong> is now live and accepting entries.' );
+        self::mail_admins( 'Live: ' . $raffle->title, $body, $s );
+    }
+
+    public static function send_admin_relisted( $raffle ) {
+        if ( ! self::is_email_enabled( 'admin_relisted' ) ) {
+            return;
+        }
+        $s = self::get_settings();
+        $body = self::section_heading( 'Raffle Relisted' )
+            . self::muted_p( '<strong>' . esc_html( $raffle->title ) . '</strong> has been relisted and is open for entries again.' );
+        self::mail_admins( 'Relisted: ' . $raffle->title, $body, $s );
+    }
+
+    /**
+     * Send to every admin recipient. Helper for the admin_* notifications.
+     */
+    private static function mail_admins( $subject, $body, $settings ) {
+        $recipients = self::get_admin_recipients();
+        if ( empty( $recipients ) ) {
+            return;
+        }
+        foreach ( $recipients as $to ) {
+            wp_mail( $to, $subject, self::wrap( $body, $subject ), self::get_headers( $settings ) );
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -380,7 +651,11 @@ HTML;
 
         return wp_mail(
             $email,
-            sprintf( __( 'Your %s consolation coupon', 'wpraffle' ), $discount ),
+            sprintf(
+                /* translators: %s: coupon code or description. */
+                __( 'Your %s consolation coupon', 'wpraffle' ),
+                $discount
+            ),
             self::wrap( $body, 'A thank-you from ' . $raffle->title ),
             self::get_headers( $s )
         );

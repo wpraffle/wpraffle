@@ -13,14 +13,105 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
 ?>
 
 <div class="wrap">
+    <?php
+    // 1.3.0 — status badge reflects finished/failed/extended/active/draft.
+    $status_map = array(
+        'active'   => array( 'label' => 'Active',   'bg' => '#dcfce7', 'fg' => '#166534' ),
+        'finished' => array( 'label' => 'Finished', 'bg' => '#f3f4f6', 'fg' => '#374151' ),
+        'failed'   => array( 'label' => 'Failed',   'bg' => '#fee2e2', 'fg' => '#991b1b' ),
+        'extended' => array( 'label' => 'Extended', 'bg' => '#dbeafe', 'fg' => '#1e40af' ),
+        'draft'    => array( 'label' => 'Draft',    'bg' => '#f3f4f6', 'fg' => '#6b7280' ),
+    );
+    $sb = $status_map[ $raffle->status ] ?? $status_map['finished'];
+    if ( ! empty( $raffle->fail_reason ) ) {
+        $sb['label'] .= ' (' . ( $raffle->fail_reason === 'min_tickets' ? 'min tickets' : 'min entrants' ) . ')';
+    }
+    ?>
     <h1 class="wp-heading-inline">
         <?php echo esc_html( $raffle->title ); ?>
-        <span style="background:<?php echo $raffle->status === 'active' ? '#dcfce7; color:#166534;' : '#f3f4f6; color:#374151;'; ?>; padding:4px 10px; border-radius:4px; font-weight:600; font-size:13px; margin-left:10px; display:inline-block; vertical-align:middle;">
-            <?php echo $raffle->status === 'active' ? 'Active' : 'Finished'; ?>
+        <span style="background:<?php echo esc_attr( $sb['bg'] ); ?>; color:<?php echo esc_attr( $sb['fg'] ); ?>; padding:4px 10px; border-radius:4px; font-weight:600; font-size:13px; margin-left:10px; display:inline-block; vertical-align:middle;">
+            <?php echo esc_html( $sb['label'] ); ?>
         </span>
     </h1>
     <a href="<?php echo esc_url( admin_url( 'admin.php?page=raffle-list' ) ); ?>" class="page-title-action">Back to List</a>
     <a href="<?php echo esc_url( admin_url( "admin.php?page=raffle-list&action=edit&id={$raffle->id}" ) ); ?>" class="page-title-action text-primary">Edit Raffle</a>
+
+    <?php
+    // 1.3.0 — Lifecycle action notices + Extend / Relist buttons.
+    if ( isset( $_GET['lifecycle_error'] ) ) {
+        echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( wp_unslash( $_GET['lifecycle_error'] ) ) . '</p></div>';
+    }
+    if ( isset( $_GET['lifecycle_ok'] ) ) {
+        $ok_msg = $_GET['lifecycle_ok'] === 'extended' ? __( 'Raffle extended and reopened for entries.', 'wpraffle' ) : __( 'Raffle relisted with a fresh entry slate.', 'wpraffle' );
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $ok_msg ) . '</p></div>';
+    }
+    // 1.3.0 — Wallet payout re-sync result notice.
+    if ( isset( $_GET['wallet_sync_done'] ) ) {
+        $sync_msg = isset( $_GET['wallet_sync_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['wallet_sync_msg'] ) ) : __( 'Wallet payouts re-synced.', 'wpraffle' );
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $sync_msg ) . '</p></div>';
+    }
+    // 1.3.0 — Manual wallet/credit payout re-sync button (always shown; idempotent).
+    $pending_payouts = class_exists( 'Raffle_Wallet_Adapter' ) ? Raffle_Wallet_Adapter::count_pending_payouts( $raffle->id ) : 0;
+    $sync_url = wp_nonce_url( admin_url( "admin.php?page=raffle-list&action=sync_wallet&id={$raffle->id}" ), 'raffle_sync_wallet_' . $raffle->id );
+    ?>
+    <div style="margin: 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:#fffbeb; border:1px solid #fde68a; padding:10px 14px; border-radius:4px;">
+        <strong style="font-size:13px; color:#92400e;">Wallet / Credit payouts:</strong>
+        <?php if ( $pending_payouts > 0 ) : ?>
+            <span style="font-size:12px; color:#b45309; font-weight:600;"><?php
+            /* translators: %d: number of pending payouts. */
+            echo esc_html( sprintf( _n( '%d pending payout awaiting sync.', '%d pending payouts awaiting sync.', $pending_payouts, 'wpraffle' ), $pending_payouts ) );
+            ?></span>
+            <a href="<?php echo esc_url( $sync_url ); ?>" class="button button-primary" style="font-size:12px;">
+                <?php esc_html_e( 'Sync Wallet Payouts', 'wpraffle' ); ?>
+            </a>
+        <?php else : ?>
+            <span style="font-size:12px; color:#6b7280;">All payouts credited. </span>
+            <a href="<?php echo esc_url( $sync_url ); ?>" class="button button-secondary" style="font-size:12px;">
+                <?php esc_html_e( 'Re-check payouts', 'wpraffle' ); ?>
+            </a>
+        <?php endif; ?>
+        <span style="font-size:11px; color:#9ca3af;">Re-processes any instant-win credit prizes that didn't reach the wallet. Safe to run repeatedly.</span>
+    </div>
+    <?php
+    // Show extend/relist for finished or failed raffles (relist only for finished/failed; extend for failed).
+    if ( in_array( $raffle->status, array( 'finished', 'failed' ), true ) ) :
+        $default_new_date = gmdate( 'Y-m-d\TH:i', time() + ( 7 * DAY_IN_SECONDS ) );
+        ?>
+        <div style="margin: 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:#fff; border:1px solid #c3c4c7; padding:12px; border-radius:4px;">
+            <label for="lifecycle_new_date" style="font-weight:600; font-size:13px;">New draw date:</label>
+            <input type="datetime-local" id="lifecycle_new_date" value="<?php echo esc_attr( $default_new_date ); ?>" class="small-text">
+            <a href="#" class="button button-secondary" id="raffle-extend-btn"
+               data-url-base="<?php echo esc_attr( wp_nonce_url( admin_url( "admin.php?page=raffle-list&action=extend&id={$raffle->id}" ), 'raffle_extend_' . $raffle->id ) ); ?>">
+                <?php esc_html_e( 'Extend Deadline', 'wpraffle' ); ?>
+            </a>
+            <a href="#" class="button button-primary" id="raffle-relist-btn"
+               data-url-base="<?php echo esc_attr( wp_nonce_url( admin_url( "admin.php?page=raffle-list&action=relist&id={$raffle->id}" ), 'raffle_relist_' . $raffle->id ) ); ?>">
+                <?php esc_html_e( 'Relist Raffle', 'wpraffle' ); ?>
+            </a>
+            <span style="font-size:12px; color:#6b7280;">
+                <?php esc_html_e( 'Extend pushes the deadline out (keeps entries). Relist wipes entries and re-runs in place (preserves the permalink).', 'wpraffle' ); ?>
+            </span>
+        </div>
+        <script>
+        (function(){
+            function wire(id){
+                var btn = document.getElementById(id);
+                if (!btn) return;
+                btn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    var d = document.getElementById('lifecycle_new_date');
+                    var date = d ? d.value : '';
+                    var base = btn.dataset.urlBase;
+                    var sep = base.indexOf('?') === -1 ? '?' : '&';
+                    if (!window.confirm(btn.textContent.trim() + '?')) return;
+                    window.location.href = base + ( date ? sep + 'new_draw_date=' + encodeURIComponent(date) : '' );
+                });
+            }
+            wire('raffle-extend-btn');
+            wire('raffle-relist-btn');
+        })();
+        </script>
+    <?php endif; ?>
     <hr class="wp-header-end">
 
     <!-- Stats summary grid -->
@@ -62,6 +153,14 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
                 
                 <!-- Winner Banner / Manual Draw -->
                 <?php if ( $winner ) : ?>
+                    <?php
+                    // 1.3.0 — Featured winner data (flag + photo + testimonial).
+                    $featured = class_exists( 'Raffle_Featured_Winners' ) ? Raffle_Featured_Winners::get( $raffle->id ) : null;
+                    $fw_photo_id = $featured ? (int) $featured->winner_photo_id : 0;
+                    $fw_is_featured = $featured ? (int) $featured->is_featured : 0;
+                    $fw_testimonial = $featured ? $featured->testimonial : '';
+                    wp_enqueue_media();
+                    ?>
                     <div class="notice notice-success inline" style="margin: 0 0 20px; padding: 15px; border-left-width: 6px;">
                         <h3 style="margin:0 0 10px; font-size: 18px; color: #15803d;"><?php wpr_icon( 'trophy', 'wpr-icon--sm' ); ?> Winner Selected!</h3>
                         <div style="display:flex; gap:30px; flex-wrap:wrap;">
@@ -78,6 +177,107 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
                                 <strong style="font-size:18px; color:#1d2327;"><?php echo esc_html( $winner->buyer_email ); ?></strong>
                             </div>
                         </div>
+
+                        <!-- Featured Winner Panel (1.3.0) -->
+                        <div style="margin-top:16px; padding-top:16px; border-top:1px solid #c3c4c7;">
+                            <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+                                <label style="display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; cursor:pointer;">
+                                    <input type="checkbox" id="fw-featured-toggle" <?php checked( $fw_is_featured, 1 ); ?>>
+                                    ★ Feature this winner
+                                </label>
+                                <span style="font-size:12px; color:#6b7280;">Featured winners appear in the winners carousel.</span>
+                                <span id="fw-saved-msg" style="font-size:12px; color:#15803d; font-weight:600; display:none;">✓ Saved</span>
+                            </div>
+                            <div id="fw-fields" style="<?php echo $fw_is_featured ? '' : 'display:none;'; ?> display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+                                <!-- Photo upload -->
+                                <div style="flex:0 0 auto;">
+                                    <small style="display:block; color:#4b5563; font-weight:500; margin-bottom:6px;">Winner photo</small>
+                                    <div id="fw-photo-preview" style="width:120px; height:120px; border:2px dashed #c3c4c7; border-radius:8px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#f9fafb; margin-bottom:6px;">
+                                        <?php if ( $fw_photo_id ) : ?>
+                                            <?php echo wp_get_attachment_image( $fw_photo_id, 'thumbnail', false, array( 'style' => 'width:100%;height:100%;object-fit:cover;' ) ); ?>
+                                        <?php else : ?>
+                                            <span style="font-size:11px; color:#9ca3af;">No photo</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <input type="hidden" id="fw-photo-id" value="<?php echo esc_attr( $fw_photo_id ); ?>">
+                                    <button type="button" class="button button-small" id="fw-upload-btn"><?php esc_html_e( 'Upload Photo', 'wpraffle' ); ?></button>
+                                    <button type="button" class="button button-small" id="fw-remove-photo-btn" style="<?php echo $fw_photo_id ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Remove', 'wpraffle' ); ?></button>
+                                </div>
+                                <!-- Testimonial -->
+                                <div style="flex:1; min-width:200px;">
+                                    <small style="display:block; color:#4b5563; font-weight:500; margin-bottom:6px;">Winner testimonial / quote (optional)</small>
+                                    <textarea id="fw-testimonial" rows="4" style="width:100%;" placeholder="e.g. &quot;I couldn't believe it when I won! Amazing experience.&quot;"><?php echo esc_textarea( $fw_testimonial ); ?></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <script>
+                        jQuery(function($){
+                            var nonce = '<?php echo esc_js( wp_create_nonce( 'raffle_featured_nonce' ) ); ?>';
+                            var raffleId = <?php echo (int) $raffle->id; ?>;
+
+                            function saveFeatured(){
+                                $.post(ajaxurl, {
+                                    action: 'raffle_save_featured_winner',
+                                    nonce: nonce,
+                                    raffle_id: raffleId,
+                                    winner_name: '<?php echo esc_js( $winner->buyer_name ); ?>',
+                                    winner_email: '<?php echo esc_js( $winner->buyer_email ); ?>',
+                                    winner_photo_id: $('#fw-photo-id').val() || 0,
+                                    is_featured: $('#fw-featured-toggle').is(':checked') ? 1 : 0,
+                                    testimonial: $('#fw-testimonial').val() || ''
+                                }).done(function(res){
+                                    if (res && res.success) {
+                                        var msg = $('#fw-saved-msg');
+                                        msg.show().delay(1500).fadeOut();
+                                    } else {
+                                        alert((res && res.data && res.data.message) ? res.data.message : 'Error saving featured winner.');
+                                    }
+                                }).fail(function(xhr){
+                                    console.log('Featured winner save failed:', xhr.status, xhr.responseText);
+                                    alert('Featured winner save failed (HTTP ' + xhr.status + '). Check the browser console for details.');
+                                });
+                            }
+
+                            $('#fw-featured-toggle').on('change', function(){
+                                if ($(this).is(':checked')) {
+                                    $('#fw-fields').slideDown();
+                                } else {
+                                    $('#fw-fields').slideUp();
+                                }
+                                saveFeatured();
+                            });
+
+                            var frame;
+                            $('#fw-upload-btn').on('click', function(e){
+                                e.preventDefault();
+                                if (frame) { frame.open(); return; }
+                                frame = wp.media({ title: 'Choose Winner Photo', button: { text: 'Use this photo' }, multiple: false });
+                                frame.on('select', function(){
+                                    var att = frame.state().get('selection').first().toJSON();
+                                    $('#fw-photo-id').val(att.id);
+                                    $('#fw-photo-preview').html('<img src="' + att.url + '" style="width:100%;height:100%;object-fit:cover;">');
+                                    $('#fw-remove-photo-btn').show();
+                                    saveFeatured();
+                                });
+                                frame.open();
+                            });
+
+                            $('#fw-remove-photo-btn').on('click', function(){
+                                $('#fw-photo-id').val(0);
+                                $('#fw-photo-preview').html('<span style="font-size:11px; color:#9ca3af;">No photo</span>');
+                                $('#fw-remove-photo-btn').hide();
+                                saveFeatured();
+                            });
+
+                            // Save testimonial on blur (debounced).
+                            var to;
+                            $('#fw-testimonial').on('input', function(){
+                                clearTimeout(to);
+                                to = setTimeout(saveFeatured, 800);
+                            });
+                        });
+                        </script>
                     </div>
                 <?php else : ?>
                     <div class="postbox">
@@ -187,7 +387,13 @@ $instant_wins = Raffle_Instant_Wins::get_instant_wins( $raffle->id );
                             <label for="rs-buyers-search" class="screen-reader-text"><?php esc_html_e( 'Search buyers', 'wpraffle' ); ?></label>
                             <input type="search" id="rs-buyers-search" placeholder="<?php esc_attr_e( 'Search name or email…', 'wpraffle' ); ?>" style="font-size:12px; min-width:200px;">
                             <a href="<?php echo esc_url( wp_nonce_url( admin_url( "admin.php?page=raffle-list&action=export_buyers&id={$raffle->id}" ), 'export_buyers_' . $raffle->id ) ); ?>" class="button button-primary" style="font-size:12px;">
-                                <?php wpr_icon( 'refresh', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Export CSV', 'wpraffle' ); ?>
+                                <?php wpr_icon( 'refresh', 'wpr-icon--xs' ); ?> <?php esc_html_e( 'Export Buyers', 'wpraffle' ); ?>
+                            </a>
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( "admin-post.php?action=wpraffle_export_tickets&id={$raffle->id}" ), 'export_tickets_' . $raffle->id ) ); ?>" class="button" style="font-size:12px;" target="_blank">
+                                <?php esc_html_e( 'Export Tickets', 'wpraffle' ); ?>
+                            </a>
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( "admin-post.php?action=wpraffle_export_instant_wins&id={$raffle->id}" ), 'export_iw_' . $raffle->id ) ); ?>" class="button" style="font-size:12px;" target="_blank">
+                                <?php esc_html_e( 'Export Instant Wins', 'wpraffle' ); ?>
                             </a>
                         </div>
                     </div>

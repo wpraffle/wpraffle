@@ -44,14 +44,14 @@ foreach ( $purchases as $p ) {
 ?>
 
 <h3 style="margin:0 0 1em;">
-    <?php echo wpr_get_icon( 'ticket', 'wpr-icon--md' ); ?> My Tickets
+    <?php wpr_icon( 'ticket', 'wpr-icon--md' ); ?> My Tickets
 </h3>
 
 <!-- Pending / Processing -->
 <?php if ( ! empty( $pending ) ) : ?>
 <div style="margin-bottom:1.5em; padding:0.8em 1em; background:color-mix(in srgb, var(--wpr-urgency-warn, #f59e0b) 8%, transparent); border:1px solid color-mix(in srgb, var(--wpr-urgency-warn, #f59e0b) 30%, transparent); border-radius:8px;">
     <h4 style="text-transform:uppercase;font-size:0.85em;letter-spacing:0.5px;margin:0 0 0.6em;display:flex;align-items:center;gap:6px;color:var(--wpr-urgency-warn, #b45309);">
-        <?php echo wpr_get_icon( 'clock-filled', 'wpr-icon--xs' ); ?> Processing (<?php echo count( $pending ); ?>)
+        <?php wpr_icon( 'clock-filled', 'wpr-icon--xs' ); ?> Processing (<?php echo count( $pending ); ?>)
     </h4>
     <p style="font-size:0.78em;color:var(--wpr-text-muted);margin:0 0 0.6em;">These entries are confirmed but awaiting payment clearance. Your tickets will appear here once payment completes.</p>
     <?php foreach ( $pending as $p ) : ?>
@@ -69,7 +69,7 @@ foreach ( $purchases as $p ) {
 <!-- Live -->
 <div style="margin-bottom:1.5em;">
     <h4 style="text-transform:uppercase;font-size:0.85em;letter-spacing:0.5px;margin:0 0 0.75em;">
-        <?php echo wpr_get_icon( 'ticket', 'wpr-icon--xs' ); ?> Live Competitions (<?php echo count( $live ); ?>)
+        <?php wpr_icon( 'ticket', 'wpr-icon--xs' ); ?> Live Competitions (<?php echo count( $live ); ?>)
     </h4>
     <?php if ( empty( $live ) ) : ?>
         <p class="woocommerce-info">No active entries. <a href="<?php echo esc_url( apply_filters( 'woocommerce_return_to_shop_redirect', wc_get_page_permalink( 'shop' ) ) ); ?>">Browse competitions</a></p>
@@ -93,7 +93,7 @@ foreach ( $purchases as $p ) {
                 <div style="padding:0.6em 0.8em;">
                     <?php if ( $odds_one_in > 0 ) : ?>
                         <div style="font-size:0.75em;color:var(--wpr-text-muted);margin-bottom:0.5em;display:flex;align-items:center;gap:6px;">
-                            <?php echo wpr_get_icon( 'star', 'wpr-icon--xs' ); ?>
+                            <?php wpr_icon( 'star', 'wpr-icon--xs' ); ?>
                             Your odds: <strong style="color:var(--wpr-accent);">1 in <?php echo esc_html( number_format_i18n( $odds_one_in ) ); ?></strong>
                             <span style="opacity:0.7;">(<?php echo esc_html( round( $odds_pct, 2 ) ); ?>%)</span>
                         </div>
@@ -112,7 +112,7 @@ foreach ( $purchases as $p ) {
 <!-- Drawn -->
 <div>
     <h4 style="text-transform:uppercase;font-size:0.85em;letter-spacing:0.5px;margin:0 0 0.75em;">
-        <?php echo wpr_get_icon( 'trophy', 'wpr-icon--xs' ); ?> Drawn / Past (<?php echo count( $drawn ); ?>)
+        <?php wpr_icon( 'trophy', 'wpr-icon--xs' ); ?> Drawn / Past (<?php echo count( $drawn ); ?>)
     </h4>
     <?php if ( empty( $drawn ) ) : ?>
         <p class="woocommerce-info">No past entries yet.</p>

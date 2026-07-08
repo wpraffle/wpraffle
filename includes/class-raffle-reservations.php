@@ -26,7 +26,7 @@ class Raffle_Reservations {
         // Clamp the hold window to a sane range so a future caller can't pass
         // an unbounded/garbage value via $_POST.
         $minutes = max( 1, min( 60, (int) $minutes ) );
-        $expires = date( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
+        $expires = gmdate( 'Y-m-d H:i:s', strtotime( "+{$minutes} minutes", time() ) );
 
         $wpdb->insert(
             $wpdb->prefix . 'raffle_reservations',

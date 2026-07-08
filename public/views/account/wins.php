@@ -30,7 +30,7 @@ $instant_wins = $wpdb->get_results( $wpdb->prepare(
 ?>
 
 <h3 style="margin:0 0 1em;">
-    <?php echo wpr_get_icon( 'trophy', 'wpr-icon--md' ); ?> My Wins
+    <?php wpr_icon( 'trophy', 'wpr-icon--md' ); ?> My Wins
 </h3>
 
 <?php if ( empty( $main_wins ) && empty( $instant_wins ) ) : ?>
@@ -40,7 +40,7 @@ $instant_wins = $wpdb->get_results( $wpdb->prepare(
     <?php if ( ! empty( $main_wins ) ) : ?>
         <details open style="margin-bottom:1em;">
             <summary style="cursor:pointer;padding:0.6em 0.8em;border:1px solid var(--wpr-border-color);border-radius:6px;font-weight:700;font-size:0.95em;display:flex;align-items:center;justify-content:space-between;list-style:none;">
-                <span><?php echo wpr_get_icon( 'trophy', 'wpr-icon--xs' ); ?> Main Prize Wins (<?php echo count( $main_wins ); ?>)</span>
+                <span><?php wpr_icon( 'trophy', 'wpr-icon--xs' ); ?> Main Prize Wins (<?php echo count( $main_wins ); ?>)</span>
             </summary>
             <div style="padding:0.6em 0.8em;display:flex;flex-direction:column;gap:0.5em;">
                 <?php foreach ( $main_wins as $w ) :
@@ -77,14 +77,14 @@ $instant_wins = $wpdb->get_results( $wpdb->prepare(
     <?php if ( ! empty( $instant_wins ) ) : ?>
         <details style="margin-bottom:1em;">
             <summary style="cursor:pointer;padding:0.6em 0.8em;border:1px solid var(--wpr-border-color);border-radius:6px;font-weight:700;font-size:0.95em;display:flex;align-items:center;justify-content:space-between;list-style:none;">
-                <span><?php echo wpr_get_icon( 'zap', 'wpr-icon--xs' ); ?> Instant Wins (<?php echo count( $instant_wins ); ?>)</span>
+                <span><?php wpr_icon( 'zap', 'wpr-icon--xs' ); ?> Instant Wins (<?php echo count( $instant_wins ); ?>)</span>
             </summary>
             <div style="padding:0.6em 0.8em;display:flex;flex-direction:column;gap:0.4em;">
                 <?php foreach ( $instant_wins as $iw ) :
                     $td = strlen( (string) ( $iw->total_tickets ?? 3 ) );
                 ?>
                     <div style="display:flex;align-items:center;gap:0.6em;border:1px solid var(--wpr-border-color);border-radius:5px;padding:0.4em 0.7em;">
-                        <span style="flex-shrink:0;color:var(--wpr-accent);"><?php echo wpr_get_icon( 'gift', 'wpr-icon--sm' ); ?></span>
+                        <span style="flex-shrink:0;color:var(--wpr-accent);"><?php wpr_icon( 'gift', 'wpr-icon--sm' ); ?></span>
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:700;font-size:0.9em;color:var(--wpr-text-primary);"><?php echo esc_html( $iw->prize_name ); ?></div>
                             <div style="font-size:0.75em;color:var(--wpr-text-muted);">

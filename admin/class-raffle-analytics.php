@@ -53,45 +53,45 @@ class Raffle_Analytics {
         global $wpdb;
 
         $total_revenue = (float) $wpdb->get_var(
-            "SELECT COALESCE(SUM(total_amount), 0) FROM {$pfx}raffle_purchases WHERE payment_status = 'completed'"
+            "SELECT COALESCE(SUM(total_amount), 0) FROM {$wpdb->prefix}raffle_purchases WHERE payment_status = 'completed'"
         );
 
         $total_tickets_sold = (int) $wpdb->get_var(
-            "SELECT COALESCE(SUM(sold_tickets), 0) FROM {$pfx}raffles"
+            "SELECT COALESCE(SUM(sold_tickets), 0) FROM {$wpdb->prefix}raffles"
         );
 
         $total_tickets_available = (int) $wpdb->get_var(
-            "SELECT COALESCE(SUM(total_tickets), 0) FROM {$pfx}raffles"
+            "SELECT COALESCE(SUM(total_tickets), 0) FROM {$wpdb->prefix}raffles"
         );
 
         $active_raffles = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$pfx}raffles WHERE status = 'active'"
+            "SELECT COUNT(*) FROM {$wpdb->prefix}raffles WHERE status = 'active'"
         );
 
         $total_raffles = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$pfx}raffles"
+            "SELECT COUNT(*) FROM {$wpdb->prefix}raffles"
         );
 
         $total_prize_value = (float) $wpdb->get_var(
-            "SELECT COALESCE(SUM(prize_value), 0) FROM {$pfx}raffles"
+            "SELECT COALESCE(SUM(prize_value), 0) FROM {$wpdb->prefix}raffles"
         );
 
         $total_buyers = (int) $wpdb->get_var(
-            "SELECT COUNT(DISTINCT buyer_email) FROM {$pfx}raffle_purchases WHERE payment_status = 'completed'"
+            "SELECT COUNT(DISTINCT buyer_email) FROM {$wpdb->prefix}raffle_purchases WHERE payment_status = 'completed'"
         );
 
         $avg_ticket_price = (float) $wpdb->get_var(
-            "SELECT COALESCE(AVG(ticket_price), 0) FROM {$pfx}raffles"
+            "SELECT COALESCE(AVG(ticket_price), 0) FROM {$wpdb->prefix}raffles"
         );
 
         // Revenue this month vs last month
         $revenue_this_month = (float) $wpdb->get_var(
-            "SELECT COALESCE(SUM(total_amount), 0) FROM {$pfx}raffle_purchases
+            "SELECT COALESCE(SUM(total_amount), 0) FROM {$wpdb->prefix}raffle_purchases
              WHERE payment_status = 'completed' AND MONTH(purchase_date) = MONTH(CURDATE()) AND YEAR(purchase_date) = YEAR(CURDATE())"
         );
 
         $revenue_last_month = (float) $wpdb->get_var(
-            "SELECT COALESCE(SUM(total_amount), 0) FROM {$pfx}raffle_purchases
+            "SELECT COALESCE(SUM(total_amount), 0) FROM {$wpdb->prefix}raffle_purchases
              WHERE payment_status = 'completed' AND MONTH(purchase_date) = MONTH(CURDATE() - INTERVAL 1 MONTH) AND YEAR(purchase_date) = YEAR(CURDATE() - INTERVAL 1 MONTH)"
         );
 
@@ -120,8 +120,8 @@ class Raffle_Analytics {
                     r.prize_value,
                     r.sold_tickets,
                     r.total_tickets
-             FROM {$pfx}raffles r
-             LEFT JOIN {$pfx}raffle_purchases p ON p.raffle_id = r.id AND p.payment_status = 'completed'
+             FROM {$wpdb->prefix}raffles r
+             LEFT JOIN {$wpdb->prefix}raffle_purchases p ON p.raffle_id = r.id AND p.payment_status = 'completed'
              GROUP BY r.id
              ORDER BY revenue DESC"
         );
@@ -133,7 +133,7 @@ class Raffle_Analytics {
         return $wpdb->get_results(
             "SELECT r.id, r.title, r.sold_tickets, r.total_tickets,
                     ROUND((r.sold_tickets / r.total_tickets) * 100, 1) AS sell_rate
-             FROM {$pfx}raffles r
+             FROM {$wpdb->prefix}raffles r
              WHERE r.total_tickets > 0
              ORDER BY sell_rate DESC"
         );
@@ -146,8 +146,8 @@ class Raffle_Analytics {
             "SELECT r.id, r.title, r.prize_value,
                     COALESCE(SUM(p.total_amount), 0) AS revenue,
                     (COALESCE(SUM(p.total_amount), 0) - r.prize_value) AS net_profit
-             FROM {$pfx}raffles r
-             LEFT JOIN {$pfx}raffle_purchases p ON p.raffle_id = r.id AND p.payment_status = 'completed'
+             FROM {$wpdb->prefix}raffles r
+             LEFT JOIN {$wpdb->prefix}raffle_purchases p ON p.raffle_id = r.id AND p.payment_status = 'completed'
              GROUP BY r.id
              ORDER BY net_profit DESC"
         );
@@ -162,7 +162,7 @@ class Raffle_Analytics {
                                COUNT(*) AS transactions,
                                COALESCE(SUM(total_amount), 0) AS revenue,
                                COALESCE(SUM(quantity), 0) AS tickets
-                        FROM {$pfx}raffle_purchases
+                        FROM {$wpdb->prefix}raffle_purchases
                         WHERE payment_status = 'completed'
                         GROUP BY label
                         ORDER BY label ASC
@@ -174,7 +174,7 @@ class Raffle_Analytics {
                                COUNT(*) AS transactions,
                                COALESCE(SUM(total_amount), 0) AS revenue,
                                COALESCE(SUM(quantity), 0) AS tickets
-                        FROM {$pfx}raffle_purchases
+                        FROM {$wpdb->prefix}raffle_purchases
                         WHERE payment_status = 'completed'
                         GROUP BY label
                         ORDER BY label ASC";
@@ -185,13 +185,14 @@ class Raffle_Analytics {
                                COUNT(*) AS transactions,
                                COALESCE(SUM(total_amount), 0) AS revenue,
                                COALESCE(SUM(quantity), 0) AS tickets
-                        FROM {$pfx}raffle_purchases
+                        FROM {$wpdb->prefix}raffle_purchases
                         WHERE payment_status = 'completed' AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                         GROUP BY label
                         ORDER BY label ASC";
                 break;
         }
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is assembled from static literals (no user input) in the switch above.
         return $wpdb->get_results( $sql );
     }
 
@@ -203,7 +204,7 @@ class Raffle_Analytics {
                     COUNT(*) AS purchases,
                     COALESCE(SUM(quantity), 0) AS total_tickets,
                     COALESCE(SUM(total_amount), 0) AS total_spent
-             FROM {$pfx}raffle_purchases
+             FROM {$wpdb->prefix}raffle_purchases
              WHERE payment_status = 'completed'
              GROUP BY buyer_email
              ORDER BY total_spent DESC
@@ -217,8 +218,8 @@ class Raffle_Analytics {
         return $wpdb->get_results(
             "SELECT p.id, p.buyer_name, p.buyer_email, p.quantity, p.total_amount,
                     p.payment_status, p.purchase_date, r.title AS raffle_title
-             FROM {$pfx}raffle_purchases p
-             JOIN {$pfx}raffles r ON r.id = p.raffle_id
+             FROM {$wpdb->prefix}raffle_purchases p
+             JOIN {$wpdb->prefix}raffles r ON r.id = p.raffle_id
              ORDER BY p.purchase_date DESC
              LIMIT 15"
         );

@@ -7,10 +7,20 @@ class Raffle_Tickets {
 
     /**
      * Formats ticket numbers with leading zeros according to 3 or 4 digit rules.
+     * Accepts an optional raffle object to apply per-raffle prefix/suffix (1.3.0).
      */
-    public static function format_ticket_number($number, $total_tickets) {
+    public static function format_ticket_number($number, $total_tickets, $raffle = null) {
         $digits = ($total_tickets > 999) ? 4 : 3;
-        return str_pad($number, $digits, '0', STR_PAD_LEFT);
+        $formatted = str_pad($number, $digits, '0', STR_PAD_LEFT);
+        // 1.3.0 — apply per-raffle prefix/suffix when provided.
+        if ( $raffle && is_object( $raffle ) ) {
+            $prefix = isset( $raffle->ticket_prefix ) ? $raffle->ticket_prefix : '';
+            $suffix = isset( $raffle->ticket_suffix ) ? $raffle->ticket_suffix : '';
+            if ( $prefix !== '' || $suffix !== '' ) {
+                $formatted = $prefix . $formatted . $suffix;
+            }
+        }
+        return $formatted;
     }
 
     /**
@@ -33,13 +43,21 @@ class Raffle_Tickets {
         // SELECT ... FOR UPDATE locks the raffle row
         // No other concurrent purchase can read sold_tickets until this transaction ends
         $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT total_tickets, sold_tickets FROM {$table_raffles} WHERE id = %d FOR UPDATE",
+            "SELECT total_tickets, sold_tickets, ticket_numbering, ticket_start_number FROM {$table_raffles} WHERE id = %d FOR UPDATE",
             $raffle_id
         ) );
 
         if ( ! $raffle ) {
             if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
             return new WP_Error( 'invalid_raffle', 'Raffle not found.' );
+        }
+
+        // 1.3.0 — Numbering strategy. Default 'random' preserves the legacy
+        // behaviour. 'sequential' assigns the next contiguous number from a
+        // per-raffle cursor; 'shuffled' assigns from a pre-shuffled deck.
+        $numbering = isset( $raffle->ticket_numbering ) ? $raffle->ticket_numbering : 'random';
+        if ( ! in_array( $numbering, array( 'random', 'sequential', 'shuffled' ), true ) ) {
+            $numbering = 'random';
         }
 
         // Check availability (protegido por el lock)
@@ -97,6 +115,64 @@ class Raffle_Tickets {
 
         // Fill remaining with randoms (if any conflicts happened or random selection is used)
         $remaining_qty = $quantity - count( $selected );
+
+        // 1.3.0 — Sequential / shuffled numbering paths.
+        if ( $remaining_qty > 0 && 'random' !== $numbering ) {
+            $seq_table = $wpdb->prefix . 'raffle_ticket_sequences';
+            // Ensure the sequence cursor row exists.
+            $wpdb->query( $wpdb->prepare(
+                "INSERT INTO {$seq_table} (raffle_id, next_seq) VALUES (%d, %d) ON DUPLICATE KEY UPDATE raffle_id = raffle_id",
+                $raffle_id,
+                isset( $raffle->ticket_start_number ) ? max( 1, (int) $raffle->ticket_start_number ) : 1
+            ) );
+
+            // Lock the sequence row for this raffle so concurrent purchases
+            // don't grab the same number.
+            $seq = $wpdb->get_row( $wpdb->prepare( "SELECT next_seq FROM {$seq_table} WHERE raffle_id = %d FOR UPDATE", $raffle_id ) );
+            $next = $seq ? (int) $seq->next_seq : 1;
+
+            if ( 'shuffled' === $numbering ) {
+                // Build a shuffled deck of the full range, deterministically
+                // offset from the cursor. We shuffle once per fill and take
+                // the next contiguous block. (A full persisted shuffle would
+                // require storing the deck; the cursor-based approach keeps
+                // the schema minimal and is sufficient for typical use.)
+                $pool = array();
+                for ( $n = 1; $n <= $total; $n++ ) {
+                    if ( ! isset( $taken_set[ $n ] ) && ! isset( $selected_set[ $n ] ) ) {
+                        $pool[] = $n;
+                    }
+                }
+                // Fisher-Yates with secure randomness.
+                for ( $i = count( $pool ) - 1; $i > 0; $i-- ) {
+                    $j = random_int( 0, $i );
+                    list( $pool[ $i ], $pool[ $j ] ) = array( $pool[ $j ], $pool[ $i ] );
+                }
+                $take = min( $remaining_qty, count( $pool ) );
+                for ( $i = 0; $i < $take; $i++ ) {
+                    $num = $pool[ $i ];
+                    $selected[] = $num;
+                    $selected_set[ $num ] = true;
+                }
+            } else { // sequential
+                // Assign contiguous numbers starting at the cursor, skipping any
+                // already-taken (e.g. reserved) numbers.
+                while ( count( $selected ) < $quantity && $next <= $total ) {
+                    if ( ! isset( $taken_set[ $next ] ) && ! isset( $selected_set[ $next ] ) ) {
+                        $selected[] = $next;
+                        $selected_set[ $next ] = true;
+                    }
+                    $next++;
+                }
+            }
+
+            // Persist the advanced cursor.
+            $wpdb->update( $seq_table, array( 'next_seq' => $next ), array( 'raffle_id' => $raffle_id ), array( '%d' ), array( '%d' ) );
+
+            // Re-sort and fall through; if sequential/shuffled couldn't satisfy
+            // the full quantity (e.g. collisions), the random path tops it up.
+            $remaining_qty = $quantity - count( $selected );
+        }
 
         if ( $remaining_qty > 0 ) {
             if ( $actual_available <= $remaining_qty * 3 ) {
@@ -250,7 +326,10 @@ class Raffle_Tickets {
         // than concatenating intval'd literals (defence in depth).
         $placeholders = implode( ',', array_fill( 0, count( $numbers ), '%d' ) );
         $params       = array_merge( array( "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE raffle_id = %d AND ticket_number IN ({$placeholders})" ), array( $raffle_id ), array_map( 'intval', $numbers ) );
-        $taken        = $wpdb->get_col( call_user_func_array( array( $wpdb, 'prepare' ), $params ) );
+        $taken        = $wpdb->get_col(
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared via call_user_func_array with %d placeholders above; static analyser cannot trace the spread.
+            call_user_func_array( array( $wpdb, 'prepare' ), $params )
+        );
 
         if ( ! empty( $taken ) ) {
             return new WP_Error( 'already_sold', sprintf( 'The following ticket numbers are already sold: %s.', implode( ', ', $taken ) ) );

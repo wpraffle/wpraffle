@@ -56,6 +56,70 @@ class WPRaffle_PDF {
         return $me->build( $title, $subtitle, $headers, $rows, $general['company_name'] );
     }
 
+    /**
+     * Build a single-ticket PDF suitable for email attachment.
+     *
+     * Uses the same raw-PDF primitives as entry_list() but a compact,
+     * single-ticket layout (no table). The result is a string that can be
+     * passed to PhpMailer::addStringAttachment().
+     *
+     * @param object $raffle          Raffle DB row.
+     * @param array  $ticket_numbers  Array of int ticket numbers for this buyer.
+     * @param string $buyer_name      Entrant name.
+     * @return string Raw PDF content.
+     */
+    public static function ticket( $raffle, $ticket_numbers, $buyer_name = '' ) {
+        $me = new self();
+
+        $general = wp_parse_args( get_option( 'wpraffle_general_settings', array() ), array(
+            'company_name' => get_bloginfo( 'name' ),
+        ) );
+
+        $total_digits = strlen( (string) $raffle->total_tickets );
+        $draw_label   = $raffle->draw_date
+            ? date_i18n( 'jS F Y \a\t g:i a', strtotime( $raffle->draw_date ) )
+            : 'To be confirmed';
+
+        $title    = $raffle->title;
+        $subtitle = $general['company_name'] . '  |  Official Ticket(s)';
+
+        $y       = self::PH - self::MT;
+        $content = '';
+
+        $content .= $me->text( self::ML, $y, $title, 18, true );
+        $y      -= 22;
+        $content .= $me->text( self::ML, $y, $subtitle, 10, false );
+        $y      -= 14;
+        $content .= $me->hline( self::ML, $y, self::PW - self::MR, 0.8 );
+        $y      -= 24;
+
+        if ( $buyer_name ) {
+            $content .= $me->text( self::ML, $y, 'Holder: ' . $buyer_name, 11, false );
+            $y      -= 18;
+        }
+        $content .= $me->text( self::ML, $y, 'Draw: ' . $draw_label, 11, false );
+        $y      -= 24;
+
+        // Ticket numbers in a highlighted box.
+        $usable = self::PW - self::ML - self::MR;
+        $box_h  = 28 + ( count( $ticket_numbers ) * 20 );
+        $content .= $me->filled_rect( self::ML, $y - $box_h + 18, $usable, $box_h, 0.94, 0.95, 1.0 );
+
+        $content .= $me->text( self::ML + 8, $y, 'TICKET NUMBER(S)', 9, true );
+        $y      -= 18;
+        foreach ( $ticket_numbers as $n ) {
+            $formatted = str_pad( $n, $total_digits, '0', STR_PAD_LEFT );
+            $content .= $me->text( self::ML + 8, $y, $formatted, 14, true );
+            $y      -= 20;
+        }
+
+        $y      -= 20;
+        $content .= $me->text( self::ML, $y, 'Keep this ticket as proof of entry.', 8, false );
+
+        $pages = array( $content );
+        return $me->assemble( $pages );
+    }
+
     /* ───────────────────────── internal ───────────────────────── */
 
     /**

@@ -170,7 +170,7 @@ $accordion_id = 0;
                     <?php if ( $data['prize_image'] ) : ?>
                         <img src="<?php echo esc_url( $data['prize_image'] ); ?>" style="width:52px; height:52px; object-fit:cover; border-radius:8px; border:1px solid var(--wpr-border-color); flex-shrink:0;">
                     <?php else : ?>
-                        <div style="width:52px; height:52px; background:var(--wpr-bg-muted); display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--wpr-border-color); flex-shrink:0;"><?php echo wpr_get_icon( 'ticket', 'wpr-icon--lg' ); ?></div>
+                        <div style="width:52px; height:52px; background:var(--wpr-bg-muted); display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--wpr-border-color); flex-shrink:0;"><?php wpr_icon( 'ticket', 'wpr-icon--lg' ); ?></div>
                     <?php endif; ?>
                     <div style="min-width:0;">
                         <h4 style="margin:0 0 4px 0; font-size:15px; color:var(--wpr-text-primary); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?php echo esc_html( $data['title'] ); ?></h4>
@@ -180,7 +180,7 @@ $accordion_id = 0;
                             </span>
                             <?php if ( $data['draw_date'] ) : ?>
                                 <span style="font-size:11px; color:var(--wpr-text-muted);">
-                                    Draw: <strong><?php echo date_i18n( 'd/m/Y H:i', strtotime( $data['draw_date'] ) ); ?></strong>
+                                    Draw: <strong><?php echo esc_html( date_i18n( 'd/m/Y H:i', strtotime( $data['draw_date'] ) ) ); ?></strong>
                                 </span>
                             <?php endif; ?>
                             <span style="font-size:11px; color:var(--wpr-text-muted);">
@@ -194,7 +194,7 @@ $accordion_id = 0;
                     <?php if ( ! $is_active ) : ?>
                         <?php if ( $did_i_win_main ) : ?>
                             <div style="background:var(--wpr-success-bg); border:1px solid var(--wpr-success-bg); border-radius:6px; padding:5px 10px; text-align:center; font-weight:700; color:var(--wpr-success-text); font-size:12px; display:flex; align-items:center; gap:4px;">
-                                <?php echo wpr_get_icon( 'trophy', 'wpr-icon--xs' ); ?> YOU WON!
+                                <?php wpr_icon( 'trophy', 'wpr-icon--xs' ); ?> YOU WON!
                             </div>
                         <?php else : ?>
                             <div style="background:var(--wpr-bg-muted); border:1px solid var(--wpr-border-color); border-radius:6px; padding:5px 10px; text-align:center; font-weight:600; color:var(--wpr-text-muted); font-size:12px;">
@@ -203,7 +203,7 @@ $accordion_id = 0;
                         <?php endif; ?>
                         <?php if ( $results_url ) : ?>
                             <a href="<?php echo esc_url( $results_url ); ?>" style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; color:var(--wpr-accent); border:1px solid color-mix(in srgb, var(--wpr-accent) 30%, transparent); text-decoration:none;">
-                                <?php echo wpr_get_icon( 'eye', 'wpr-icon--xs' ); ?> View Results
+                                <?php wpr_icon( 'eye', 'wpr-icon--xs' ); ?> View Results
                             </a>
                         <?php endif; ?>
                     <?php endif; ?>
@@ -215,17 +215,17 @@ $accordion_id = 0;
                 <div class="myr-toggle" style="margin-top:14px;">
                     <button type="button" class="myr-toggle-btn" onclick="myrToggle(this)" aria-expanded="false" style="background:color-mix(in srgb, var(--wpr-accent) 8%, transparent); border-color:color-mix(in srgb, var(--wpr-accent) 25%, transparent);">
                         <span style="display:flex; align-items:center; gap:6px; color:var(--wpr-accent);">
-                            <?php echo wpr_get_icon( 'gift', 'wpr-icon--xs' ); ?>
+                            <?php wpr_icon( 'gift', 'wpr-icon--xs' ); ?>
                             Instant Win<?php echo count( $data['instant_wins'] ) > 1 ? 's' : ''; ?> (<?php echo count( $data['instant_wins'] ); ?>)
                         </span>
-                        <?php echo wpr_get_icon( 'chevron-down', 'wpr-icon--sm myr-chevron' ); ?>
+                        <?php wpr_icon( 'chevron-down', 'wpr-icon--sm myr-chevron' ); ?>
                     </button>
                     <div class="myr-panel" style="background:color-mix(in srgb, var(--wpr-accent) 5%, transparent);">
                         <div class="myr-panel-inner" style="flex-direction:column; gap:8px;<?php echo count( $data['instant_wins'] ) > 10 ? ' max-height:300px; overflow-y:auto;' : ''; ?>">
                             <?php foreach ( $data['instant_wins'] as $win ) : ?>
                                 <div style="display:flex; align-items:center; gap:8px; background:var(--wpr-bg-surface); border:1px solid color-mix(in srgb, var(--wpr-accent) 20%, transparent); border-radius:6px; padding:8px 12px;">
                                     <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; background:color-mix(in srgb, var(--wpr-accent) 15%, transparent); border-radius:6px; flex-shrink:0;">
-                                        <?php echo wpr_get_icon( 'gift', 'wpr-icon--xs' ); ?>
+                                        <?php wpr_icon( 'gift', 'wpr-icon--xs' ); ?>
                                     </span>
                                     <div style="min-width:0; flex:1;">
                                         <div style="font-weight:700; color:var(--wpr-accent); font-size:13px;"><?php echo esc_html( $win->prize_name ); ?></div>
@@ -242,7 +242,7 @@ $accordion_id = 0;
             <div class="myr-toggle" style="margin-top:14px;">
                 <button type="button" class="myr-toggle-btn" onclick="myrToggle(this)" aria-expanded="false">
                     <span style="display:flex; align-items:center; gap:6px;">
-                        <?php echo wpr_get_icon( 'ticket', 'wpr-icon--xs' ); ?>
+                        <?php wpr_icon( 'ticket', 'wpr-icon--xs' ); ?>
                         View Ticket Numbers (<?php echo count( $data['tickets'] ); ?>)
                     </span>
                     <svg class="myr-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -267,7 +267,7 @@ $accordion_id = 0;
                                 $bg = 'var(--wpr-accent-bg)'; $color = 'var(--wpr-accent-text)'; $border = '1px solid var(--wpr-accent-border)';
                             }
                         ?>
-                            <span style="background:<?php echo $bg; ?>; color:<?php echo $color; ?>; border:<?php echo $border; ?>; padding:4px 10px; border-radius:6px; font-weight:bold; font-family:monospace; font-size:13px; display:inline-block;" title="<?php echo $is_winner ? 'Winning Ticket' : ($is_instant_win ? 'Instant Win Ticket' : ''); ?>">
+                            <span style="background:<?php echo esc_attr( $bg ); ?>; color:<?php echo esc_attr( $color ); ?>; border:<?php echo esc_attr( $border ); ?>; padding:4px 10px; border-radius:6px; font-weight:bold; font-family:monospace; font-size:13px; display:inline-block;" title="<?php echo $is_winner ? esc_attr__( 'Winning Ticket', 'wpraffle' ) : ( $is_instant_win ? esc_attr__( 'Instant Win Ticket', 'wpraffle' ) : '' ); ?>">
                                 <?php echo esc_html( Raffle_Tickets::format_ticket_number( $ticket, $data['total_tickets'] ) ); ?>
                             </span>
                         <?php endforeach; ?>

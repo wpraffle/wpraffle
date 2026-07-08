@@ -165,7 +165,7 @@ class Raffle_Templates {
             $config = self::build_config_from_raffle( $raffle );
         } else {
             // Path B: direct config.
-            $config_raw = isset( $_POST['config'] ) ? wp_unslash( $_POST['config'] ) : '{}';
+            $config_raw = isset( $_POST['config'] ) ? sanitize_textarea_field( wp_unslash( $_POST['config'] ) ) : '{}';
             $config     = json_decode( is_string( $config_raw ) ? $config_raw : '{}', true );
             if ( ! $name || ! $config ) {
                 wp_send_json_error( 'Invalid data' );

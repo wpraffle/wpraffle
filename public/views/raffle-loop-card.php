@@ -77,7 +77,11 @@ $cta_label = $is_closed ? __( 'VIEW RESULTS', 'wpraffle' ) : __( 'VIEW COMPETITI
 <div class="rc-card<?php echo $is_ended ? ' rc-card--expired' : ''; echo $is_sold_out ? ' rc-card--sold-out' : ''; echo $is_ending_soon ? ' rc-card--ending-soon' : ''; ?>"
      data-raffle-link="<?php echo esc_url( $link ); ?>"
      tabindex="0" role="link"
-     aria-label="<?php echo esc_attr( sprintf( __( 'View competition: %s', 'wpraffle' ), $raffle->title ) ); ?>">
+     aria-label="<?php echo esc_attr( sprintf(
+         /* translators: %s: raffle title. */
+         __( 'View competition: %s', 'wpraffle' ),
+         $raffle->title
+     ) ); ?>">
 
     <!-- Title (uppercase via CSS so screen readers don't spell it out) -->
     <div class="rc-card__title">
@@ -95,7 +99,7 @@ $cta_label = $is_closed ? __( 'VIEW RESULTS', 'wpraffle' ) : __( 'VIEW COMPETITI
         <?php if ( $raffle->prize_image ) : ?>
             <img src="<?php echo esc_url( $raffle->prize_image ); ?>" alt="<?php echo esc_attr( $raffle->title ); ?>">
         <?php else : ?>
-            <div class="rc-card__image-placeholder"><?php echo wpr_get_icon( 'gift', 'wpr-icon--lg' ); ?></div>
+            <div class="rc-card__image-placeholder"><?php wpr_icon( 'gift', 'wpr-icon--lg' ); ?></div>
         <?php endif; ?>
 
         <?php if ( $status_badge_label ) : ?>
@@ -168,7 +172,7 @@ $cta_label = $is_closed ? __( 'VIEW RESULTS', 'wpraffle' ) : __( 'VIEW COMPETITI
         $ci = Raffle_Charity::get_raffle_charity( $raffle->id );
         if ( $ci ) : ?>
             <div class="rc-card__charity">
-                <?php echo wpr_get_icon( 'gift', 'wpr-icon--xs' ); ?>
+                <?php wpr_icon( 'gift', 'wpr-icon--xs' ); ?>
                 <span><?php echo esc_html( $ci['percent'] ); ?>% to <?php echo esc_html( $ci['charity']->name ); ?></span>
             </div>
         <?php endif;

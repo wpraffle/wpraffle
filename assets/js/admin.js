@@ -1,6 +1,140 @@
 (function ($) {
   "use strict";
 
+  /**
+   * Reusable, dependency-free modal dialog. Renders into the body once and is
+   * reused across calls. Supports confirm (with callbacks) and alert (single
+   * OK) modes. Accessible: traps focus, restores focus to the trigger on
+   * close, ESC + overlay-click to dismiss.
+   *
+   * Options:
+   *   title       {string}   Dialog heading.
+   *   message     {string}   Body copy (HTML allowed).
+   *   confirmText {string}   Confirm button label (default "Confirm").
+   *   cancelText  {string}   Cancel button label (default "Cancel").
+   *   danger      {bool}     Red confirm button + warning icon.
+   *   variant     {string}   "danger" | "info" | "success" (icon colour).
+   *   onConfirm   {function} Called when the confirm button is clicked.
+   *   onCancel    {function} Called when dismissed without confirming.
+   */
+  window.rsConfirm = function (opts) {
+    opts = opts || {};
+    var o = $.extend(
+      {
+        title: "Please confirm",
+        message: "",
+        confirmText: "Confirm",
+        cancelText: "Cancel",
+        danger: false,
+        variant: "",
+        onConfirm: null,
+        onCancel: null,
+      },
+      opts
+    );
+
+    var $modal = ensureModal();
+    var variant = o.variant || (o.danger ? "danger" : "info");
+
+    $modal.attr("class", "rs-modal rs-modal-open rs-modal--" + variant);
+    $modal.find(".rs-modal__title").text(o.title);
+    $modal.find(".rs-modal__body").html(o.message);
+    $modal.find(".rs-modal__confirm").text(o.confirmText);
+    $modal.find(".rs-modal__confirm").toggleClass("rs-modal__btn--danger", !!o.danger);
+    $modal.find(".rs-modal__cancel").text(o.cancelText).show();
+
+    $modal.data("onConfirm", o.onConfirm).data("onCancel", o.onCancel);
+    openModal($modal);
+  };
+
+  /**
+   * Alert-style modal: single OK button, no cancel. Replaces native alert().
+   *
+   * Options: title, message, okText ("OK"), variant ("info"|"danger"|"success").
+   */
+  window.rsAlert = function (opts) {
+    opts = opts || {};
+    var o = $.extend(
+      { title: "Notice", message: "", okText: "OK", variant: "info" },
+      opts
+    );
+
+    var $modal = ensureModal();
+    $modal.attr("class", "rs-modal rs-modal-open rs-modal--" + o.variant);
+    $modal.find(".rs-modal__title").text(o.title);
+    $modal.find(".rs-modal__body").html(o.message);
+    $modal.find(".rs-modal__confirm").text(o.okText).removeClass("rs-modal__btn--danger");
+    $modal.find(".rs-modal__cancel").hide();
+
+    $modal.data("onConfirm", null).data("onCancel", null);
+    openModal($modal);
+  };
+
+  // Lazily build the single shared modal element and wire its events once.
+  var $cachedModal = null;
+  function ensureModal() {
+    if ($cachedModal) return $cachedModal;
+    $cachedModal = $(
+      '<div class="rs-modal" role="dialog" aria-modal="true" aria-labelledby="rs-modal-title">' +
+        '<div class="rs-modal__overlay"></div>' +
+        '<div class="rs-modal__dialog">' +
+          '<div class="rs-modal__header">' +
+            '<span class="rs-modal__icon"><span class="dashicons dashicons-warning"></span></span>' +
+            '<h3 class="rs-modal__title" id="rs-modal-title"></h3>' +
+          "</div>" +
+          '<div class="rs-modal__body"></div>' +
+          '<div class="rs-modal__footer">' +
+            '<button type="button" class="button rs-modal__cancel"></button>' +
+            '<button type="button" class="button button-primary rs-modal__confirm"></button>' +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    ).appendTo("body");
+
+    var lastFocus = null;
+
+    $cachedModal.find(".rs-modal__confirm").on("click", function () {
+      var cb = $cachedModal.data("onConfirm");
+      closeModal($cachedModal);
+      if (typeof cb === "function") cb();
+    });
+    $cachedModal.find(".rs-modal__cancel").on("click", function () {
+      var cb = $cachedModal.data("onCancel");
+      closeModal($cachedModal);
+      if (typeof cb === "function") cb();
+    });
+    $cachedModal.find(".rs-modal__overlay").on("click", function () {
+      var cb = $cachedModal.data("onCancel");
+      closeModal($cachedModal);
+      if (typeof cb === "function") cb();
+    });
+
+    // ESC to dismiss, and remember focus for restoration.
+    $(document).on("keydown.rs-modal", function (e) {
+      if (e.keyCode === 27 && $cachedModal.hasClass("rs-modal-open")) {
+        var cb = $cachedModal.data("onCancel");
+        closeModal($cachedModal);
+        if (typeof cb === "function") cb();
+      }
+    });
+
+    return $cachedModal;
+  }
+
+  function openModal($modal) {
+    $modal.data("lastFocus", document.activeElement);
+    $modal.addClass("rs-modal-open");
+    setTimeout(function () {
+      $modal.find(".rs-modal__confirm").focus();
+    }, 50);
+  }
+
+  function closeModal($modal) {
+    $modal.removeClass("rs-modal-open");
+    var prev = $modal.data("lastFocus");
+    if (prev && typeof prev.focus === "function") prev.focus();
+  }
+
   // --- Media uploader for prize image ---
   $("#upload-prize-image").on("click", function (e) {
     e.preventDefault();
@@ -31,16 +165,24 @@
 
   // --- Draw winner ---
   $("#draw-winner-btn").on("click", function () {
-    if (
-      !confirm(
-        "Are you sure you want to perform the draw? This action cannot be undone.",
-      )
-    ) {
-      return;
-    }
-
     var btn = $(this);
     var raffleId = btn.data("raffle-id");
+
+    rsConfirm({
+      title: "Draw Winner",
+      message:
+        "Are you sure? This will draw a winner and the raffle will be marked as " +
+        "finished. <strong>This action cannot be undone.</strong>",
+      confirmText: "Draw Winner",
+      cancelText: "Cancel",
+      danger: true,
+      onConfirm: function () {
+        performDraw(btn, raffleId);
+      },
+    });
+  });
+
+  function performDraw(btn, raffleId) {
     btn.prop("disabled", true).text("Drawing...");
 
     $.post(
@@ -68,15 +210,23 @@
                 "</p>",
             );
         } else {
-          alert(response.data.message);
+          rsAlert({
+            title: "Draw failed",
+            message: $("<span>").text(response.data.message).html(),
+            variant: "danger",
+          });
           btn.prop("disabled", false).text("Select Winner");
         }
       },
     ).fail(function () {
-      alert("Connection error. Please try again.");
+      rsAlert({
+        title: "Connection error",
+        message: "Could not reach the server. Please try again.",
+        variant: "danger",
+      });
       btn.prop("disabled", false).text("Select Winner");
     });
-  });
+  }
 
   // --- Auto-fix duplicates toggle ---
   $("#raffle-auto-fix-toggle").on("change", function () {
@@ -169,30 +319,62 @@
   });
 
   // --- Instant Wins ---
+  // 1.3.0 — reveal the prize-type config panel + show the matching config row.
+  $("#iw-prize-type").on("change", function () {
+    var type = $(this).val();
+    var $panel = $("#iw-prize-config");
+    if (type && type !== "physical") {
+      $panel.show();
+    } else {
+      $panel.hide();
+    }
+    $(".iw-cfg").hide();
+    if (type) {
+      $(".iw-cfg-" + type).css("display", "flex");
+    }
+  });
+
   $("#add-instant-win-btn").on("click", function () {
     var btn = $(this);
     var raffleId = btn.data("raffle-id");
     var prizeName = $("#iw-prize-name").val();
     var ticketNum = $("#iw-ticket-number").val();
     var quantity = $("#iw-quantity").val() || 1;
+    var prizeType = $("#iw-prize-type").val() || "physical";
 
     if (!prizeName) {
       alert("Please enter a prize name.");
       return;
     }
 
+    // 1.3.0 — assemble type-specific config fields.
+    var payload = {
+      action: "raffle_add_instant_win",
+      raffle_id: raffleId,
+      prize_name: prizeName,
+      ticket_number: ticketNum,
+      quantity: quantity,
+      prize_type: prizeType,
+      nonce: raffleAdmin.draw_nonce,
+    };
+
+    if (prizeType === "coupon") {
+      payload.coupon_discount_type = $("#iw-coupon-type").val();
+      payload.coupon_amount = $("#iw-coupon-amount").val();
+      payload.coupon_expiry_days = $("#iw-coupon-expiry").val();
+      payload.coupon_free_shipping = $("#iw-coupon-freeship").is(":checked") ? 1 : 0;
+    } else if (prizeType === "product") {
+      payload.gift_product_id = $("#iw-gift-product-id").val();
+      payload.gift_quantity = $("#iw-gift-qty").val();
+    } else if (prizeType === "credit") {
+      payload.credit_amount = $("#iw-credit-amount").val();
+    }
+
     btn.prop("disabled", true).text("Adding...");
 
     $.post(
       raffleAdmin.ajax_url,
-      {
-        action: "raffle_add_instant_win",
-        raffle_id: raffleId,
-        prize_name: prizeName,
-        ticket_number: ticketNum,
-        quantity: quantity,
-        nonce: raffleAdmin.draw_nonce,
-      },
+      payload,
       function (response) {
         if (response.success) {
           location.reload();
@@ -450,5 +632,63 @@
 
     // Initial sync to normalise whatever was loaded from the DB.
     syncPackagesFromBuilder();
+  }
+
+  // --- Audit log: expandable rows + copy fairness proof ---
+  // Delegated so it works for rows added dynamically.
+  $(document).on("click", ".rs-audit-row-toggle", function (e) {
+    e.preventDefault();
+    var $toggle = $(this);
+    var $row = $toggle.closest("tr");
+    var $detail = $row.next(".rs-audit-detail-row");
+
+    if ($detail.length) {
+      var open = $detail.is(":visible");
+      $detail.toggle(!open);
+      $toggle.toggleClass("rs-open", !open).attr("aria-expanded", open ? "false" : "true");
+    }
+  });
+
+  // Keyboard support for the toggle.
+  $(document).on("keydown", ".rs-audit-row-toggle", function (e) {
+    if (e.keyCode === 13 || e.keyCode === 32) {
+      e.preventDefault();
+      $(this).trigger("click");
+    }
+  });
+
+  // Copy fairness proof to clipboard.
+  $(document).on("click", ".rs-copy-proof", function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var proof = $btn.data("copy");
+
+    function markCopied() {
+      var orig = $btn.html();
+      $btn.addClass("copied").html(
+        '<span class="dashicons dashicons-yes-alt" style="font-size:13px;width:13px;height:13px;vertical-align:middle;"></span> Copied'
+      );
+      setTimeout(function () {
+        $btn.removeClass("copied").html(orig);
+      }, 2000);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(proof).then(markCopied, function () {
+        fallbackCopy(proof);
+        markCopied();
+      });
+    } else {
+      fallbackCopy(proof);
+      markCopied();
+    }
+  });
+
+  function fallbackCopy(text) {
+    var $temp = $('<input type="text">').val(text).appendTo("body").select();
+    try {
+      document.execCommand("copy");
+    } catch (err) {}
+    $temp.remove();
   }
 })(jQuery);

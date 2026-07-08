@@ -11,6 +11,8 @@ class Raffle_Admin {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_init', array( $this, 'handle_form_submission' ) );
         add_action( 'admin_post_wpraffle_save_email_settings', array( $this, 'save_email_settings' ) );
+        add_action( 'admin_post_wpraffle_save_email_toggles', array( $this, 'save_email_toggles' ) );
+        add_action( 'admin_post_wpraffle_save_admin_recipients', array( $this, 'save_admin_recipients' ) );
         add_action( 'admin_post_wpraffle_send_test_email', array( $this, 'handle_test_email' ) );
         add_action( 'admin_post_wpraffle_save_general_settings', array( $this, 'save_general_settings' ) );
         add_action( 'admin_post_wpraffle_save_legal_settings', array( $this, 'save_legal_settings' ) );
@@ -20,6 +22,8 @@ class Raffle_Admin {
         add_action( 'admin_post_wpraffle_create_page', array( $this, 'handle_create_page' ) );
         add_action( 'admin_post_wpraffle_save_pages', array( $this, 'save_pages' ) );
         add_action( 'admin_post_wpraffle_save_shortcode_settings', array( $this, 'save_shortcode_settings' ) );
+        // 1.3.0 — Manual wallet/credit payout re-sync.
+        add_action( 'admin_post_wpraffle_sync_wallet_payouts', array( $this, 'handle_sync_wallet_payouts' ) );
 
         // BUG-2 FIX: Schedule draw reminder cron inside admin_init hook (not constructor)
         add_action( 'admin_init', array( $this, 'schedule_reminder_cron' ) );
@@ -79,8 +83,9 @@ class Raffle_Admin {
                 'template_id'             => "ALTER TABLE {$table} ADD COLUMN template_id int(11) DEFAULT NULL",
             );
             foreach ( $v4_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE '{$col}'" );
+                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
                 if ( empty( $exists ) ) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals, cannot use placeholders.
                     $wpdb->query( $sql );
                 }
             }
@@ -172,8 +177,9 @@ class Raffle_Admin {
                 'entry_type'    => "ALTER TABLE {$purchases_table} ADD COLUMN entry_type varchar(20) DEFAULT 'purchase'",
             );
             foreach ( $purch_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$purchases_table} LIKE '{$col}'" );
+                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$purchases_table} LIKE %s", $col ) );
                 if ( empty( $exists ) ) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
                     $wpdb->query( $sql );
                 }
             }
@@ -183,8 +189,9 @@ class Raffle_Admin {
                 'reserved_at' => "ALTER TABLE {$tickets_table} ADD COLUMN reserved_at datetime DEFAULT NULL",
             );
             foreach ( $ticket_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$tickets_table} LIKE '{$col}'" );
+                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$tickets_table} LIKE %s", $col ) );
                 if ( empty( $exists ) ) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
                     $wpdb->query( $sql );
                 }
             }
@@ -195,8 +202,9 @@ class Raffle_Admin {
                 'created_at' => "ALTER TABLE {$reservations_table} ADD COLUMN created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP",
             );
             foreach ( $res_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$reservations_table} LIKE '{$col}'" );
+                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$reservations_table} LIKE %s", $col ) );
                 if ( empty( $exists ) ) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
                     $wpdb->query( $sql );
                 }
             }
@@ -211,8 +219,9 @@ class Raffle_Admin {
                 'verified_result' => "ALTER TABLE {$table} ADD COLUMN verified_result text",
             );
             foreach ( $v5_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE '{$col}'" );
+                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
                 if ( empty( $exists ) ) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
                     $wpdb->query( $sql );
                 }
             }
@@ -332,7 +341,7 @@ class Raffle_Admin {
 
         // Dashboard page — Chart.js + dashboard.js (hook is toplevel_page_raffle-system)
         if ( strpos( $hook, 'toplevel_page_raffle-system' ) !== false ) {
-            wp_enqueue_script( 'chartjs', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js', array(), '4.4.7', true );
+            wp_enqueue_script( 'chartjs', RAFFLE_SYSTEM_URL . 'assets/vendor/chart.umd.min.js', array(), '4.4.7', true );
             wp_enqueue_script( 'raffle-dashboard', RAFFLE_SYSTEM_URL . 'assets/js/dashboard.js', array( 'jquery', 'chartjs' ), RAFFLE_SYSTEM_VERSION, true );
             wp_localize_script( 'raffle-dashboard', 'raffleDashboard', array(
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
@@ -353,16 +362,26 @@ class Raffle_Admin {
             wp_die( 'Security error.' );
         }
 
+        // Ensure the schema is current BEFORE any write on this request. The
+        // versioned migrations also run on admin_init, but callback ordering
+        // between this handler and Raffle_Setup::run_migrations() is not
+        // guaranteed, so a form save could otherwise fire before the v12-v14
+        // columns exist (silent save failure). Running them here guarantees
+        // the columns exist before the UPDATE/INSERT.
+        if ( class_exists( 'Raffle_Setup' ) ) {
+            Raffle_Setup::run_migrations();
+        }
+
         global $wpdb;
         $table = $wpdb->prefix . 'raffles';
 
         $data = array(
             'title'                   => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
             'description'             => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
-            'prize_value'             => floatval( $_POST['prize_value'] ?? 0 ),
+            'prize_value'             => floatval( wp_unslash( $_POST['prize_value'] ?? 0 ) ),
             'prize_image'             => esc_url_raw( wp_unslash( $_POST['prize_image'] ?? '' ) ),
-            'total_tickets'           => absint( $_POST['total_tickets'] ?? 0 ),
-            'ticket_price'            => floatval( $_POST['ticket_price'] ?? 0 ),
+            'total_tickets'           => absint( wp_unslash( $_POST['total_tickets'] ?? 0 ) ),
+            'ticket_price'            => floatval( wp_unslash( $_POST['ticket_price'] ?? 0 ) ),
             'start_date'              => sanitize_text_field( wp_unslash( $_POST['start_date'] ?? '' ) ),
             'draw_date'               => sanitize_text_field( wp_unslash( $_POST['draw_date'] ?? '' ) ),
             'status'                  => sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) ),
@@ -370,27 +389,39 @@ class Raffle_Admin {
             'draw_type'               => sanitize_text_field( wp_unslash( $_POST['draw_type'] ?? 'manual' ) ),
             'live_draw_url'           => esc_url_raw( wp_unslash( $_POST['live_draw_url'] ?? '' ) ),
             'jackpot_type'            => sanitize_text_field( wp_unslash( $_POST['jackpot_type'] ?? 'fixed' ) ),
-            'jackpot_percent'         => absint( $_POST['jackpot_percent'] ?? 50 ),
-            'enable_cash_alternative' => (int) ( $_POST['enable_cash_alternative'] ?? 0 ),
-            'cash_alternative_amount' => floatval( $_POST['cash_alternative_amount'] ?? 0 ),
-            'enable_question'         => (int) ( $_POST['enable_question'] ?? 0 ),
+            'jackpot_percent'         => absint( wp_unslash( $_POST['jackpot_percent'] ?? 50 ) ),
+            'enable_cash_alternative' => (int) ( wp_unslash( $_POST['enable_cash_alternative'] ?? 0 ) ),
+            'cash_alternative_amount' => floatval( wp_unslash( $_POST['cash_alternative_amount'] ?? 0 ) ),
+            'enable_question'         => (int) ( wp_unslash( $_POST['enable_question'] ?? 0 ) ),
             'question_text'           => sanitize_text_field( wp_unslash( $_POST['question_text'] ?? '' ) ),
-            'correct_answer_index'    => (int) ( $_POST['correct_answer_index'] ?? 0 ),
+            'correct_answer_index'    => (int) ( wp_unslash( $_POST['correct_answer_index'] ?? 0 ) ),
             'postal_instructions'     => sanitize_textarea_field( wp_unslash( $_POST['postal_instructions'] ?? '' ) ),
-            'max_tickets_per_user'    => (int) ( $_POST['max_tickets_per_user'] ?? 100 ),
-            'multi_winner'            => (int) ( $_POST['multi_winner'] ?? 0 ),
-            'number_of_winners'       => (int) ( $_POST['number_of_winners'] ?? 2 ),
-            'allow_free_entry'        => (int) ( $_POST['allow_free_entry'] ?? 0 ),
-            'geo_restricted'          => (int) ( $_POST['geo_restricted'] ?? 0 ),
-            'geo_allowed_countries'   => wp_json_encode( array_map( 'sanitize_text_field', (array) ( $_POST['geo_allowed_countries'] ?? array() ) ) ),
-            'allow_referrals'         => (int) ( $_POST['allow_referrals'] ?? 0 ),
-            'referral_bonus_entries'  => (int) ( $_POST['referral_bonus_entries'] ?? 1 ),
+            'max_tickets_per_user'    => (int) ( wp_unslash( $_POST['max_tickets_per_user'] ?? 100 ) ),
+            'multi_winner'            => (int) ( wp_unslash( $_POST['multi_winner'] ?? 0 ) ),
+            'number_of_winners'       => (int) ( wp_unslash( $_POST['number_of_winners'] ?? 2 ) ),
+            'allow_free_entry'        => (int) ( wp_unslash( $_POST['allow_free_entry'] ?? 0 ) ),
+            'geo_restricted'          => (int) ( wp_unslash( $_POST['geo_restricted'] ?? 0 ) ),
+            'geo_allowed_countries'   => wp_json_encode( array_map( 'sanitize_text_field', (array) ( wp_unslash( $_POST['geo_allowed_countries'] ?? array() ) ) ) ),
+            'allow_referrals'         => (int) ( wp_unslash( $_POST['allow_referrals'] ?? 0 ) ),
+            'referral_bonus_entries'  => (int) ( wp_unslash( $_POST['referral_bonus_entries'] ?? 1 ) ),
             'draw_video_url'          => esc_url_raw( wp_unslash( $_POST['draw_video_url'] ?? '' ) ),
             'verified_result'         => sanitize_textarea_field( wp_unslash( $_POST['verified_result'] ?? '' ) ),
             // Feature expansion: charity fields
-            'charity_id'              => isset( $_POST['charity_id'] ) && $_POST['charity_id'] ? absint( $_POST['charity_id'] ) : null,
+            'charity_id'              => isset( $_POST['charity_id'] ) && $_POST['charity_id'] ? absint( wp_unslash( $_POST['charity_id'] ) ) : null,
             'charity_mode'            => sanitize_text_field( wp_unslash( $_POST['charity_mode'] ?? 'none' ) ),
-            'charity_percent'         => absint( $_POST['charity_percent'] ?? 100 ),
+            'charity_percent'         => absint( wp_unslash( $_POST['charity_percent'] ?? 100 ) ),
+            // 1.3.0 — Lifecycle fields.
+            'min_tickets'             => absint( wp_unslash( $_POST['min_tickets'] ?? 0 ) ),
+            'min_unique_users'        => absint( wp_unslash( $_POST['min_unique_users'] ?? 0 ) ),
+            'auto_refund_on_fail'     => ! empty( $_POST['auto_refund_on_fail'] ) ? 1 : 0,
+            // 1.3.0 — Q&A limits.
+            'qa_time_limit'           => absint( wp_unslash( $_POST['qa_time_limit'] ?? 0 ) ),
+            'qa_max_attempts'         => absint( wp_unslash( $_POST['qa_max_attempts'] ?? 0 ) ),
+            // 1.3.0 — Ticket numbering.
+            'ticket_numbering'        => in_array( sanitize_text_field( wp_unslash( $_POST['ticket_numbering'] ?? 'random' ) ), array( 'random', 'sequential', 'shuffled' ), true ) ? sanitize_text_field( wp_unslash( $_POST['ticket_numbering'] ?? 'random' ) ) : 'random',
+            'ticket_prefix'           => sanitize_text_field( wp_unslash( $_POST['ticket_prefix'] ?? '' ) ),
+            'ticket_suffix'           => sanitize_text_field( wp_unslash( $_POST['ticket_suffix'] ?? '' ) ),
+            'ticket_start_number'     => max( 1, absint( wp_unslash( $_POST['ticket_start_number'] ?? 1 ) ) ),
         );
 
         // Convert empty start_date to NULL for DB compatibility
@@ -443,6 +474,18 @@ class Raffle_Admin {
             $data['consolation_config'] = '';
         }
 
+        // 1.3.0 — Auto-relist config (JSON). Only stored when auto-relist is on.
+        if ( ! empty( $_POST['enable_auto_relist'] ) ) {
+            $data['relist_config'] = wp_json_encode( array(
+                'auto_relist'       => 1,
+                'relist_days'       => max( 1, (int) ( $_POST['relist_days'] ?? 7 ) ),
+                'relist_pause_days' => max( 0, (int) ( $_POST['relist_pause_days'] ?? 0 ) ),
+                'relist_count'      => max( 0, (int) ( $_POST['relist_count'] ?? 0 ) ),
+            ) );
+        } else {
+            $data['relist_config'] = '';
+        }
+
         if ( $enable_bundles && $packages_raw !== '' && $packages_raw[0] === '[' ) {
             // JSON bundle syntax — sanitise each object's scalar fields.
             $decoded = json_decode( $packages_raw, true );
@@ -465,6 +508,50 @@ class Raffle_Admin {
             // Legacy comma-separated ints.
             $packages_ints    = array_values( array_filter( array_map( 'absint', explode( ',', $packages_raw ) ) ) );
             $data['packages'] = wp_json_encode( $packages_ints );
+        }
+
+        // ── Server-side validation (before any side effects). ─────────────
+        $raffle_id_for_validation = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
+        $existing                 = null;
+        if ( $raffle_id_for_validation ) {
+            $existing = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
+                $raffle_id_for_validation
+            ) );
+        }
+        $validation_errors = Raffle_Admin_Validation::validate_raffle(
+            $data,
+            (bool) $raffle_id_for_validation,
+            $existing
+        );
+
+        if ( ! empty( $validation_errors ) ) {
+            // Re-render the form with every field repopulated from $_POST and
+            // per-field error messages, so the operator can fix and resubmit.
+            $GLOBALS['wpraffle_form_errors'] = $validation_errors;
+            $GLOBALS['wpraffle_posted_raffle'] = (object) array_merge(
+                (array) ( $existing ?? new stdClass() ),
+                $data,
+                array(
+                    // Preserve raw POST values the view reads directly where the
+                    // $data shape differs (e.g. multi-field answers).
+                    'question_answer_0' => sanitize_text_field( wp_unslash( $_POST['question_answer_0'] ?? '' ) ),
+                    'question_answer_1' => sanitize_text_field( wp_unslash( $_POST['question_answer_1'] ?? '' ) ),
+                    'question_answer_2' => sanitize_text_field( wp_unslash( $_POST['question_answer_2'] ?? '' ) ),
+                )
+            );
+            // Pre-populate fields the view reads as $raffle->X but that are
+            // posted separately from the structured $data array.
+            $posted = $GLOBALS['wpraffle_posted_raffle'];
+            foreach ( array( 'consolation_amount', 'consolation_expiry_days', 'consolation_type' ) as $f ) {
+                $posted->{$f} = sanitize_text_field( wp_unslash( $_POST[ $f ] ?? '' ) );
+            }
+            // 1.3.0 — repopulate the new fields the form reads as $raffle->X.
+            foreach ( array( 'enable_auto_relist', 'relist_days', 'relist_pause_days', 'relist_count' ) as $f ) {
+                $posted->{$f} = sanitize_text_field( wp_unslash( $_POST[ $f ] ?? '' ) );
+            }
+            $this->render_form_page();
+            return;
         }
 
         // Answers
@@ -543,7 +630,16 @@ class Raffle_Admin {
 
         $data['wc_product_id'] = $wc_product_id;
 
-        // Build formats dynamically
+        // Build formats dynamically.
+        // Defense in depth: strip any data keys whose columns don't exist in
+        // the live table yet (e.g. a migration that failed to add a column).
+        // This keeps the save working even if one optional column is missing —
+        // the field is simply not persisted rather than failing the whole save.
+        $actual_columns = $wpdb->get_col( "DESCRIBE {$table}" ); // phpcs:ignore WordPress.DB
+        if ( is_array( $actual_columns ) ) {
+            $data = array_intersect_key( $data, array_flip( $actual_columns ) );
+        }
+
         $formats = array();
         foreach ( $data as $key => $val ) {
             if ( is_null( $val ) ) {
@@ -570,8 +666,12 @@ class Raffle_Admin {
         }
 
         if ( false === $result ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- intentional production error logging on DB write failure.
             error_log( 'WPRaffle: Error saving raffle: ' . $wpdb->last_error );
-            wp_die( 'Error saving raffle. Please check the error logs for details.' );
+            wp_die(
+                esc_html__( 'Error saving raffle.', 'wpraffle' ) .
+                ( $wpdb->last_error ? '<br><code style="color:#b91c1c;">' . esc_html( $wpdb->last_error ) . '</code>' : '' )
+            );
         }
 
         // BUG-6 FIX: Save prizes if multi-winner is enabled
@@ -649,6 +749,20 @@ class Raffle_Admin {
             $this->export_buyers_csv( absint( $_GET['id'] ) );
             return;
         }
+        // 1.3.0 — Lifecycle actions (extend / relist), driven from raffle-details.
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'extend' && isset( $_GET['id'] ) ) {
+            $this->handle_extend();
+            return;
+        }
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'relist' && isset( $_GET['id'] ) ) {
+            $this->handle_relist();
+            return;
+        }
+        // 1.3.0 — Manual re-sync of missed wallet payouts for this raffle.
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'sync_wallet' && isset( $_GET['id'] ) ) {
+            $this->handle_sync_wallet_payouts( absint( $_GET['id'] ) );
+            return;
+        }
 
         include RAFFLE_SYSTEM_PATH . 'admin/views/raffle-list.php';
     }
@@ -679,8 +793,10 @@ class Raffle_Admin {
         header( 'Content-Type: text/csv; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename="buyers-' . $slug . '-' . $raffle_id . '.csv"' );
 
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- CSV export streams to php://output.
         $out = fopen( 'php://output', 'w' );
         // UTF-8 BOM so Excel opens the CSV with correct encoding.
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fputs -- streaming to php://output, WP_Filesystem does not support output streams.
         fputs( $out, "\xEF\xBB\xBF" );
         fputcsv( $out, array( 'Purchase ID', 'Name', 'Email', 'Quantity', 'Total Paid', 'Payment Status', 'Purchase Date', 'Ticket Numbers' ) );
 
@@ -704,7 +820,146 @@ class Raffle_Admin {
                 implode( ', ', $formatted ),
             ) );
         }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closing the php://output stream for CSV export.
         fclose( $out );
+        exit;
+    }
+
+    /**
+     * 1.3.0 — Extend a raffle's draw date. Nonced GET action from raffle-details.
+     * Reads the new draw date from the query string; delegates to
+     * Raffle_Lifecycle::extend_raffle().
+     */
+    public function handle_extend() {
+        $raffle_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+        check_admin_referer( 'raffle_extend_' . $raffle_id );
+
+        $new_date = isset( $_GET['new_draw_date'] ) ? sanitize_text_field( wp_unslash( $_GET['new_draw_date'] ) ) : '';
+        if ( ! class_exists( 'Raffle_Lifecycle' ) ) {
+            wp_die( esc_html__( 'Lifecycle feature unavailable.', 'wpraffle' ) );
+        }
+        $result = Raffle_Lifecycle::extend_raffle( $raffle_id, $new_date );
+
+        if ( is_wp_error( $result ) ) {
+            wp_safe_redirect( add_query_arg( array(
+                'page'   => 'raffle-list',
+                'action' => 'view',
+                'id'     => $raffle_id,
+                'lifecycle_error' => rawurlencode( $result->get_error_message() ),
+            ), admin_url( 'admin.php' ) ) );
+        } else {
+            wp_safe_redirect( add_query_arg( array(
+                'page'          => 'raffle-list',
+                'action'        => 'view',
+                'id'            => $raffle_id,
+                'lifecycle_ok'  => 'extended',
+            ), admin_url( 'admin.php' ) ) );
+        }
+        exit;
+    }
+
+    /**
+     * 1.3.0 — Relist a finished/failed raffle. Nonced GET action from
+     * raffle-details. Delegates to Raffle_Lifecycle::relist_raffle().
+     */
+    public function handle_relist() {
+        $raffle_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+        check_admin_referer( 'raffle_relist_' . $raffle_id );
+
+        $new_date = isset( $_GET['new_draw_date'] ) ? sanitize_text_field( wp_unslash( $_GET['new_draw_date'] ) ) : '';
+        if ( ! class_exists( 'Raffle_Lifecycle' ) ) {
+            wp_die( esc_html__( 'Lifecycle feature unavailable.', 'wpraffle' ) );
+        }
+        $result = Raffle_Lifecycle::relist_raffle( $raffle_id, $new_date );
+
+        if ( is_wp_error( $result ) ) {
+            wp_safe_redirect( add_query_arg( array(
+                'page'   => 'raffle-list',
+                'action' => 'view',
+                'id'     => $raffle_id,
+                'lifecycle_error' => rawurlencode( $result->get_error_message() ),
+            ), admin_url( 'admin.php' ) ) );
+        } else {
+            wp_safe_redirect( add_query_arg( array(
+                'page'          => 'raffle-list',
+                'action'        => 'view',
+                'id'            => $raffle_id,
+                'lifecycle_ok'  => 'relisted',
+            ), admin_url( 'admin.php' ) ) );
+        }
+        exit;
+    }
+
+    /**
+     * 1.3.0 — Manual re-sync of missed wallet/credit payouts. Fires from the
+     * per-raffle "Sync Wallet Payouts" button (GET, $raffle_id scoped) and the
+     * global Settings → Advanced button (admin-post, $raffle_id = 0 = all).
+     *
+     * Re-attempts every 'pending' instant-win payout via the idempotent
+     * Raffle_Wallet_Adapter::credit_instant_win(), so already-credited payouts
+     * are skipped and only genuinely-missed ones are re-processed.
+     *
+     * @param int $raffle_id 0 = sync all raffles (from Settings); >0 = one raffle.
+     */
+    public function handle_sync_wallet_payouts( $raffle_id = 0 ) {
+        // Capability + nonce. The per-raffle GET link uses a scoped nonce;
+        // the admin-post Settings form uses a separate nonce.
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+        if ( ! $raffle_id ) {
+            // Called via admin-post from Settings → Advanced.
+            check_admin_referer( 'wpraffle_sync_wallet', 'wpraffle_sync_wallet_nonce' );
+            $raffle_id = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
+        } else {
+            // Per-raffle GET link.
+            check_admin_referer( 'raffle_sync_wallet_' . $raffle_id );
+        }
+
+        if ( ! class_exists( 'Raffle_Wallet_Adapter' ) ) {
+            wp_die( esc_html__( 'Wallet adapter unavailable.', 'wpraffle' ) );
+        }
+
+        $result = Raffle_Wallet_Adapter::sync_pending_payouts( $raffle_id );
+
+        // Build a human-readable summary for the admin notice.
+        $summary = sprintf(
+            /* translators: 1: credited count, 2: processed count. */
+            _n( '%1$d payout credited (%2$d processed).', '%1$d payouts credited (%2$d processed).', $result['credited'], 'wpraffle' ),
+            $result['credited'],
+            $result['processed']
+        );
+        if ( $result['still_pending'] > 0 ) {
+            $summary .= ' ' . sprintf(
+                /* translators: count still pending. */
+                _n( '%d still pending.', '%d still pending.', $result['still_pending'], 'wpraffle' ),
+                $result['still_pending']
+            );
+        }
+
+        // Redirect back to where we came from.
+        if ( $raffle_id ) {
+            wp_safe_redirect( add_query_arg( array(
+                'page'             => 'raffle-list',
+                'action'           => 'view',
+                'id'               => $raffle_id,
+                'wallet_sync_done' => '1',
+                'wallet_sync_msg'  => rawurlencode( $summary ),
+            ), admin_url( 'admin.php' ) ) );
+        } else {
+            wp_safe_redirect( add_query_arg( array(
+                'page'             => 'wpraffle-settings',
+                'tab'              => 'sync',
+                'wallet_sync_done' => '1',
+                'wallet_sync_msg'  => rawurlencode( $summary ),
+            ), admin_url( 'admin.php' ) ) );
+        }
         exit;
     }
 
@@ -751,8 +1006,16 @@ class Raffle_Admin {
         $raffle      = null;
         $is_template = false;
         $template    = null;
+        // Inline-validation support: when the form fails server-side
+        // validation we re-render with a $_POST-derived raffle object plus
+        // an errors map so the view can repopulate every field and show
+        // per-field messages. These globals are set by handle_form_submission().
+        $errors = isset( $GLOBALS['wpraffle_form_errors'] ) ? $GLOBALS['wpraffle_form_errors'] : array();
 
-        if ( isset( $_GET['id'] ) ) {
+        if ( ! empty( $GLOBALS['wpraffle_posted_raffle'] ) ) {
+            // Failed-validation re-render: use the posted object as-is.
+            $raffle = $GLOBALS['wpraffle_posted_raffle'];
+        } elseif ( isset( $_GET['id'] ) ) {
             global $wpdb;
             $raffle = $wpdb->get_row( $wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
@@ -770,6 +1033,57 @@ class Raffle_Admin {
                 if ( $template ) {
                     $config = json_decode( $template->config, true );
                     if ( is_array( $config ) ) {
+                        // Merge with the full column set so every property the
+                        // form view reads exists (avoids "Undefined property"
+                        // warnings on template-derived objects).
+                        $config = wp_parse_args( $config, array(
+                            'id'                       => 0,
+                            'title'                    => '',
+                            'description'              => '',
+                            'prize_value'              => '',
+                            'prize_image'              => '',
+                            'total_tickets'            => '',
+                            'ticket_price'             => '',
+                            'start_date'               => '',
+                            'draw_date'                => '',
+                            'status'                   => 'draft',
+                            'ticket_selection'         => 'random',
+                            'draw_type'                => 'manual',
+                            'live_draw_url'            => '',
+                            'jackpot_type'             => 'fixed',
+                            'jackpot_percent'          => 50,
+                            'enable_cash_alternative'  => 0,
+                            'cash_alternative_amount'  => 0,
+                            'enable_question'          => 0,
+                            'question_text'            => '',
+                            'question_answers'         => '',
+                            'correct_answer_index'     => 0,
+                            'postal_instructions'      => '',
+                            'max_tickets_per_user'     => 100,
+                            'multi_winner'             => 0,
+                            'number_of_winners'        => 2,
+                            'allow_free_entry'         => 0,
+                            'free_entry_max'           => 1,
+                            'geo_restricted'           => 0,
+                            'geo_allowed_countries'    => '[]',
+                            'allow_referrals'          => 0,
+                            'referral_bonus_entries'   => 1,
+                            'draw_video_url'           => '',
+                            'verified_result'          => '',
+                            'packages'                 => '[5,10,15,25]',
+                            'enable_bundles'           => 0,
+                            'enable_number_grid'       => 0,
+                            'enable_consolation_coupon' => 0,
+                            'consolation_config'       => '',
+                            'enable_scarcity'          => 0,
+                            'enable_viewers_now'       => 0,
+                            'enable_share'             => 0,
+                            'wc_product_id'            => 0,
+                            'sold_tickets'             => 0,
+                            'charity_id'               => null,
+                            'charity_mode'             => 'none',
+                            'charity_percent'          => 100,
+                        ) );
                         // Clear raffle-specific fields so the operator must
                         // fill them in for the new raffle.
                         $config['id']          = 0;
@@ -780,6 +1094,8 @@ class Raffle_Admin {
                         $config['start_date']  = '';
                         $config['draw_date']   = '';
                         $config['status']      = 'draft';
+                        $config['wc_product_id'] = 0;
+                        $config['sold_tickets']  = 0;
                         $raffle                = (object) $config;
                         $is_template           = true;
                     }
@@ -891,6 +1207,13 @@ class Raffle_Admin {
 
     public function save_email_settings() {
         $this->verify_email_nonce();
+
+        // Server-side validation before persisting.
+        $errors = Raffle_Admin_Validation::validate_settings( 'email', $_POST );
+        if ( ! empty( $errors ) ) {
+            $this->redirect_settings_error( 'email', (string) key( $errors ) );
+        }
+
         $settings = array(
             'from_name'    => sanitize_text_field( wp_unslash( $_POST['from_name'] ?? '' ) ),
             'from_email'   => sanitize_email( wp_unslash( $_POST['from_email'] ?? '' ) ),
@@ -898,7 +1221,84 @@ class Raffle_Admin {
             'logo_url'     => esc_url_raw( wp_unslash( $_POST['logo_url'] ?? '' ) ),
             'footer_text'  => sanitize_textarea_field( wp_unslash( $_POST['footer_text'] ?? '' ) ),
         );
+        // 1.3.0 — preserve the toggle map + admin recipients + PDF-attach flag
+        // when re-saving sender details (these live in the same option).
+        $existing = get_option( 'wpraffle_email_settings', array() );
+        if ( is_array( $existing ) ) {
+            if ( isset( $existing['enabled'] ) ) {
+                $settings['enabled'] = $existing['enabled'];
+            }
+            if ( isset( $existing['admin_notify_emails'] ) ) {
+                $settings['admin_notify_emails'] = $existing['admin_notify_emails'];
+            }
+        }
+        $settings['attach_ticket_pdf'] = isset( $_POST['attach_ticket_pdf'] ) ? 1 : 0;
         update_option( 'wpraffle_email_settings', $settings );
+        $this->redirect_settings( 'email' );
+    }
+
+    /**
+     * 1.3.0 — Save per-email enable/disable toggles. Merges into the existing
+     * wpraffle_email_settings option so sender/branding settings are preserved.
+     * Each email id maps to ['off' => 1] when unchecked, or is absent when
+     * enabled (absent = enabled, matching is_email_enabled()'s default).
+     */
+    public function save_email_toggles() {
+        check_admin_referer( 'wpraffle_save_email_toggles', 'wpraffle_email_toggles_nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+
+        $existing = get_option( 'wpraffle_email_settings', array() );
+        if ( ! is_array( $existing ) ) {
+            $existing = array();
+        }
+
+        $posted = isset( $_POST['email_toggles'] ) ? (array) wp_unslash( $_POST['email_toggles'] ) : array();
+        $enabled = array();
+        // Build the full map: any id NOT in the posted set is OFF.
+        $all_ids = array(
+            'purchase', 'winner', 'instant_win', 'no_luck', 'draw_reminder',
+            'raffle_started', 'raffle_extended', 'failed_participant',
+            'admin_sale', 'admin_draw', 'admin_winner', 'admin_failed',
+            'admin_started', 'admin_relisted',
+        );
+        foreach ( $all_ids as $id ) {
+            if ( isset( $posted[ $id ] ) ) {
+                // Checked = enabled → omit (absent means enabled).
+            } else {
+                $enabled[ $id ] = array( 'off' => 1 );
+            }
+        }
+
+        $existing['enabled'] = $enabled;
+        update_option( 'wpraffle_email_settings', $existing );
+        $this->redirect_settings( 'email' );
+    }
+
+    /**
+     * 1.3.0 — Save additional admin notification recipients (comma-separated).
+     */
+    public function save_admin_recipients() {
+        check_admin_referer( 'wpraffle_save_admin_recipients', 'wpraffle_admin_recip_nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wpraffle' ) );
+        }
+
+        $existing = get_option( 'wpraffle_email_settings', array() );
+        if ( ! is_array( $existing ) ) {
+            $existing = array();
+        }
+
+        $raw    = isset( $_POST['admin_notify_emails'] ) ? sanitize_text_field( wp_unslash( $_POST['admin_notify_emails'] ) ) : '';
+        $emails = array();
+        foreach ( array_filter( array_map( 'trim', explode( ',', $raw ) ) ) as $e ) {
+            if ( is_email( $e ) ) {
+                $emails[] = $e;
+            }
+        }
+        $existing['admin_notify_emails'] = implode( ', ', $emails );
+        update_option( 'wpraffle_email_settings', $existing );
         $this->redirect_settings( 'email' );
     }
 
@@ -928,6 +1328,13 @@ class Raffle_Admin {
 
     public function save_advanced_settings() {
         $this->verify_settings_nonce();
+
+        // Server-side validation before persisting.
+        $errors = Raffle_Admin_Validation::validate_settings( 'advanced', $_POST );
+        if ( ! empty( $errors ) ) {
+            $this->redirect_settings_error( 'advanced', (string) key( $errors ) );
+        }
+
         $settings = array(
             'auto_fix_duplicates'   => absint( $_POST['auto_fix_duplicates'] ?? 0 ),
             'rate_limit_per_minute' => absint( $_POST['rate_limit_per_minute'] ?? 5 ),
@@ -1091,6 +1498,18 @@ class Raffle_Admin {
 
     private function redirect_settings( $tab ) {
         wp_safe_redirect( admin_url( 'admin.php?page=wpraffle-settings&tab=' . $tab . '&saved=1' ) );
+        exit;
+    }
+
+    /**
+     * Redirect back to a settings tab with an error message. The error code
+     * is mapped to a human message by settings.php for display.
+     *
+     * @param string $tab  Settings tab slug.
+     * @param string $code Stable error code (keyed in settings.php's map).
+     */
+    private function redirect_settings_error( $tab, $code ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=wpraffle-settings&tab=' . $tab . '&error=1&ecode=' . rawurlencode( $code ) ) );
         exit;
     }
 

@@ -201,7 +201,7 @@ class Raffle_Rate_Limiter {
             if ( $until && $until > time() ) {
                 $blocks[] = array(
                     'key'         => $key,
-                    'expires_at'  => date( 'Y-m-d H:i:s', $until ),
+                    'expires_at'  => gmdate( 'Y-m-d H:i:s', $until ),
                     'seconds_left'=> $until - time(),
                 );
             }
