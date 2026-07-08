@@ -3,20 +3,24 @@
  * Plugin Name: WPRaffle
  * Plugin URI:  https://github.com/wpraffle/wpraffle
  * Description: A fully-featured WooCommerce raffle & competition system. Run live competitions, manage tickets, instant wins, skill questions, postal entries, and lifecycle states — all for free.
- * Version:     1.2.1
+ * Version:     1.3.0
  * Author:      WPRaffle
  * Author URI:  https://github.com/wpraffle
  * Text Domain: wpraffle
  * License:     GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires Plugins: woocommerce
+ * Requires at least: 6.5
+ * Requires PHP: 8.1
+ * WC requires at least: 8.0
+ * WC tested up to: 10.9
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RAFFLE_SYSTEM_VERSION', '1.2.1' );
+define( 'RAFFLE_SYSTEM_VERSION', '1.3.0' );
 define( 'RAFFLE_SYSTEM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RAFFLE_SYSTEM_URL', plugin_dir_url( __FILE__ ) );
 
@@ -80,6 +84,7 @@ require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-duplicates.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-woocommerce.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-instant-wins.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-audit.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-admin-validation.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-prizes.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-referrals.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-free-entry.php';
@@ -106,6 +111,29 @@ require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-responsible-gambling.ph
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-account.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-styling.php';
 
+// 1.3.0 feature expansion: instant-win prize engine + raffle lifecycle.
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-instant-win-prize-types.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-lifecycle.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-import.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-featured-winners.php';
+require_once RAFFLE_SYSTEM_PATH . 'admin/includes/class-raffle-order-item-ui.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/blocks/class-raffle-blocks.php';
+if ( file_exists( RAFFLE_SYSTEM_PATH . 'includes/compatibility/class-raffle-compat-loader.php' ) ) {
+    require_once RAFFLE_SYSTEM_PATH . 'includes/compatibility/class-raffle-compat-loader.php';
+}
+
+// Declare compatibility with WooCommerce High-Performance Order Storage (HPOS).
+// WPRaffle stores its own data in custom tables and uses WooCommerce only for
+// checkout/payment — it does not read or write WP postmeta on shop orders — so
+// it is fully compatible with HPOS. The declaration must run on the
+// before_woocommerce_init hook, before WooCommerce initialises.
+add_action( 'before_woocommerce_init', function() {
+    if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'orders_cache', __FILE__, true );
+    }
+} );
+
 // Activation
 register_activation_hook( __FILE__, array( 'Raffle_Activator', 'activate' ) );
 
@@ -117,6 +145,8 @@ register_deactivation_hook( __FILE__, function() {
         'raffle_system_auto_draw_cron',
         'raffle_draw_reminder_cron',
         'wpraffle_check_updates',
+        'wpraffle_relist_check',
+        'wpraffle_started_notify',
     ) as $event ) {
         $ts = wp_next_scheduled( $event );
         while ( $ts ) {
@@ -185,6 +215,14 @@ add_action( 'plugins_loaded', function() {
     if ( ! wp_next_scheduled( 'raffle_charity_allocations_refresh' ) ) {
         wp_schedule_event( time(), 'hourly', 'raffle_charity_allocations_refresh' );
     }
+    // 1.3.0 — Auto-relist check for finished/failed raffles with a relist config.
+    if ( ! wp_next_scheduled( 'wpraffle_relist_check' ) ) {
+        wp_schedule_event( time(), 'hourly', 'wpraffle_relist_check' );
+    }
+    // 1.3.0 — "Raffle started" notification sweep.
+    if ( ! wp_next_scheduled( 'wpraffle_started_notify' ) ) {
+        wp_schedule_event( time(), 'hourly', 'wpraffle_started_notify' );
+    }
 }, 5 );
 
 // Init
@@ -212,12 +250,34 @@ add_action( 'plugins_loaded', function () {
         new Raffle_Account();
     }
 
+    // 1.3.0 — Instant-win prize engine + raffle lifecycle.
+    if ( class_exists( 'Raffle_Lifecycle' ) ) {
+        new Raffle_Lifecycle();
+    }
+    if ( class_exists( 'Raffle_Import' ) ) {
+        new Raffle_Import();
+    }
+    if ( class_exists( 'Raffle_Featured_Winners' ) ) {
+        new Raffle_Featured_Winners();
+    }
+    if ( class_exists( 'WC_Order_Item_Product' ) && class_exists( 'Raffle_Order_Item_UI' ) ) {
+        new Raffle_Order_Item_UI();
+    }
+    if ( class_exists( 'Raffle_Blocks' ) ) {
+        new Raffle_Blocks();
+    }
+
+    // 1.3.0 — Compatibility adapters (conditional load).
+    if ( class_exists( 'Raffle_Compat_Loader' ) ) {
+        Raffle_Compat_Loader::load();
+    }
+
     // Initialize Privacy & Rate Limiter
     Raffle_Privacy::init();
     Raffle_Rate_Limiter::register_ajax();
 
-    // Load plugin text domain
-    load_plugin_textdomain( 'wpraffle', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+    // Translations are loaded automatically from the languages/ directory
+    // based on the "Text Domain: wpraffle" header since WordPress 4.6.
 } );
 
 // Run schema migrations for the feature expansion on admin load (idempotent).
@@ -305,6 +365,125 @@ add_action( 'raffle_draw_completed', function ( $raffle_id, $winner_ticket ) {
         'winnings'
     );
 }, 15, 2 );
+
+// 1.3.0 — Standalone "no luck" email to non-winners + admin draw/winner
+// notifications. Fires after the wallet payout (15) and before consolation
+// coupons (20). Each send is gated by its per-email toggle inside Raffle_Email.
+add_action( 'raffle_draw_completed', function ( $raffle_id, $winner_ticket ) {
+    if ( ! class_exists( 'Raffle_Email' ) ) {
+        return;
+    }
+    global $wpdb;
+    $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+    if ( ! $raffle ) {
+        return;
+    }
+
+    $winner_emails = array();
+    if ( isset( $winner_ticket->buyer_email ) ) {
+        $winner_emails[] = strtolower( $winner_ticket->buyer_email );
+    }
+
+    // Admin notifications.
+    Raffle_Email::send_admin_draw( $raffle );
+    Raffle_Email::send_admin_winner( $raffle, $winner_ticket );
+
+    // No-luck email to non-winning entrants (distinct from the consolation
+    // coupon, which remains an additional optional send).
+    $buyers = $wpdb->get_results( $wpdb->prepare(
+        "SELECT DISTINCT buyer_email, buyer_name FROM {$wpdb->prefix}raffle_purchases
+         WHERE raffle_id = %d AND payment_status = 'completed' AND buyer_email != ''",
+        $raffle_id
+    ) );
+    foreach ( $buyers as $buyer ) {
+        if ( in_array( strtolower( $buyer->buyer_email ), $winner_emails, true ) ) {
+            continue;
+        }
+        Raffle_Email::send_no_luck( $buyer->buyer_email, $buyer->buyer_name, $raffle );
+    }
+}, 18, 2 );
+
+// 1.3.0 — Admin + participant notifications on a failed raffle.
+add_action( 'wpraffle_raffle_failed', function ( $raffle_id, $fail_reason ) {
+    if ( ! class_exists( 'Raffle_Email' ) ) {
+        return;
+    }
+    global $wpdb;
+    $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+    if ( ! $raffle ) {
+        return;
+    }
+    Raffle_Email::send_admin_failed( $raffle, $fail_reason );
+
+    $buyers = $wpdb->get_results( $wpdb->prepare(
+        "SELECT DISTINCT buyer_email, buyer_name FROM {$wpdb->prefix}raffle_purchases
+         WHERE raffle_id = %d AND payment_status = 'completed' AND buyer_email != ''",
+        $raffle_id
+    ) );
+    foreach ( $buyers as $buyer ) {
+        Raffle_Email::send_failed_participant( $buyer->buyer_email, $buyer->buyer_name, $raffle, $fail_reason );
+    }
+}, 10, 2 );
+
+// 1.3.0 — Lifecycle notifications on extend / relist.
+add_action( 'wpraffle_raffle_extended', function ( $raffle_id, $new_draw_date, $old_draw_date ) {
+    if ( ! class_exists( 'Raffle_Email' ) ) {
+        return;
+    }
+    global $wpdb;
+    $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+    if ( ! $raffle ) {
+        return;
+    }
+    $buyers = $wpdb->get_results( $wpdb->prepare(
+        "SELECT DISTINCT buyer_email, buyer_name FROM {$wpdb->prefix}raffle_purchases
+         WHERE raffle_id = %d AND payment_status = 'completed' AND buyer_email != ''",
+        $raffle_id
+    ) );
+    foreach ( $buyers as $buyer ) {
+        Raffle_Email::send_raffle_extended( $buyer->buyer_email, $buyer->buyer_name, $raffle, $new_draw_date );
+    }
+}, 10, 3 );
+
+add_action( 'wpraffle_raffle_relisted', function ( $raffle_id ) {
+    if ( ! class_exists( 'Raffle_Email' ) ) {
+        return;
+    }
+    global $wpdb;
+    $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d", $raffle_id ) );
+    if ( ! $raffle ) {
+        return;
+    }
+    // Notify admins that a relist occurred (participants from the prior run
+    // were cleared, so there is no participant list to notify).
+    Raffle_Email::send_admin_relisted( $raffle );
+}, 10, 1 );
+
+// 1.3.0 — "Raffle started" notification sweep (hourly cron).
+add_action( 'wpraffle_started_notify', function () {
+    if ( ! class_exists( 'Raffle_Email' ) ) {
+        return;
+    }
+    global $wpdb;
+    // Raffles whose start_date has just passed (within the last hour) and that
+    // haven't had the started notification sent yet (tracked via a per-raffle
+    // option to avoid adding another column).
+    $candidates = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}raffles
+         WHERE status = 'active' AND start_date IS NOT NULL AND start_date <= %s AND start_date > %s",
+        current_time( 'mysql' ),
+        gmdate( 'Y-m-d H:i:s', time() - HOUR_IN_SECONDS )
+    ) );
+    foreach ( $candidates as $raffle ) {
+        $flag = 'wpraffle_started_sent_' . $raffle->id;
+        if ( get_option( $flag ) ) {
+            continue;
+        }
+        update_option( $flag, 1 );
+        Raffle_Email::send_raffle_started( $raffle );
+        Raffle_Email::send_admin_started( $raffle );
+    }
+} );
 
 // Consolation coupons: when a raffle with enable_consolation_coupon set
 // completes its draw, every non-winning entrant gets an emailed WooCommerce
@@ -492,8 +671,8 @@ add_action( 'raffle_draw_reminder_cron', 'raffle_system_send_draw_reminders' );
 function raffle_system_send_draw_reminders() {
     global $wpdb;
     $now      = current_time( 'mysql' );
-    $in_24hrs = date( 'Y-m-d H:i:s', strtotime( '+24 hours', strtotime( $now ) ) );
-    $in_25hrs = date( 'Y-m-d H:i:s', strtotime( '+25 hours', strtotime( $now ) ) );
+    $in_24hrs = gmdate( 'Y-m-d H:i:s', strtotime( '+24 hours', strtotime( $now ) ) );
+    $in_25hrs = gmdate( 'Y-m-d H:i:s', strtotime( '+25 hours', strtotime( $now ) ) );
 
     // Raffles drawing in the next 24-25 hour window (to avoid duplicate sends)
     $raffles = $wpdb->get_results( $wpdb->prepare(

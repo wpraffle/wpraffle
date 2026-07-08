@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.1-blue?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
-  <img src="https://img.shields.io/badge/PHP-8.0%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
+  <img src="https://img.shields.io/badge/version-1.2.2-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/WordPress-6.5%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
+  <img src="https://img.shields.io/badge/PHP-8.1%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
   <img src="https://img.shields.io/badge/WooCommerce-8.0%2B-96588A?style=flat-square&logo=woocommerce&logoColor=white" alt="WooCommerce">
   <img src="https://img.shields.io/badge/license-GPL--2.0-green?style=flat-square" alt="License">
 </p>
@@ -182,28 +182,33 @@ git clone https://github.com/wpraffle/wpraffle.git
 
 ## Elementor Widgets
 
-When Elementor is active, 18 custom widgets are available:
+When Elementor is active, 18 custom widgets are available. Every single-raffle
+widget has a **Raffle** selector in its Content tab — pick a specific raffle to
+display, or leave it on "current page" to use the raffle linked to the product.
+Each widget renders an editor preview and exposes full styling controls
+(colours, typography, borders, shadows, responsive spacing).
 
 | Widget | Description |
 |--------|-------------|
 | Raffle Full Page | Complete all-in-one raffle layout |
 | Raffle Title | Raffle title with styling |
-| Raffle Image | Prize image with lightbox |
-| Raffle Price | Ticket price display |
-| Raffle Progress | Sales progress bar |
-| Raffle Countdown | Live countdown timer |
-| Raffle Quantity Selector | Package selection grid |
-| Raffle Enter Button | CTA button |
-| Raffle Description | Raffle description text |
-| Raffle Stats Header | Key stats (sold, remaining, price) |
-| Raffle Tabs | Tabbed content |
+| Raffle Image | Prize image with optional cash-alternative badge |
+| Raffle Price | Ticket price (or prize value) display |
+| Raffle Progress | Sales progress bar with configurable colours/height |
+| Raffle Countdown | Live countdown timer with custom labels |
+| Raffle Quantity Selector | Package selection grid + slider |
+| Raffle Enter Button | CTA button (or SOLD OUT badge) |
+| Raffle Description | Raffle description text in a card |
+| Raffle Stats Header | Key stats (max tickets, available, draw date) |
+| Raffle Tabs | Online / Postal entry tabs |
 | Raffle Instant Wins | Instant win prizes grid |
 | Raffle Question | Skill question form |
-| Raffle Trust Badge | Trust/verification badge |
-| Raffle Modal | Purchase/entry modal |
+| Raffle Trust Badges | Secure / confirmation / random-draw badges |
+| Raffle Purchase Modal | Purchase modal (place once per page) |
 | All Competitions | Raffle list/grid |
 | Ended Raffles | Past competitions grid |
 | Entry List | Ticket/entry list |
+
 
 ---
 
