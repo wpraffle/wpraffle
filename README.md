@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.2-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/WordPress-6.5%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
   <img src="https://img.shields.io/badge/PHP-8.1%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
   <img src="https://img.shields.io/badge/WooCommerce-8.0%2B-96588A?style=flat-square&logo=woocommerce&logoColor=white" alt="WooCommerce">
@@ -10,112 +10,126 @@
 
 <p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
-  Built on WooCommerce with full ticket management, live draws, instant wins, charity fundraising, responsible-gambling controls, and UK compliance features.
+  Built on WooCommerce with full ticket management, live draws, instant wins, raffle lifecycle, charity fundraising, responsible-gambling controls, and UK compliance features.
 </p>
 
 <p align="center">
-  <a href="https://docs.wpraffle.dev">Full documentation</a> ·
-  <a href="../../releases">Releases</a> ·
-  <a href="./CHANGELOG.md">Changelog</a> ·
+  <a href="https://docs.wpraffle.dev">Full documentation</a> &middot;
+  <a href="../../releases">Releases</a> &middot;
+  <a href="./CHANGELOG.md">Changelog</a> &middot;
   <a href="./RELEASE.md">Release notes</a>
 </p>
 
 ---
 
-## What's new in 1.2.1
+## What's new in 1.3.0
 
-A user-experience focused patch — fixes the bugs that harmed real users and adds five
-high-impact improvements:
+A feature-parity release that closes every competitive gap against the main rival lottery/raffle plugins. Adds a full instant-win prize engine, a raffle lifecycle, an expanded email suite, a compatibility layer for ten third-party plugins, CSV import/export, Gutenberg blocks, featured winners, and a companion theme.
 
-- **Fixed "YOU WON!" detection** — the celebration badge in My Raffles was virtually never
-  shown to real winners due to a row-id vs ticket-number mismatch. Now works.
-- **Odds of winning, live** — buyers see "1 in N" odds that update as they change quantity.
-- **Friendly Bundle Builder** — the raw JSON packages field is now a repeatable row UI.
-- **Lookup form keeps its promise** — `[raffle_lookup]` now genuinely emails a single-use
-  secure link with a guest ticket view.
-- **SOLD OUT / ENDING SOON badges**, frozen closed raffles, pending-purchase visibility,
-  buyers CSV export, winner-name privacy, dashboard error handling, and modal accessibility.
+### Highlights
 
-See [`RELEASE.md`](./RELEASE.md) for the full release notes.
+- **Instant-win engine, rebuilt** — prize types now deliver real prizes automatically: auto-generated WooCommerce coupons, gift products added to the winning order, or **wallet credit paid straight to the winner's WooWallet/TerraWallet balance**, with prize groups and automatic reversal on refund.
+- **Raffle lifecycle** — undersold raffles can now FAIL (and auto-refund participants) instead of silently drawing, operators can EXTEND a deadline or RELIST a finished raffle in place (preserving its permalink), manually or on a schedule.
+- **Complete email lifecycle** — distinct loser, instant-win, started, extended, failed-participant, and six admin notification emails, each with its own on/off toggle, plus optional PDF ticket attachments.
+- **Ten compatibility integrations** — auto-activating adapters for WPML, Polylang, Multi-Currency, Stripe, Square, WooPayments, Smart Coupons, Dokan, Yoast/Rank Math, and page-cache plugins.
+- **Gutenberg blocks** — a starter set of server-rendered blocks for non-Elementor sites, with no build step.
+- **Featured winners** — flag winners as featured, upload a photo, add a testimonial — ready for a winners carousel.
+- **Companion theme** — pair with the [WPRaffle Theme](https://github.com/wpraffle/wpraffle-theme) for a premium, purpose-built aesthetic.
+- **Critical fix: order reversion** — cancelling, refunding, or failing an order now reverts the allocated tickets and instant-win prizes.
+
+See [`RELEASE.md`](./RELEASE.md) for the full release notes and [`CHANGELOG.md`](./CHANGELOG.md) for the complete version history.
 
 ---
 
 ## Features
 
 ### Core
-- **Configurable Raffles** — Title, description, prize image, ticket count, price, packages
-- **WooCommerce Integration** — Full checkout with any payment gateway, cart & order management
-- **Random Ticket Assignment** — Cryptographically secure (`random_int()`) unique ticket numbers
-- **Automated Emails** — Purchase confirmation, winner notification, instant win alerts, draw reminders, sold out alerts
-- **User-Selected Numbers** — Optional mode where buyers pick their own ticket numbers
+- **Configurable Raffles** — title, description, prize image, ticket count, price, packages, schedules, and lifecycle states
+- **WooCommerce Integration** — full checkout with any payment gateway, cart and order management. Each raffle gets its own synced product
+- **Ticket Numbering** — cryptographically secure random numbers by default, with optional sequential or shuffled modes and per-raffle prefix/suffix *(v1.3)*
+- **Automated Emails** — a full lifecycle suite: purchase, winner, instant-win, no-luck, started, extended, and admin notifications — each with its own on/off toggle *(v1.3)* and PDF ticket attachment
+- **User-Selected Numbers** — optional mode where buyers pick their own ticket numbers
 
 ### Competition Features
-- **Instant Wins** — Prizes automatically awarded at specific ticket numbers
-- **Multi-Winner Draws** — Multiple winners with configurable prize tiers
-- **Live Draw** — Animated draw page with spinning numbers and confetti
-- **Skill Questions** — Multiple-choice questions required before purchase (UK Gambling Act compliance)
-- **Free / Postal Entry** — Alternative entry route for compliance
-- **Geo-Restriction** — Restrict entry by country via IP geolocation
-- **Referral System** — Unique referral codes with bonus entries (paid-purchase verified)
+- **Instant Wins** — prizes automatically awarded at specific ticket numbers as coupons, gift products, wallet credit, physical, or custom types, with prize groups and reversal on refund *(v1.3)*
+- **Raffle Lifecycle** — min-tickets thresholds with auto-fail and auto-refund, deadline extends, and one-click or scheduled relists *(v1.3)*
+- **Featured Winners** — flag winners as featured, upload a photo, add a testimonial — queryable for a carousel *(v1.3)*
+- **Multi-Winner Draws** — multiple winners with configurable prize tiers
+- **Live Draw** — animated draw page with spinning numbers
+- **Skill Questions** — multiple-choice gate before purchase (UK Gambling Act compliance), with optional time limit and attempt cap *(v1.3)*
+- **Free / Postal Entry** — alternative entry route for compliance
+- **Geo-Restriction** — restrict entry by country via IP geolocation
+- **Referral System** — unique referral codes with bonus entries (paid-purchase verified)
 
-### Engagement & Conversion (v1.2)
-- **Ticket Bundles** — Quantity bundles with custom pricing, savings %, and badges (now configured via a friendly builder UI in v1.2.1)
-- **Number Picker Grid** — Visual grid where buyers pick their own ticket numbers, with Lucky Dip
-- **Consolation Coupons** — Auto-issue WooCommerce coupons to non-winning entrants after the draw
-- **Virality / Share** — Per-user referral links + share buttons (WhatsApp, Facebook, X, copy-link)
-- **Scarcity / Urgency** — Live stock polling, "X people viewing now" social proof, low-stock alerts
+### Engagement & Conversion
+- **Ticket Bundles** — quantity bundles with custom pricing, savings %, and badges
+- **Number Picker Grid** — visual grid where buyers pick their own ticket numbers
+- **Consolation Coupons** — auto-issue WooCommerce coupons to non-winning entrants after the draw
+- **Virality / Share** — per-user referral links + share buttons (WhatsApp, Facebook, X, copy-link)
+- **Scarcity / Urgency** — live stock polling, "X people viewing now" social proof, low-stock alerts
 
-### Buyer Experience (v1.2.1)
-- **Odds of Winning** — A live "1 in N" odds display updates as buyers change their ticket quantity
-- **SOLD OUT & Ending Soon** — Shop cards auto-badge with scarcity and end states; expired competitions are non-clickable
-- **Pending Purchase Visibility** — Buyers whose payment is still clearing see a "Processing" state
-- **My Raffles Account** — Permanent ticket history with live odds, a clear "YOU WON!" badge, and a results link
-- **Guest Ticket Lookup** — Guests get a single-use secure link emailed to view their tickets
-- **Accessible Checkout** — Keyboard-friendly purchase modal with focus trapping and screen-reader announcements
+### Buyer Experience
+- **My Raffles Account** — permanent ticket history with live odds, a clear "YOU WON!" badge, and a results link
+- **My Coupons** — a dedicated account tab showing won coupons with click-to-copy codes, expiry, and Ready/Used badges *(v1.3)*
+- **Odds of Winning** — a live "1 in N" odds display updates as buyers change their ticket quantity
+- **SOLD OUT & Ending Soon** — shop cards auto-badge with scarcity and end states
+- **Guest Ticket Lookup** — guests get a single-use secure link emailed to view their tickets
+- **Accessible Checkout** — keyboard-friendly purchase modal with focus trapping and screen-reader announcements
 
-### Charity & Fundraising (v1.2)
+### Charity & Fundraising
 - **Charity Registry** — CPT-based charity directory with `[raffle_charities]` shortcode
-- **Live Totals** — Public grid updates every 60s as tickets sell; allocations snapshotted at draw
-- **Disbursement Workflow** — Operator-only CSV export and mark-disbursed flow
+- **Live Totals** — public grid updates as tickets sell; allocations snapshotted at draw
+- **Disbursement Workflow** — operator-only CSV export and mark-disbursed flow
 
-### Responsible Gambling (enforced in v1.2)
-- **Spend Limits** — Day/week/month limits with a 24h cool-off on increases
-- **Self-Exclusion** — Including email-based guest exclusion; cannot be lifted early
-- **Operator Locks** — Per-account locks with reason + audit
-- **Server-Side Enforcement** — All six purchase gates; client UI is advisory only
+### Responsible Gambling
+- **Spend Limits** — day/week/month limits with a 24h cool-off on increases
+- **Self-Exclusion** — including email-based guest exclusion; cannot be lifted early
+- **Operator Locks** — per-account locks with reason + audit
+- **Server-Side Enforcement** — all purchase gates enforced server-side
 
-### Styling (overhauled in v1.2)
-- **Five Theme Presets** — Diamonds / Golf / Car / Retro / Elite, each driving radius, shadow, button shape, and typography (not just hue)
-- **CSS Custom Properties** — Override any `--wpr-*` token in your theme
-- **Icon Pack** — Single SVG sprite with brand/social icons (WhatsApp, Facebook, X, copy-link)
+### Compatibility Layer *(v1.3)*
+Auto-activating adapters (zero overhead when inactive) for:
+- **WPML / WCML** — sync raffle config across translations
+- **Polylang** — resolve translated products to the same raffle
+- **Multi-Currency (CURCY)** — convert bundle/package prices
+- **Stripe / Square / WooPayments** — enable express checkout (Apple Pay / Google Pay) on raffle products
+- **Smart Coupons** — register a store-credit instant-win prize type
+- **Dokan / WC Vendors** — route email notifications to the vendor
+- **Yoast SEO / Rank Math** — canonical and Open Graph URL fixes
+- **Page cache plugins** (W3TC, WPSC, Rocket, LiteSpeed) — flush on draw/sellout/extend/relist
 
 ### Admin
-- **Analytics Dashboard** — Revenue charts, sales trends, activity feed
-- **Audit Log** — Complete action log with actor, IP, and timestamps
-- **Templates & Clone** — Reusable raffle templates and one-click duplication
-- **Ticket Reservations** — Temporary holds during checkout with auto-cleanup
-- **Duplicate Detection** — Automatic detection and correction of duplicate tickets
-- **Shop Integration** — Custom raffle cards in WooCommerce shop pages
-- **Searchable Raffle List** (v1.2.1) — Search by title, filter by status, paginate
-- **Buyers CSV Export** (v1.2.1) — One-click export of a raffle's full buyer list with ticket numbers
-- **Winner Name Privacy** (v1.2.1) — Optional initials-only display on public results pages
+- **Analytics Dashboard** — revenue charts, sales trends, activity feed
+- **Audit Log** — complete action log with actor, IP, timestamps, and structured details
+- **Templates & Clone** — reusable raffle templates and one-click duplication
+- **Ticket Reservations** — temporary holds during checkout with auto-cleanup
+- **Duplicate Detection** — automatic detection and correction of duplicate tickets
+- **CSV Import & Export** — export buyers, tickets, and instant-win rules; bulk-import instant-win prizes *(v1.3)*
+- **Order-Item View Tickets** — a "View Tickets" button on each raffle line item in the WooCommerce order screen *(v1.3)*
+- **Searchable Raffle List** — search by title, filter by status (including failed/extended), paginate
+- **Winner Name Privacy** — optional initials-only display on public results pages
 
 ### Security
-- **Multi-layer quantity validation** — Cart lock, checkout validation, payment-time clamping
+- **Multi-layer quantity validation** — cart lock, checkout validation, payment-time clamping
 - **WordPress nonces** on all forms and AJAX (CSRF protection)
 - **Input sanitization & output escaping** throughout
-- **Prepared SQL statements** — No raw queries
-- **Rate limiting** — Configurable per-minute per-IP, proxy-aware (trusted-proxy allowlist)
-- **Privacy & GDPR** — Personal data export/erasure via WordPress Privacy API; two-step deletion
+- **Prepared SQL statements** — no raw queries
+- **Rate limiting** — configurable per-minute per-IP, proxy-aware
+- **Privacy & GDPR** — personal data export/erasure via WordPress Privacy API; two-step deletion
 - **Money integrity** — `FOR UPDATE` locks, `GET_LOCK` advisory locks, transactions on every credit/debit
-- **Product Sync** — Detect and fix WooCommerce product mismatches
-- **Shortcode Customisation** — Configure shortcode defaults from settings UI
+- **Order reversion** — cancel/refund/failed reverts allocated tickets and instant-win prizes *(v1.3)*
 
 ### Developer
 - **Elementor Widgets** — 18 custom widgets for visual page building
-- **Shortcodes** — Display raffles, lists, lookup, and live draws anywhere
-- **GitHub Auto-Updates** — Push updates from GitHub releases
-- **Hooks & Filters** — Extensible via WordPress actions and filters
+- **Gutenberg Blocks** — countdown, progress, entry button, instant wins, raffle list *(v1.3)*
+- **Shortcodes** — 8 shortcodes for display flexibility
+- **Compatibility SDK** — write your own adapter via the `Raffle_Compatibility` base class *(v1.3)*
+- **Instant-win prize-type SDK** — register custom prize types via the `wpraffle_instant_win_assign_{type}` filter *(v1.3)*
+- **GitHub Auto-Updates** — push updates from GitHub releases
+- **Hooks & Filters** — extensible via WordPress actions and filters
+
+### Companion Theme
+Pair WPRaffle with the **[WPRaffle Theme](https://github.com/wpraffle/wpraffle-theme)** for a premium, purpose-built aesthetic with full Elementor Theme Builder templates, animated countdown timers, winner carousels, and deep plugin integration. Free and open source.
 
 ---
 
@@ -125,10 +139,9 @@ See [`RELEASE.md`](./RELEASE.md) for the full release notes.
 
 | Component   | Minimum |
 |-------------|---------|
-| WordPress   | 6.0+    |
-| PHP         | 8.0+    |
+| WordPress   | 6.5+    |
+| PHP         | 8.1+    |
 | WooCommerce | 8.0+    |
-| MySQL       | 5.7+    |
 | Elementor   | *Optional* |
 
 ### Setup
@@ -138,19 +151,11 @@ See [`RELEASE.md`](./RELEASE.md) for the full release notes.
 3. Upload the `.zip` and click **Install Now**
 4. Activate the plugin
 5. WPRaffle will automatically:
-   - Create all required database tables (15 tables)
+   - Create all required database tables
    - Create a WooCommerce shadow product
    - Create pages with shortcodes (Raffles, Past Raffles, Live Draw)
-   - Schedule cron jobs for auto-draw, reminders, charity refresh, and cleanup
+   - Schedule cron jobs for auto-draw, reminders, relist checks, charity refresh, and cleanup
 6. Configure settings at **Raffles → Settings**
-
-### Manual Install
-
-```bash
-git clone https://github.com/wpraffle/wpraffle.git
-# Copy to wp-content/plugins/wpraffle/
-# Activate from WordPress Plugins page
-```
 
 ---
 
@@ -158,10 +163,11 @@ git clone https://github.com/wpraffle/wpraffle.git
 
 1. Go to **Raffles → Create Raffle**
 2. Fill in title, description, prize details, ticket count, price, and packages
-3. Configure optional features (instant wins, skill question, geo-restriction, etc.)
+3. Configure optional features (instant wins with prize types, skill question, lifecycle thresholds, geo-restriction, etc.)
 4. Publish — copy the shortcode `[raffle id="X"]` to any page
 5. Buyers select packages, complete WooCommerce checkout, and receive tickets by email
 6. Draw winner from **Raffles → View Details** when ready
+7. Flag the winner as featured, upload a photo, and add a testimonial
 
 ---
 
@@ -171,171 +177,28 @@ git clone https://github.com/wpraffle/wpraffle.git
 |-----------|-------------|
 | `[raffle id="X"]` | Display a single raffle with full UI |
 | `[raffle_list columns="3" per_page="12"]` | Active raffles in a responsive grid |
-| `[raffle_ended_list columns="3"]` | Completed/finished raffles |
-| `[raffle_lookup]` | Ticket lookup form — emails a single-use secure link (v1.2.1) |
+| `[raffle_ended_list columns="3"]` | Completed/finished raffles with Live Draw, Auto-Draw, and Instant Wins tabs |
+| `[raffle_lookup]` | Ticket lookup form — emails a single-use secure link |
 | `[raffle_live_draw raffle_id="X"]` | Live animated draw page |
 | `[raffle_entry_list raffle_id="X"]` | Entry/ticket list for a raffle |
-| `[raffle_charities columns="3"]` | Charity directory grid with live totals *(v1.2)* |
-| `[raffle_refer raffle_id="X"]` | Referral card with share buttons + earned bonus count *(v1.2)* |
+| `[raffle_charities columns="3"]` | Charity directory grid with live totals |
+| `[raffle_refer raffle_id="X"]` | Referral card with share buttons + earned bonus count |
 
 ---
 
-## Elementor Widgets
-
-When Elementor is active, 18 custom widgets are available. Every single-raffle
-widget has a **Raffle** selector in its Content tab — pick a specific raffle to
-display, or leave it on "current page" to use the raffle linked to the product.
-Each widget renders an editor preview and exposes full styling controls
-(colours, typography, borders, shadows, responsive spacing).
-
-| Widget | Description |
-|--------|-------------|
-| Raffle Full Page | Complete all-in-one raffle layout |
-| Raffle Title | Raffle title with styling |
-| Raffle Image | Prize image with optional cash-alternative badge |
-| Raffle Price | Ticket price (or prize value) display |
-| Raffle Progress | Sales progress bar with configurable colours/height |
-| Raffle Countdown | Live countdown timer with custom labels |
-| Raffle Quantity Selector | Package selection grid + slider |
-| Raffle Enter Button | CTA button (or SOLD OUT badge) |
-| Raffle Description | Raffle description text in a card |
-| Raffle Stats Header | Key stats (max tickets, available, draw date) |
-| Raffle Tabs | Online / Postal entry tabs |
-| Raffle Instant Wins | Instant win prizes grid |
-| Raffle Question | Skill question form |
-| Raffle Trust Badges | Secure / confirmation / random-draw badges |
-| Raffle Purchase Modal | Purchase modal (place once per page) |
-| All Competitions | Raffle list/grid |
-| Ended Raffles | Past competitions grid |
-| Entry List | Ticket/entry list |
-
-
----
-
-## Project Structure
-
-```
-wpraffle/
-├── raffle-system.php                  # Plugin entry point
-├── README.md                          # This file
-├── DOCUMENTATION.md                   # Full documentation
-├── .gitignore
-│
-├── admin/
-│   ├── class-raffle-admin.php         # Admin menus, CRUD, settings
-│   ├── class-raffle-analytics.php     # Analytics data API
-│   └── views/
-│       ├── dashboard.php              # Dashboard view
-│       ├── raffle-list.php            # All raffles table
-│       ├── raffle-form.php            # Create/edit form
-│       ├── raffle-details.php         # Raffle details & stats
-│       ├── audit-log.php              # Audit log viewer
-│       └── settings.php              # Settings (7 tabs)
-│
-├── includes/
-│   ├── functions-icons.php            # SVG sprite icon system
-│   ├── class-raffle-activator.php     # Activation: tables, pages, cron
-│   ├── class-raffle-tickets.php       # Ticket generation
-│   ├── class-raffle-purchase.php      # Purchase processing
-│   ├── class-raffle-draw.php          # Winner selection & draw
-│   ├── class-raffle-email.php         # Email system
-│   ├── class-raffle-woocommerce.php   # WooCommerce integration
-│   ├── class-raffle-instant-wins.php  # Instant win logic
-│   ├── class-raffle-audit.php         # Audit logging
-│   ├── class-raffle-prizes.php        # Multi-prize management
-│   ├── class-raffle-duplicates.php    # Duplicate detection
-│   ├── class-raffle-referrals.php     # Referral system
-│   ├── class-raffle-free-entry.php    # Free/postal entry
-│   ├── class-raffle-templates.php     # Templates & clone
-│   ├── class-raffle-reservations.php  # Ticket reservations
-│   ├── class-raffle-geo.php           # Geo-restriction
-│   ├── class-raffle-live-draw.php     # Live draw page
-│   ├── class-raffle-pdf.php           # PDF generation
-│   ├── class-raffle-dashboard-widgets.php
-│   ├── class-raffle-elementor.php     # Elementor registration
-│   ├── class-raffle-updater.php       # GitHub auto-updates
-│   └── elementor-widgets/             # 18 Elementor widgets
-│
-├── public/
-│   ├── class-raffle-public.php        # Shortcodes, assets, frontend
-│   └── views/
-│       ├── single-raffle.php          # Single raffle template
-│       ├── raffle-display.php         # Raffle display (shortcode)
-│       ├── raffle-loop-card.php       # Card for grids/shop
-│       ├── entry-list.php             # Entry list view
-│       ├── my-raffles.php             # My Raffles page
-│       └── account/                   # Account tabs (tickets, wins, etc.)
-│
-└── assets/
-    ├── css/
-    │   ├── admin.css                  # Admin styles
-    │   ├── public.css                 # Frontend styles
-    │   └── icons.css                  # Icon styles
-    ├── js/
-    │   ├── admin.js                   # Admin JavaScript
-    │   ├── dashboard.js               # Dashboard charts
-    │   ├── public.js                  # Frontend JavaScript
-    │   └── shop-countdown.js          # Shop page countdown
-    └── icons/
-        └── wpraffle-icons.svg         # SVG sprite
-```
-
----
-
-## Configuration
-
-### Settings Tabs
+## Settings Tabs
 
 | Tab | Description |
 |-----|-------------|
-| **General** | Company name, address, currency, default limits, winner-name privacy (v1.2.1), winners page tabs |
+| **General** | Company name, address, currency, default limits, winner-name privacy, winners page tabs |
 | **Pages** | Page assignments, shortcode reference, shortcode customisation |
-| **Email** | Sender details, branding, accent colour, test sender |
-| **Legal** | FAQ management with dynamic editor, placeholder reference |
-| **Sync** | Raffle ↔ WooCommerce product sync, health checks |
+| **Email** | Sender details, branding, per-email toggles, admin recipients, PDF attachment, test sender |
+| **Legal** | Rules template, FAQ management with dynamic editor |
+| **Sync** | Raffle ↔ WooCommerce product sync + wallet/credit payout re-sync *(v1.3)* |
+| **Compatibility** *(v1.3)* | Live status of third-party plugin integrations |
 | **Advanced** | Auto-fix, rate limiting, audit log, cron overview |
+| **Styling** | Theme presets, CSS token overrides, companion theme banner *(v1.3)* |
 | **Updates** | GitHub auto-updates, version check |
-
-### Database Tables
-
-The plugin creates **15 custom tables**:
-
-| Table | Purpose |
-|-------|---------|
-| `wp_raffles` | Main raffle data |
-| `wp_raffle_purchases` | Purchase records |
-| `wp_raffle_tickets` | Individual ticket numbers |
-| `wp_raffle_instant_wins` | Instant win prizes |
-| `wp_raffle_prizes` | Multi-winner prize tiers |
-| `wp_raffle_referrals` | Referral tracking |
-| `wp_raffle_reservations` | Temporary ticket holds |
-| `wp_raffle_audit_log` | Audit trail |
-| `wp_raffle_templates` | Reusable templates |
-| `wp_raffle_free_entries` | Free/postal entries |
-| `wp_raffle_charities` | Charity registry (mirrors the CPT) *(v1.2)* |
-| `wp_raffle_charity_allocations` | Immutable draw-time charity allocations *(v1.2)* |
-| `wp_raffle_credits` | Append-only site-credit ledger *(v1.2)* |
-| `wp_raffle_payouts` | Idempotent wallet payout ledger *(v1.2)* |
-| `wp_raffle_rg_settings` | Responsible-gambling per-user settings *(v1.2)* |
-
----
-
-## Security
-
-WPRaffle implements multi-layer security:
-
-- **WordPress nonces** on all forms and AJAX requests (CSRF protection)
-- **Capability checks** (`manage_options`) on all admin actions
-- **Input sanitization** — `sanitize_text_field()`, `sanitize_email()`, `absint()`, etc.
-- **Output escaping** — `esc_html()`, `esc_attr()`, `esc_url()` in all views
-- **Prepared SQL statements** via `$wpdb->prepare()` — no raw queries
-- **UNIQUE constraint** on `(raffle_id, ticket_number)` prevents duplicates at DB level
-- **Cryptographically secure randomness** via `random_int()`
-- **Rate limiting** — configurable per-minute per-IP
-- **Cart quantity lock** — raffle items cannot have quantity changed in cart
-- **Multi-layer validation** — cart enforcement, checkout validation, payment-time clamping
-- **Audit logging** for all critical actions
-- **Direct access prevention** in all PHP files
 
 ---
 
@@ -343,7 +206,7 @@ WPRaffle implements multi-layer security:
 
 WPRaffle supports GitHub-based auto-updates:
 
-1. Tag a release on GitHub (e.g. `v1.2.1`)
+1. Tag a release on GitHub (e.g. `v1.3.0`)
 2. Upload the `.zip` as a release asset
 3. Users see the update within 12 hours (or immediately via manual check)
 4. Configure in **Raffles → Settings → Updates**
@@ -352,18 +215,7 @@ WPRaffle supports GitHub-based auto-updates:
 
 ## Privacy & Activation Notice
 
-On first activation, WPRaffle sends a **single, anonymous notice** to `wpraffle.dev` so the project can display a unique-install count on the marketing site.
-
-**What is sent (once per install):**
-- A random 32-character install ID (generated locally, no relationship to your site)
-- The literal event `activated`
-- The plugin version string
-
-**What is never sent:** site URL, admin email, WordPress/PHP/WooCommerce versions, visitor IPs, customer data, raffle data, or any personal information. The endpoint is HTTPS-only.
-
-The count is deduped by install ID on the server, so deactivating and reactivating the plugin on the same site never inflates the number. A full uninstall (with the *Delete data on uninstall* option enabled) removes the install ID, so a later reinstall counts as a new install.
-
-**Opt out** anytime at **Raffles → Settings → Updates → Anonymous Activation Notice**. The ping fires on activation, so if you want to prevent it, uncheck the option before the next activation (or set the `wpraffle_tracking_opted_out` option directly).
+On first activation, WPRaffle sends a **single, anonymous notice** to `wpraffle.dev` so the project can display a unique-install count on the marketing site. It sends only a random install ID and the plugin version — no site URL, no user data. Opt out anytime at **Raffles → Settings → Updates**.
 
 ---
 
@@ -375,10 +227,6 @@ This project is licensed under [GPL-2.0+](https://www.gnu.org/licenses/gpl-2.0.h
 
 ## Full Documentation
 
-The full documentation lives at **<https://docs.wpraffle.dev>** and covers every feature,
-the database schema, hooks & filters, AJAX endpoints, cron jobs, security model, and more.
+The full documentation lives at **<https://docs.wpraffle.dev>** and covers every feature, the database schema, hooks & filters, AJAX endpoints, cron jobs, security model, compatibility layer, and more.
 
-The source for the docs site is in the
-[`wpraffle-docs` repo](https://github.com/wpraffle/wpraffle-docs). See
-[`CHANGELOG.md`](./CHANGELOG.md) for a per-version changelog and
-[`RELEASE.md`](./RELEASE.md) for the latest release notes.
+The source for the docs site is in the [`wpraffle-docs` repo](https://github.com/wpraffle/wpraffle-docs). See [`CHANGELOG.md`](./CHANGELOG.md) for a per-version changelog and [`RELEASE.md`](./RELEASE.md) for the latest release notes.
