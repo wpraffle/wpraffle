@@ -4,6 +4,124 @@ All notable changes to WPRaffle are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-08-05
+
+A paired release with **WPRaffle Theme v1.2.0** that unblocks two theme
+enhancements which depended on plugin data not previously exposed. No breaking
+changes; additive only, with forward-compatible saves.
+
+### Added
+
+- **`category` attribute on `[raffle_list]`.** The shortcode now accepts a
+  `category` (raffle_category term slug or name) and filters the active/finished
+  list by that term via the WC product relationship. Backed by a new
+  `Raffle_Public::filter_raffles_by_category()` helper. Powers the theme's
+  homepage category filter tabs (Enhancement L). Attribute is silently ignored
+  by older behaviour when no term matches. (`public/class-raffle-public.php`)
+- **`featured` attribute on `[raffle_list]`.** Passing `featured="1"` limits the
+  list to competitions flagged `is_featured = 1`, which also sort to the top of
+  the default ordering. Powers the theme's Featured Spotlight section.
+- **Featured competition flag.** New `is_featured` column on the `raffles` table
+  (tinyint, default 0) plus a covering index, added by the idempotent v16
+  migration. A "Featured Spotlight" checkbox on the Raffle → Edit form toggles
+  it. Distinct from the v15 "featured *winner*" table — this flags a live
+  competition. (`includes/class-raffle-setup.php` migration_v16, admin form/save)
+- **`data-raffle-id` on card markup.** The `raffle-loop-card` template now
+  exposes the raffle ID as a data attribute, enabling the theme's Quick-View
+  modal to target cards without scraping URLs.
+
+### Migration
+
+Run automatically on the next `admin_init` (idempotent, flag-gated):
+`migration_v16_featured_competitions` — adds `raffles.is_featured` + index.
+
+### Fixed
+
+- **Undefined `$ticket_price` in the raffle save path.** When bundles were
+  enabled, the bundle-normalisation call referenced a non-existent
+  `$ticket_price` local (a PHP warning on every save, and a `0.0` fallback that
+  could drop the per-ticket price from bundle price/savings maths). Now reads
+  `$data['ticket_price']`. (`admin/class-raffle-admin.php`)
+- **Validation-failure re-render returned an unstyled/chromeless page.** A prior
+  change called `render_form_page()` then `exit` during `admin_init`, so a failed
+  save rendered the form before the admin header/menu were emitted. The handler
+  now sets the repopulation globals and `return`s, letting the normal menu-page
+  callback render the form once inside full admin chrome. The `rs_error_msg()`
+  inline-error helper was also reading an unglobalised `$errors`, so per-field
+  inline messages never appeared; the view now exposes the map via `$GLOBALS`
+  and the helper reads it. (`admin/class-raffle-admin.php`, `admin/views/raffle-form.php`)
+
+### Security / Hardening
+
+- **Update repository hard-coded.** The GitHub repo the updater polls is now a
+  constant (`Raffle_Updater::REPO` = `wpraffle/wpraffle`) and is no longer read
+  from `wpraffle_update_settings['github_repo']`. The editable "Repository"
+  field on Settings → Updates is replaced with a fixed label + link to
+  https://github.com/wpraffle/wpraffle, and `save_update_settings()` ignores any
+  posted `github_repo`. Update traffic can no longer be redirected to an
+  arbitrary third-party repo. (`includes/class-raffle-updater.php`,
+  `admin/class-raffle-admin.php`, `admin/views/settings.php`)
+
+### Changed — Redundancy cleanup (no behaviour change)
+
+- **Legacy admin migrations removed.** `Raffle_Admin::run_migrations()` no
+  longer re-runs the v2–v5 ALTER/CREATE statements that duplicated the schema
+  already created idempotently by the activator and `Raffle_Setup`. It now
+  delegates to `Raffle_Setup::run_migrations()`. (~190 lines removed.)
+  (`admin/class-raffle-admin.php`)
+- **Duplicate charity helper consolidated.** `backfill_one_charity()` now
+  delegates to the canonical `sync_charity_to_db()` instead of re-implementing
+  the same INSERT/UPDATE. (`includes/class-raffle-setup.php`)
+- **Redundant v6 table definitions dropped.** The four tables also guaranteed
+  by the always-on backstops (`raffle_charities`, `raffle_charity_allocations`,
+  `raffle_credits`, `raffle_payouts`) are no longer defined twice in
+  `migration_v6_tables()`; only `raffle_rg_settings` (unique to v6) remains.
+  (`includes/class-raffle-setup.php`)
+- **Dead `bundle_config` column dropped.** Added in v9 but never read or
+  written (bundle data lives in `packages` via `wpraffle_normalise_packages()`).
+  New `migration_v17_drop_dead_bundle_config()` removes it (SHOW COLUMNS
+  guarded, idempotent). (`includes/class-raffle-setup.php`)
+- **Dead guards removed.** The always-true `wpraffle_table_exists()` guard in
+  the block editor and the unreachable `wc_get_customer_email()` branch in the
+  privacy exporter (which silently dropped the billing email) were removed; the
+  billing email is now always included. (`includes/blocks/class-raffle-blocks.php`,
+  `includes/class-raffle-privacy.php`)
+- **Shared `consolation_config` helper.** The duplicated defaults array now
+  lives in `wpraffle_parse_consolation_config()`, used by both the email sender
+  and the admin form. (`raffle-system.php`, `admin/views/raffle-form.php`)
+
+### Added — Elementor improvements
+
+- **`Raffle Field` dynamic tag.** A new dynamic tag (group `🎟️ Raffle System`)
+  exposes any raffle field — Title, Ticket Price, Prize Value, Total/Sold/
+  Remaining tickets, Progress %, Draw/Start date, Status, Instant-Win count —
+  so ANY native Elementor widget (Heading, Text, Counter, Button) can bind to
+  the current (or a selected) raffle. Auto-discovered via the new
+  `includes/elementor-dynamic-tags/` directory.
+- **Three new widgets.** `Featured Raffle` (spotlight card, resolves
+  `is_featured=1`), `Lifecycle Status` (per-state coloured banner:
+  upcoming→active→drawing→ended→failed), and `Winner Announcement`
+  (winning ticket + buyer, with empty-state fallback). Drop-in via the
+  widget autoloader.
+- **Editor previews for all widgets.** The three widgets that previously
+  rendered blank in the editor canvas (`All Competitions`, `Ended Raffles`,
+  `Entry List`) now ship static `content_template()` previews.
+- **`[raffle]` shortcode auto-resolves.** With no `id` attribute it now uses
+  the raffle linked to the current product — fixes the broken
+  `{{current_product_id}}` placeholder used in the theme's single-raffle
+  Elementor template.
+
+### Changed — Elementor polish
+
+- **Quantity Selector** gained a full Style tab (pill colours/radius, slider
+  track/thumb, heading typography); **Modal** gained overlay/modal style
+  controls; **Tabs** gained postal-pane chrome controls.
+- **Accessibility pass:** `aria-pressed` on quantity pills + labelled range,
+  `<fieldset>/<legend>` + `role="alert"` on the Skill Question widget,
+  `role="tab"`/`aria-selected`/`aria-controls` on the Tabs widget,
+  `aria-disabled` on the sold-out Enter button, `role="timer"`/`aria-live`
+  on the Countdown.
+
 ## [1.3.0] — 2026-07-08
 
 A feature-parity release that closes the competitive gaps identified against the

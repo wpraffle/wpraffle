@@ -1,217 +1,142 @@
-# WPRaffle v1.3.0 Release Notes
+# WPRaffle v1.3.1 Release Notes
 
-**Release date:** 8 July 2026
-**Version:** 1.3.0
-**Previous version:** 1.2.2
+**Release date:** 5 August 2026
+**Version:** 1.3.1
+**Previous version:** 1.3.0
 
-> A feature-parity release that closes the competitive gaps identified against
-> the two main rival lottery/raffle plugins. Adds a full instant-win prize
-> engine, a raffle lifecycle (relist / extend / min-tickets fail with
-> auto-refund), an expanded email suite with per-email toggles and PDF ticket
-> attachments, a compatibility layer for ten third-party plugins and gateways,
-> CSV import/export, admin order-item ticket management, Q&A time/attempt
-> limits, sequential / shuffled ticket numbering, and a starter set of
-> Gutenberg blocks — plus a cancel/refund/failed order reversion path that
-> previously did not exist.
+> A maintenance + Elementor release that pairs with **WPRaffle Theme v1.3.0**.
+> Fixes a raffle-save bug path and the validation-failure re-render, hard-codes
+> the update repository, removes ~340 lines of redundant code, and ships a
+> substantial Elementor expansion: a dynamic tag, three new widgets, editor
+> previews for the rest, widget styling/a11y polish, and a shortcode
+> auto-resolve fix.
 
 ---
 
 ## Headlines
 
-- **Instant-win engine, rebuilt** — instant-win slots now deliver real prizes
-  automatically: auto-generated WooCommerce coupons, gift products added to
-  the winning order at zero cost, or site credit, with prize groups and
-  automatic reversal on refund. Previously a slot held only a free-text prize
-  name.
-- **A proper raffle lifecycle** — undersold raffles can now FAIL (and
-  auto-refund participants) instead of silently drawing, operators can EXTEND
-  a deadline or RELIST a finished raffle in place (preserving its permalink),
-  manually or on a schedule.
-- **A complete email lifecycle** — distinct loser, instant-win, started,
-  extended, failed-participant and six admin notification emails, each with
-  its own on/off toggle, plus optional PDF ticket attachments.
-- **Ten compatibility integrations** — auto-activating adapters for WPML,
-  Polylang, Multi-Currency, Stripe, Square, WooPayments, Smart Coupons, Dokan,
-  Yoast/Rank Math, and page-cache plugins, with zero overhead when the target
-  is absent. A new Compatibility settings tab reports what's live.
-- **Gutenberg blocks** — a starter set of server-rendered blocks (countdown,
-  progress, entry button, instant wins, raffle list) for non-Elementor sites,
-  with no build step required.
-- **Critical fix: order reversion** — cancelling, refunding, or failing an
-  order now reverts the allocated tickets and instant-win prizes. Previously
-  there was no reversion path at all; allocated tickets persisted after the
-  sale was undone.
-
----
-
-## Added
-
-### Instant-Win Engine Overhaul
-
-- **Prize types.** Each instant-win slot carries a `prize_type`: `coupon`
-  (auto-generated single-use WooCommerce coupon, email-restricted to the
-  winner), `product` (gift product added to the winning order at £0),
-  `credit` (site credit), `physical` (operator-fulfilled), or `custom`
-  (extensible). Assignment is automatic on payment; reversal is automatic on
-  cancel/refund/failed.
-- **Prize groups.** Prizes can be grouped with a shared image and display
-  config; the Elementor instant-wins widget can render grouped sections.
-- **Standalone instant-win email** surfacing any generated coupon codes,
-  distinct from the purchase confirmation.
-- **Extensibility.** A `wpraffle_instant_win_assign_{type}` /
-  `wpraffle_instant_win_reverse_{type}` filter pair lets compatibility classes
-  register new prize types (Smart Coupons ships via this mechanism).
-
-### Raffle Lifecycle
-
-- **Min-tickets / min-unique-users thresholds.** A raffle whose draw runs
-  before meeting its threshold now FAILS (`status = 'failed'`, `fail_reason`
-  recorded) instead of drawing. Driven by `min_tickets` /
-  `min_unique_users` columns.
-- **Auto-refund on fail.** An opt-in `auto_refund_on_fail` flag triggers a
-  WooCommerce refund for every participant of a failed raffle, idempotently.
-- **Extend.** Push a raffle's draw date out and reopen it
-  (`Raffle_Lifecycle::extend_raffle`).
-- **Relist.** Reset a finished/failed raffle in place — snapshots history into
-  a `raffle_relists` table, clears entries, re-instantiates instant wins,
-  reopens the WC product. Reuses the same raffle id + permalink (unlike
-  clone). Manual or scheduled via the `wpraffle_relist_check` cron with count
-  and pause-window configuration.
-- New lifecycle actions: `wpraffle_raffle_failed`, `wpraffle_raffle_extended`,
-  `wpraffle_raffle_relisted`.
-
-### Email Lifecycle Expansion
-
-- New transactional emails: `no_luck` (standalone loser email), `instant_win`,
-  `raffle_started`, `raffle_extended`, `failed_participant`, and admin
-  notifications `admin_sale`, `admin_draw`, `admin_winner`, `admin_failed`,
-  `admin_started`, `admin_relisted`.
-- **Per-email enable/disable toggles** on the Email settings tab. All are
-  enabled by default; an explicit "off" wins. Configurable admin notification
-  recipients (comma-separated).
-- **Ticket PDF attachment** on the purchase-confirmation email
-  (`WPRaffle_PDF::ticket()` + a `phpmailer_init` attachment helper).
-- **"Raffle started" notification sweep** cron (`wpraffle_started_notify`).
-
-### Compatibility Layer
-
-- Conditional-load adapters (zero overhead when the target plugin is absent)
-  for WPML/WCML, Polylang, CURCY Multi-Currency, Stripe, Square, WooPayments,
-  Smart Coupons (as an instant-win prize type), Dokan/WC Vendors (vendor
-  email recipients), Yoast/Rank Math (canonical/OG URLs), and page-cache
-  plugins (W3TC/WPSC/Rocket/LiteSpeed flush on state change).
-- New **Compatibility settings tab** reporting each adapter's live status.
-
-### Operational Breadth + Gutenberg
-
-- **CSV import/export** of tickets and instant-win rules/prize groups.
-- **Admin order-item UI** — a "View Tickets" button on each raffle line item
-  in the WooCommerce order screen showing allocated ticket numbers.
-- **Q&A time limit + attempt limit** for skill questions (compliance-grade).
-- **Ticket numbering modes** — random (default), sequential, or shuffled,
-  plus per-raffle prefix/suffix and a configurable start number.
-- **Gutenberg blocks** (no-build) for countdown, progress, entry button,
-  instant wins, and raffle list — server-side rendered, sharing output with
-  the Elementor widgets and shortcodes.
+- **Raffle save path hardened.** Fixed an undefined-variable warning in the
+  bundle normalisation on every save, and the validation-failure re-render
+  (which could produce a chromeless page + missing inline field errors). Saving
+  and editing raffles is now silent and correct.
+- **Elementor dynamic tag.** A single `Raffle Field` dynamic tag exposes any
+  raffle field (title, price, progress, draw date, instant-win count, …) so
+  **any** native Elementor widget can bind to live raffle data — not just the
+  bespoke raffle widgets.
+- **Three new Elementor widgets:** Featured Raffle (spotlight), Lifecycle
+  Status (per-state banner), and Winner Announcement.
+- **Update repository hard-coded.** The GitHub repo the auto-updater polls is
+  now a constant (`wpraffle/wpraffle`) and can no longer be changed from the
+  settings UI — update traffic can never be redirected.
+- **~340 lines of dead/duplicate code removed,** including a redundant DB
+  column, legacy duplicate migrations, and a dead WooCommerce guard that was
+  silently dropping the billing email from privacy exports.
 
 ---
 
 ## Fixed
 
-- **Order reversion (critical).** Cancelling, refunding, or failing an order
-  that had raffle tickets allocated now reverts the allocation: deletes the
-  tickets, decrements `sold_tickets`, deletes the purchase row, and reverses
-  any instant-win prizes. Previously there was no reversion path — allocated
-  tickets and won prizes persisted after the sale was undone. Idempotent via a
-  `_raffle_tickets_reverted` order meta flag.
+- **Undefined `$ticket_price` in the raffle save path.** When bundles were
+  enabled the bundle-normalisation call referenced a non-existent local (a PHP
+  warning on every save, and a `0.0` fallback that could drop the per-ticket
+  price from bundle maths). Now reads `$data['ticket_price']`.
+- **Validation-failure re-render returned an unstyled page.** A prior change
+  rendered the form then `exit`-ed during `admin_init`, so a failed save showed
+  the form before the admin chrome was emitted. The handler now sets the
+  repopulation globals and returns, letting the normal page callback render the
+  form once inside full admin chrome. The inline-error helper was also reading
+  an unglobalised `$errors`, so per-field messages never appeared — both fixed.
+
+---
+
+## Security / Hardening
+
+- **Update repository hard-coded** (`Raffle_Updater::REPO`). The editable
+  "Repository" field on Settings → Updates is replaced with a fixed label +
+  link to https://github.com/wpraffle/wpraffle, and `save_update_settings()`
+  ignores any posted `github_repo`.
+
+---
+
+## Added — Elementor
+
+- **`Raffle Field` dynamic tag** (group `🎟️ Raffle System`). Fields: Title,
+  Ticket Price, Prize Value, Total/Sold/Remaining tickets, Progress %, Draw &
+  Start dates, Status, Instant-Win count. Resolves the current product's raffle
+  or an explicit selection. Auto-discovered via the new
+  `includes/elementor-dynamic-tags/` directory.
+- **Three new widgets** (drop-in via the autoloader):
+  - **Featured Raffle** — spotlight card, resolves `is_featured = 1` (falls
+    back to most recent active), with image/title/price/progress/CTA + full
+    style tab.
+  - **Lifecycle Status** — per-state coloured banner (upcoming → active →
+    drawing → ended → failed), per-state colour controls.
+  - **Winner Announcement** — winning ticket + buyer name with empty-state
+    fallback.
+- **Editor previews** (`content_template`) for the three widgets that
+  previously rendered blank in the canvas: All Competitions, Ended Raffles,
+  Entry List.
+- **`[raffle]` shortcode auto-resolves** — with no `id` it now uses the raffle
+  linked to the current product (fixes the broken theme single-raffle template
+  placeholder).
+
+---
+
+## Changed — Elementor polish
+
+- **Quantity Selector** gained a full Style tab (pill colours/radius, slider
+  track/thumb, heading typography); **Modal** gained overlay/modal style
+  controls; **Tabs** gained postal-pane chrome controls.
+- **Accessibility pass:** `aria-pressed` on quantity pills + labelled range,
+  `<fieldset>/<legend>` + `role="alert"` on the Skill Question widget,
+  `role="tab"` / `aria-selected` / `aria-controls` on the Tabs widget,
+  `aria-disabled` on the sold-out Enter button, `role="timer"` / `aria-live`
+  on the Countdown.
+
+---
+
+## Changed — Redundancy cleanup (no behaviour change)
+
+- **Legacy admin migrations removed.** `Raffle_Admin::run_migrations()` no
+  longer re-runs the v2–v5 ALTER/CREATE statements that duplicated the activator
+  schema; it delegates to `Raffle_Setup::run_migrations()`. (~190 lines.)
+- **Duplicate charity helper consolidated.** `backfill_one_charity()` now
+  delegates to the canonical `sync_charity_to_db()`.
+- **Redundant v6 table definitions dropped** (the four tables guaranteed by the
+  always-on backstops).
+- **Dead `bundle_config` column dropped** (added in v9 but never read/written).
+  New `migration_v17_drop_dead_bundle_config()` removes it idempotently.
+- **Dead guards removed:** the always-true `wpraffle_table_exists()` guard, and
+  the unreachable `wc_get_customer_email()` branch (the privacy exporter now
+  always includes the billing email).
+- **Shared `consolation_config` helper** replaces the duplicated defaults array.
 
 ---
 
 ## Schema migrations
 
-Three additive, backward-compatible migrations (following the existing
-per-version-flag pattern). All default to legacy behaviour so existing
-raffles are unaffected until an operator opts in.
-
-- `migration_v12` — instant-win engine (`prize_type`, `prize_config`,
-  `prize_group_id`, `image_id`, `won_at` on `raffle_instant_wins`; new
-  `raffle_instant_win_groups` table).
-- `migration_v13` — lifecycle (`min_tickets`, `min_unique_users`,
-  `fail_reason`, `extended_from`, `auto_refund_on_fail`, `relist_config` on
-  `raffles`; new `raffle_relists` table; `status_draw` index).
-- `migration_v14` — Q&A limits + ticket numbering (`qa_time_limit`,
-  `qa_max_attempts`, `ticket_numbering`, `ticket_prefix`, `ticket_suffix`,
-  `ticket_start_number` on `raffles`; new `raffle_ticket_sequences` table).
-- `migration_v6_payouts_credits_backstop` — flag-independent backstop that
-  creates `raffle_payouts` and `raffle_credits` if the original v6 dbDelta run
-  silently no-op'd on a given install (a known dbDelta footgun). Runs on every
-  admin load, mirroring the v10 charity backstop.
-- `migration_v15` — featured winners (new `raffle_featured_winners` table).
-
----
-
-## Post-release additions & fixes
-
-The following were added or fixed during pre-deploy testing on top of the
-initial 1.3.0 cut:
-
-- **Operator-facing admin form fields.** Every new raffle column now has an
-  input: lifecycle (min-tickets, min-unique-users, auto-refund, auto-relist
-  config), Q&A limits (time + attempts), ticket numbering (mode, prefix/suffix,
-  start number), and the instant-win prize-type selector with type-specific
-  config. Plus server-side validation, Extend/Relist buttons on Raffle Details,
-  CSV import/export buttons, and status-aware list filtering.
-- **My Coupons account tab** — a new My Account → My Raffles tab showing won
-  coupons with click-to-copy codes, expiry, and Ready/Used badges.
-- **Wallet/credit bridge.** Instant-win credit prizes now push to the live
-  WooWallet/TerraWallet balance (not just the internal ledger), via the
-  idempotent `credit_instant_win()` / `debit_instant_win()` adapter methods.
-- **Manual wallet payout re-sync.** "Sync Wallet Payouts" (Raffle Details) and
-  "Sync All Wallet Payouts" (Settings → Sync) — a true reconciliation that
-  finds orphaned won-but-unpaid credit prizes and credits them. Idempotent.
-- **Raffle not saving after upgrade** — migrations now run before the form
-  handler on the same request, plus a column-guard so a missing optional column
-  can't break the save.
-- **Missing payouts/credits tables** — flag-independent backstop (above).
-- **Silent instant-win failures** now log to the audit log
-  (`instant_win_assign_failed`) instead of being swallowed.
-- **Winners page instant-wins tab** now shows wins across all raffles, not just
-  ended ones (instant wins are claimed live during a competition).
-- **Featured winners.** Operators can flag a finished raffle's winner as a
-  "featured winner" from the Raffle Details page, attach a winner photo (via
-  the WP media uploader), and add an optional testimonial/quote. Stored in a
-  new `raffle_featured_winners` table, queryable via
-  `Raffle_Featured_Winners::get_featured()` for a future "Featured Winners"
-  carousel. Auto-saves via AJAX.
+- **`migration_v17_drop_dead_bundle_config`** — drops the unused
+  `raffles.bundle_config` column (SHOW COLUMNS guarded, idempotent). Runs
+  automatically on the next `admin_init`.
 
 ---
 
 ## Upgrade notes
 
-1.3.0 is an in-place upgrade from 1.2.2. The schema migrations run
-automatically on the next admin page load (gated by per-version flags, each
-column guarded with `SHOW COLUMNS` so they are idempotent; the payouts/credits
-backstop is flag-independent). No data is lost; existing instant-win rows
-backfill to `prize_type = 'physical'` so the legacy `prize_name` keeps working
-unchanged. Standard upgrade path (GitHub auto-update or upload the new zip)
-applies all changes.
-
-After upgrading, review the new **Compatibility** settings tab to confirm
-which integrations are active on your site, the **Email** settings tab to
-tune the new per-email toggles and admin recipients, and the **Sync** tab's
-"Sync All Wallet Payouts" if you have existing instant-win credit prizes that
-predate the wallet bridge.
+- **No breaking changes.** All schema changes are additive or dead-column
+  removals; the v17 drop is guarded.
+- **Child themes / custom CSS** referencing the old `.diamond-*` classes or
+  `--diamond-*` variables should be updated to `.wpr-*` / `--wpr-*` (that rename
+  landed in the theme, not the plugin — the plugin's classes are unchanged).
+- The update repo is now fixed; if you previously pointed it at a fork, that
+  setting is ignored — update traffic always goes to `wpraffle/wpraffle`.
+- Elementor dynamic tags require Elementor ≥ 3.0; the tag no-ops gracefully if
+  Elementor is absent.
 
 ---
 
 ## What's next
 
-1.3.0 achieves feature parity with the main rival plugins and ships the full
-operator-facing UI for every feature. The next release will focus on
-**performance and scale** (object-cache integration for inventory/odds, batch
-purchase processing) and **deeper theming** (a child-theme-friendly template
-override system).
-
----
-
-Full changelog: [`CHANGELOG.md`](./CHANGELOG.md). Docs: <https://docs.wpraffle.dev>.
+- Live-draw fairness proof export to PDF.
+- Wallet payout batch runner for failed-raffle auto-refunds at scale.
+- Additional Elementor dynamic tags (per-ticket number, winner list).

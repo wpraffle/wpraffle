@@ -3,7 +3,7 @@
  * Plugin Name: WPRaffle
  * Plugin URI:  https://github.com/wpraffle/wpraffle
  * Description: A fully-featured WooCommerce raffle & competition system. Run live competitions, manage tickets, instant wins, skill questions, postal entries, and lifecycle states — all for free.
- * Version:     1.3.0
+ * Version:     1.3.1
  * Author:      WPRaffle
  * Author URI:  https://github.com/wpraffle
  * Text Domain: wpraffle
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RAFFLE_SYSTEM_VERSION', '1.3.0' );
+define( 'RAFFLE_SYSTEM_VERSION', '1.3.1' );
 define( 'RAFFLE_SYSTEM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RAFFLE_SYSTEM_URL', plugin_dir_url( __FILE__ ) );
 
@@ -506,11 +506,9 @@ add_action( 'raffle_draw_completed', function ( $raffle_id, $winner_ticket ) {
     set_transient( $sent_flag, 1, YEAR_IN_SECONDS );
 
     // Parse the consolation config.
-    $config = wp_parse_args( json_decode( $raffle->consolation_config, true ) ?: array(), array(
-        'type'        => 'percent',
-        'amount'      => 10,
-        'expiry_days' => 30,
-    ) );
+    $config = function_exists( 'wpraffle_parse_consolation_config' )
+        ? wpraffle_parse_consolation_config( $raffle->consolation_config ?? '' )
+        : array( 'type' => 'percent', 'amount' => 10, 'expiry_days' => 30 );
 
     // Winner email(s) — exclude them from consolation.
     $winner_emails = array();
@@ -790,5 +788,25 @@ function wpraffle_normalise_packages( $packages_json, $ticket_price = 0.0 ) {
         );
     }
     return $out;
+}
+
+/**
+ * Parse a raffle's consolation-coupon config JSON into a fully-populated array,
+ * merged with the canonical defaults. Used by the email sender and the admin
+ * form so the default shape (type/amount/expiry_days) lives in one place.
+ *
+ * @param string $config_json Raw JSON from $raffle->consolation_config.
+ * @return array {type, amount, expiry_days}
+ */
+function wpraffle_parse_consolation_config( $config_json ) {
+    $parsed = is_string( $config_json ) && $config_json !== '' ? json_decode( $config_json, true ) : array();
+    if ( ! is_array( $parsed ) ) {
+        $parsed = array();
+    }
+    return wp_parse_args( $parsed, array(
+        'type'        => 'percent',
+        'amount'      => 10,
+        'expiry_days' => 30,
+    ) );
 }
 

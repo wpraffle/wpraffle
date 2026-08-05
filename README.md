@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.1-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/WordPress-6.5%2B-21759b?style=flat-square&logo=wordpress" alt="WordPress">
   <img src="https://img.shields.io/badge/PHP-8.1%2B-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP">
   <img src="https://img.shields.io/badge/WooCommerce-8.0%2B-96588A?style=flat-square&logo=woocommerce&logoColor=white" alt="WooCommerce">
@@ -7,11 +7,6 @@
 </p>
 
 <h1 align="center">WPRaffle</h1>
-
-
-<p align="center">
-  **AI NOTICE:** AI has written all the documentation, release notes, changelog info.
-</p>
 
 <p align="center">
   A comprehensive WordPress plugin for running online raffles and competitions.<br>
@@ -27,22 +22,33 @@
 
 ---
 
-## What's new in 1.3.0
+## What's new in 1.3.1
 
-A feature-parity release that closes every competitive gap against the main rival lottery/raffle plugins. Adds a full instant-win prize engine, a raffle lifecycle, an expanded email suite, a compatibility layer for ten third-party plugins, CSV import/export, Gutenberg blocks, featured winners, and a companion theme.
+A maintenance + Elementor release that pairs with **WPRaffle Theme v1.3.0**.
+Fixes the raffle save/validation path, hard-codes the update repository, removes
+~340 lines of redundant code, and ships a substantial Elementor expansion.
 
 ### Highlights
 
-- **Instant-win engine, rebuilt** — prize types now deliver real prizes automatically: auto-generated WooCommerce coupons, gift products added to the winning order, or **wallet credit paid straight to the winner's WooWallet/TerraWallet balance**, with prize groups and automatic reversal on refund.
-- **Raffle lifecycle** — undersold raffles can now FAIL (and auto-refund participants) instead of silently drawing, operators can EXTEND a deadline or RELIST a finished raffle in place (preserving its permalink), manually or on a schedule.
-- **Complete email lifecycle** — distinct loser, instant-win, started, extended, failed-participant, and six admin notification emails, each with its own on/off toggle, plus optional PDF ticket attachments.
-- **Ten compatibility integrations** — auto-activating adapters for WPML, Polylang, Multi-Currency, Stripe, Square, WooPayments, Smart Coupons, Dokan, Yoast/Rank Math, and page-cache plugins.
-- **Gutenberg blocks** — a starter set of server-rendered blocks for non-Elementor sites, with no build step.
-- **Featured winners** — flag winners as featured, upload a photo, add a testimonial — ready for a winners carousel.
-- **Companion theme** — pair with the [WPRaffle Theme](https://github.com/wpraffle/wpraffle-theme) for a premium, purpose-built aesthetic.
-- **Critical fix: order reversion** — cancelling, refunding, or failing an order now reverts the allocated tickets and instant-win prizes.
+- **Elementor dynamic tag** — a single `Raffle Field` tag exposes any raffle
+  field (title, price, progress, draw date, instant-win count, …) so **any**
+  native Elementor widget can bind to live raffle data.
+- **Three new Elementor widgets** — Featured Raffle (spotlight), Lifecycle
+  Status (per-state banner), and Winner Announcement.
+- **Editor previews + styling + a11y** across the existing widget suite
+  (Quantity/Modal/Tabs style tabs, ARIA roles, fieldset/legend on the skill
+  question).
+- **Save path hardened** — fixed an undefined-variable warning on every save
+  and the validation-failure re-render that could show a chromeless page.
+- **Update repo hard-coded** — the GitHub repo the auto-updater polls is now a
+  constant (`wpraffle/wpraffle`) and can't be changed from the UI.
+- **~340 lines of redundant code removed** (legacy duplicate migrations, dead
+  `bundle_config` column, duplicate charity helper, dead guards).
 
-See [`RELEASE.md`](./RELEASE.md) for the full release notes and [`CHANGELOG.md`](./CHANGELOG.md) for the complete version history.
+See [`RELEASE.md`](./RELEASE.md) for the full release notes and
+[`CHANGELOG.md`](./CHANGELOG.md) for the complete version history (the 1.3.0
+feature notes — instant-win engine, lifecycle, email suite, compatibility
+layer, Gutenberg blocks — are preserved there).
 
 ---
 
@@ -211,10 +217,13 @@ Pair WPRaffle with the **[WPRaffle Theme](https://github.com/wpraffle/wpraffle-t
 
 WPRaffle supports GitHub-based auto-updates:
 
-1. Tag a release on GitHub (e.g. `v1.3.0`)
+1. Tag a release on GitHub (e.g. `v1.3.1`)
 2. Upload the `.zip` as a release asset
 3. Users see the update within 12 hours (or immediately via manual check)
-4. Configure in **Raffles → Settings → Updates**
+4. Status + manual check live in **Raffles → Settings → Updates**
+
+The update repository is hard-coded to [`wpraffle/wpraffle`](https://github.com/wpraffle/wpraffle)
+and cannot be changed from the settings UI.
 
 ---
 
