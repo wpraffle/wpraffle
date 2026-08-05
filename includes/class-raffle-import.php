@@ -16,6 +16,10 @@ class Raffle_Import {
         add_action( 'admin_post_wpraffle_export_tickets', array( $this, 'export_tickets' ) );
         add_action( 'admin_post_wpraffle_export_instant_wins', array( $this, 'export_instant_wins' ) );
         add_action( 'admin_post_wpraffle_import_instant_wins', array( $this, 'handle_import' ) );
+        // v1.3.1 — also accept AJAX uploads so the CSV import form is not nested
+        // inside the main raffle form (HTML forbids nested forms; the previous
+        // nested <form> silently broke the "Update Raffle" submit).
+        add_action( 'wp_ajax_wpraffle_import_instant_wins', array( $this, 'handle_import' ) );
     }
 
     /* ===================================================================
@@ -116,12 +120,17 @@ class Raffle_Import {
         }
         check_admin_referer( 'wpraffle_import_iw', 'wpraffle_import_iw_nonce' );
 
+        // Whether this is an AJAX upload (v1.3.1+) or a classic admin_post redirect.
+        $is_ajax = wp_doing_ajax();
+
         $raffle_id = isset( $_POST['raffle_id'] ) ? absint( $_POST['raffle_id'] ) : 0;
         if ( ! $raffle_id ) {
+            if ( $is_ajax ) { wp_send_json_error( array( 'message' => __( 'No raffle ID.', 'wpraffle' ) ) ); }
             wp_safe_redirect( add_query_arg( array( 'page' => 'raffle-list', 'import_error' => 'no_raffle' ), admin_url( 'admin.php' ) ) );
             exit;
         }
         if ( empty( $_FILES['import_file']['tmp_name'] ) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK ) {
+            if ( $is_ajax ) { wp_send_json_error( array( 'message' => __( 'No file uploaded.', 'wpraffle' ) ) ); }
             wp_safe_redirect( add_query_arg( array( 'page' => 'raffle-list', 'import_error' => 'no_file' ), admin_url( 'admin.php' ) ) );
             exit;
         }
@@ -129,6 +138,7 @@ class Raffle_Import {
         // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- reading an uploaded temp file; WP_Filesystem is awkward for line-by-line CSV parsing.
         $handle = fopen( $_FILES['import_file']['tmp_name'], 'r' );
         if ( ! $handle ) {
+            if ( $is_ajax ) { wp_send_json_error( array( 'message' => __( 'Could not read file.', 'wpraffle' ) ) ); }
             wp_safe_redirect( add_query_arg( array( 'page' => 'raffle-list', 'import_error' => 'read_failed' ), admin_url( 'admin.php' ) ) );
             exit;
         }
@@ -209,6 +219,16 @@ class Raffle_Import {
                 'imported' => $imported,
                 'skipped'  => $skipped,
             ), 'admin' );
+        }
+
+        // v1.3.1 — AJAX uploads return JSON instead of redirecting.
+        if ( $is_ajax ) {
+            wp_send_json_success( sprintf(
+                /* translators: 1: imported count, 2: skipped count */
+                __( 'Import complete: %1$d added, %2$d skipped.', 'wpraffle' ),
+                $imported,
+                $skipped
+            ) );
         }
 
         wp_safe_redirect( add_query_arg( array(

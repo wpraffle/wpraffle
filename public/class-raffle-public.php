@@ -126,6 +126,18 @@ class Raffle_Public {
         $atts      = shortcode_atts( array( 'id' => 0 ), $atts, 'raffle' );
         $raffle_id = absint( $atts['id'] );
 
+        // Auto-resolve: when no id is given, use the raffle linked to the
+        // current product (single raffle pages, Elementor single-raffle template).
+        if ( ! $raffle_id ) {
+            $current_id = get_the_ID();
+            if ( $current_id ) {
+                $meta = (int) get_post_meta( $current_id, '_raffle_id', true );
+                if ( $meta ) {
+                    $raffle_id = $meta;
+                }
+            }
+        }
+
         if ( ! $raffle_id ) {
             return '<p>Raffle ID not specified.</p>';
         }
@@ -690,7 +702,9 @@ class Raffle_Public {
 
     public function render_raffle_list_shortcode( $atts ) {
         $sc_defaults = self::get_sc_settings( 'raffle_list', array(
-            'status' => 'active', // 'active' (live), 'finished' (ended), 'draft', or 'all'
+            'status'   => 'active', // 'active' (live), 'finished' (ended), 'draft', or 'all'
+            'category' => '',      // raffle_category term slug/name (v1.3.1) — '' = no filter
+            'featured' => '',      // '1' to limit to is_featured=1 raffles (v1.3.1)
         ) );
 
         $atts = shortcode_atts( $sc_defaults, $atts, 'raffle_list' );
@@ -699,43 +713,58 @@ class Raffle_Public {
         $table = $wpdb->prefix . 'raffles';
         $now = current_time( 'mysql' );
 
+        // Featured filter (column on the raffles table — safe to inline as a literal).
+        $featured_sql = ( $atts['featured'] === '1' ) ? ' AND is_featured = 1 ' : '';
+
         if ( $atts['status'] === 'active' ) {
             $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table} 
-                 WHERE status = 'active' 
-                   AND ( start_date IS NULL OR start_date <= %s ) 
+                "SELECT * FROM {$table}
+                 WHERE status = 'active'
+                   AND ( start_date IS NULL OR start_date <= %s )
                    AND ( draw_date IS NULL OR draw_date > %s )
                    AND sold_tickets < total_tickets
-                 ORDER BY created_at DESC",
+                   {$featured_sql}
+                 ORDER BY is_featured DESC, created_at DESC",
                 $now, $now
             ) );
         } elseif ( $atts['status'] === 'finished' || $atts['status'] === 'ended' ) {
             $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table} 
-                 WHERE status = 'finished' 
-                    OR ( status = 'active' AND draw_date IS NOT NULL AND draw_date <= %s ) 
+                "SELECT * FROM {$table}
+                 WHERE status = 'finished'
+                    OR ( status = 'active' AND draw_date IS NOT NULL AND draw_date <= %s )
                     OR ( status = 'active' AND sold_tickets >= total_tickets )
+                   {$featured_sql}
                  ORDER BY draw_date DESC, created_at DESC",
                 $now
             ) );
         } elseif ( $atts['status'] === 'draft' ) {
             $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table} 
-                 WHERE status = 'draft' 
+                "SELECT * FROM {$table}
+                 WHERE status = 'draft'
                     OR ( status = 'active' AND start_date IS NOT NULL AND start_date > %s )
+                   {$featured_sql}
                  ORDER BY created_at DESC",
                 $now
             ) );
         } else {
             // SEC-19: No user input in this query — table name is from $wpdb->prefix (safe)
-            $raffles = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY created_at DESC" );
+            $raffles = $wpdb->get_results( "SELECT * FROM {$table} WHERE 1=1 {$featured_sql} ORDER BY is_featured DESC, created_at DESC" );
+        }
+
+        // Category filter — resolve the raffle_category term to its WC product IDs,
+        // then keep only raffles whose wc_product_id is in that set. Done in PHP
+        // (not SQL) because the taxonomy lives in WP term tables, not the raffles
+        // table, and the active-list result set is small.
+        $category = sanitize_text_field( $atts['category'] );
+        if ( $category && ! empty( $raffles ) ) {
+            $raffles = self::filter_raffles_by_category( $raffles, $category );
         }
 
         if ( empty( $raffles ) ) {
             ob_start();
             wpr_icon( 'gift', 'wpr-icon--sm' );
             $icon = ob_get_clean();
-            return '<div style="text-align:center; padding: 40px; color: var(--wpr-text-muted); font-weight: 500; font-size: 16px;">' . $icon . ' No raffle competitions found.</div>';
+            return '<div style="text-align:center; padding: 40px; color: var(--wpr-text-muted); font-weight: 500; font-size: 16px;">' . $icon . ' ' . esc_html__( 'No raffle competitions found.', 'wpraffle' ) . '</div>';
         }
 
         // Enqueue countdown JS for the shortcode page
@@ -767,6 +796,43 @@ class Raffle_Public {
         </div>
         <?php
         return ob_get_clean();
+    }
+
+    /**
+     * Filter a list of raffle row-objects by a raffle_category term.
+     *
+     * The `raffle_category` taxonomy is registered on the WC `product` post
+     * type (see raffle-system.php). Each raffle row carries a wc_product_id
+     * linking it to its WC product, so we resolve the term to its product IDs
+     * and keep only matching raffles. Accepts a term slug or name.
+     *
+     * @param array  $raffles  Raffle row-objects from the raffles table.
+     * @param string $term_ref A raffle_category slug or name.
+     * @return array Filtered raffle row-objects.
+     */
+    public static function filter_raffles_by_category( $raffles, $term_ref ) {
+        $term = get_term_by( 'slug', $term_ref, 'raffle_category' );
+        if ( ! $term ) {
+            $term = get_term_by( 'name', $term_ref, 'raffle_category' );
+        }
+        if ( ! $term ) {
+            // Unknown category — show nothing rather than incorrectly showing all.
+            return array();
+        }
+
+        $product_ids = get_objects_in_term( (int) $term->term_id, 'raffle_category' );
+        if ( empty( $product_ids ) || is_wp_error( $product_ids ) ) {
+            return array();
+        }
+        $product_id_set = array_flip( array_map( 'intval', $product_ids ) );
+
+        $out = array();
+        foreach ( $raffles as $r ) {
+            if ( ! empty( $r->wc_product_id ) && isset( $product_id_set[ (int) $r->wc_product_id ] ) ) {
+                $out[] = $r;
+            }
+        }
+        return $out;
     }
 
     public function render_raffle_ended_list_shortcode( $atts ) {

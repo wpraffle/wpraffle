@@ -76,6 +76,7 @@ $cta_label = $is_closed ? __( 'VIEW RESULTS', 'wpraffle' ) : __( 'VIEW COMPETITI
 
 <div class="rc-card<?php echo $is_ended ? ' rc-card--expired' : ''; echo $is_sold_out ? ' rc-card--sold-out' : ''; echo $is_ending_soon ? ' rc-card--ending-soon' : ''; ?>"
      data-raffle-link="<?php echo esc_url( $link ); ?>"
+     data-raffle-id="<?php echo esc_attr( $raffle->id ); ?>"
      tabindex="0" role="link"
      aria-label="<?php echo esc_attr( sprintf(
          /* translators: %s: raffle title. */

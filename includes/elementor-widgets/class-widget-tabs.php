@@ -62,6 +62,27 @@ class Raffle_Widget_Tabs extends \Elementor\Widget_Base {
             'default'   => '#374151',
             'selectors' => array( '{{WRAPPER}} .raffle-tab-btn:not(.active)' => 'color: {{VALUE}};' ),
         ) );
+
+        // Postal pane chrome.
+        $this->add_control( 'postal_pane_bg', array(
+            'label'     => __( 'Postal Pane Background', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#f9fafb',
+            'selectors' => array( '{{WRAPPER}} #tab-postal .raffle-postal-info-card' => 'background: {{VALUE}};' ),
+        ) );
+        $this->add_responsive_control( 'postal_pane_padding', array(
+            'label'      => __( 'Postal Pane Padding', 'wpraffle' ),
+            'type'       => \Elementor\Controls_Manager::DIMENSIONS,
+            'default'    => array( 'top' => '16', 'right' => '16', 'bottom' => '16', 'left' => '16', 'unit' => 'px', 'isLinked' => true ),
+            'selectors'  => array( '{{WRAPPER}} #tab-postal .raffle-postal-info-card' => 'padding: {{TOP}}{{UNIT}} {{RIGHT}}{{UNIT}} {{BOTTOM}}{{UNIT}} {{LEFT}}{{UNIT}};' ),
+        ) );
+        $this->add_responsive_control( 'postal_pane_radius', array(
+            'label'      => __( 'Postal Pane Border Radius', 'wpraffle' ),
+            'type'       => \Elementor\Controls_Manager::SLIDER,
+            'range'      => array( 'px' => array( 'min' => 0, 'max' => 30 ) ),
+            'default'    => array( 'size' => 8 ),
+            'selectors'  => array( '{{WRAPPER}} #tab-postal .raffle-postal-info-card' => 'border-radius: {{SIZE}}px;' ),
+        ) );
         $this->end_controls_section();
     }
 
@@ -69,19 +90,19 @@ class Raffle_Widget_Tabs extends \Elementor\Widget_Base {
         $s = $this->get_settings_for_display();
         ?>
         <div class="raffle-entry-tabs">
-            <button type="button" class="raffle-tab-btn active" data-tab="online"><?php echo esc_html( $s['online_label'] ); ?></button>
-            <button type="button" class="raffle-tab-btn" data-tab="postal"><?php echo esc_html( $s['postal_label'] ); ?></button>
+            <button type="button" class="raffle-tab-btn active" data-tab="online" role="tab" aria-selected="true" aria-controls="tab-online"><?php echo esc_html( $s['online_label'] ); ?></button>
+            <button type="button" class="raffle-tab-btn" data-tab="postal" role="tab" aria-selected="false" aria-controls="tab-postal"><?php echo esc_html( $s['postal_label'] ); ?></button>
         </div>
 
         <div class="raffle-tab-contents">
             <!-- Online pane: empty container that other widgets (Quantity,
                  Question, Enter Button, etc.) populate on the page. -->
-            <div class="raffle-tab-content active" id="tab-online">
+            <div class="raffle-tab-content active" id="tab-online" role="tabpanel">
                 <!-- Online entry widgets render here -->
             </div>
 
             <!-- Postal pane: rendered from the configured address. -->
-            <div class="raffle-tab-content" id="tab-postal" style="display:none;">
+            <div class="raffle-tab-content" id="tab-postal" role="tabpanel" style="display:none;">
                 <div class="raffle-postal-info-card"><?php echo nl2br( esc_html( $s['postal_address'] ) ); ?></div>
             </div>
         </div>

@@ -114,4 +114,28 @@ class Raffle_Widget_All_Competitions extends \Elementor\Widget_Base {
         </div>
         <?php
     }
+
+    /**
+     * Static editor preview (the live grid queries the DB and is unavailable
+     * in the editor canvas without a current page context).
+     */
+    protected function content_template() {
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:8px;">
+            <# _.times( 3, function() { #>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+                    <div style="height:140px;background:linear-gradient(135deg,#fce7f3,#dbeafe);"></div>
+                    <div style="padding:12px;">
+                        <div style="height:14px;width:80%;background:#e5e7eb;border-radius:4px;margin-bottom:8px;"></div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-weight:800;color:#111827;">&pound;5.00</span>
+                            <span style="font-size:12px;background:#ecfdf5;color:#065f46;padding:2px 8px;border-radius:9999px;">82% sold</span>
+                        </div>
+                    </div>
+                </div>
+            <# } ); #>
+        </div>
+        <?php
+    }
+
 }

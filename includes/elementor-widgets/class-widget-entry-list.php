@@ -157,4 +157,26 @@ class Raffle_Widget_Entry_List extends \Elementor\Widget_Base {
             esc_attr( $s['layout'] )
         ) );
     }
+
+    /**
+     * Static editor preview (the live list is shortcode-driven and unavailable
+     * in the editor canvas).
+     */
+    protected function content_template() {
+        ?>
+        <div style="padding:8px;">
+            <# _.times( 2, function() { #>
+                <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;">
+                    <div style="width:48px;height:48px;background:#f3f4f6;border-radius:6px;"></div>
+                    <div style="flex:1;">
+                        <div style="height:12px;width:60%;background:#e5e7eb;border-radius:4px;margin-bottom:6px;"></div>
+                        <div style="font-size:11px;color:#6b7280;">Order #10234</div>
+                    </div>
+                    <a style="background:#111827;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;">Download</a>
+                </div>
+            <# } ); #>
+        </div>
+        <?php
+    }
+
 }

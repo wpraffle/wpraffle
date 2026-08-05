@@ -20,6 +20,8 @@ class Raffle_Setup {
         self::migration_v13_raffle_lifecycle();
         self::migration_v14_qa_and_ticket_numbering();
         self::migration_v15_featured_winners();
+        self::migration_v16_featured_competitions();
+        self::migration_v17_drop_dead_bundle_config();
         // Flag-independent backstops: dbDelta silently no-op'd on some installs
         // during v6, leaving raffle_payouts / raffle_credits missing even
         // though raffle_system_db_migrated_v6 was set. These run on every
@@ -36,81 +38,13 @@ class Raffle_Setup {
         global $wpdb;
         $charset = $wpdb->get_charset_collate();
 
+        // NOTE: raffle_charities, raffle_charity_allocations, raffle_credits and
+        // raffle_payouts used to be created here too, but they are guaranteed by
+        // the always-on backstops (migration_v6_payouts_credits_backstop and
+        // migration_v10_charity_tables_backstop) which run on every admin_init.
+        // Their CREATE statements were removed to avoid maintaining two copies
+        // of the same schema. Only raffle_rg_settings is unique to this migration.
         $sql = '';
-        $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_charities (
-            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            name varchar(255) NOT NULL,
-            slug varchar(255) NOT NULL,
-            description longtext,
-            logo_url varchar(500) DEFAULT '',
-            website varchar(500) DEFAULT '',
-            registration_number varchar(100) DEFAULT '',
-            donation_address longtext,
-            is_active tinyint(1) NOT NULL DEFAULT 1,
-            total_raised decimal(12,2) NOT NULL DEFAULT 0,
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY slug (slug)
-        ) {$charset}; ";
-
-        $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_charity_allocations (
-            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            raffle_id bigint(20) UNSIGNED NOT NULL,
-            charity_id bigint(20) UNSIGNED NOT NULL,
-            gross_revenue decimal(12,2) NOT NULL DEFAULT 0,
-            prize_value decimal(10,2) NOT NULL DEFAULT 0,
-            net_proceeds decimal(12,2) NOT NULL DEFAULT 0,
-            allocation_percent int(11) NOT NULL DEFAULT 100,
-            allocated_amount decimal(12,2) NOT NULL DEFAULT 0,
-            status varchar(20) NOT NULL DEFAULT 'pending',
-            disbursed_at datetime DEFAULT NULL,
-            disbursement_reference varchar(255) DEFAULT '',
-            fairness_proof varchar(255) DEFAULT '',
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY raffle_id (raffle_id),
-            KEY charity_id (charity_id)
-        ) {$charset}; ";
-
-        $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_credits (
-            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            user_id bigint(20) UNSIGNED NOT NULL,
-            raffle_id bigint(20) UNSIGNED DEFAULT NULL,
-            amount decimal(10,2) NOT NULL,
-            balance_after decimal(10,2) NOT NULL,
-            type varchar(20) NOT NULL,
-            reason varchar(255) DEFAULT '',
-            reference varchar(100) DEFAULT '',
-            created_by bigint(20) UNSIGNED DEFAULT NULL,
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY user_id (user_id),
-            KEY type (type),
-            KEY raffle_id (raffle_id)
-        ) {$charset}; ";
-
-        $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_payouts (
-            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            raffle_id bigint(20) UNSIGNED NOT NULL,
-            ticket_id bigint(20) UNSIGNED NOT NULL,
-            user_id bigint(20) UNSIGNED DEFAULT NULL,
-            user_email varchar(255) NOT NULL,
-            payout_type varchar(20) NOT NULL,
-            amount decimal(10,2) NOT NULL DEFAULT 0,
-            status varchar(20) NOT NULL DEFAULT 'pending',
-            idempotency_key varchar(100) NOT NULL,
-            provider varchar(50) DEFAULT '',
-            provider_txn_id varchar(100) DEFAULT '',
-            fairness_proof varchar(255) DEFAULT '',
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            credited_at datetime DEFAULT NULL,
-            PRIMARY KEY (id),
-            UNIQUE KEY idempotency_key (idempotency_key),
-            KEY raffle_id (raffle_id),
-            KEY ticket_id (ticket_id),
-            KEY user_email (user_email)
-        ) {$charset}; ";
-
         $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_rg_settings (
             user_id bigint(20) NOT NULL,
             buyer_email varchar(100) DEFAULT '',
@@ -305,7 +239,9 @@ CREATE TABLE {$wpdb->prefix}raffle_payouts (
 
         $cols = array(
             'enable_bundles'           => "ALTER TABLE {$table} ADD COLUMN enable_bundles tinyint(1) NOT NULL DEFAULT 0",
-            'bundle_config'            => "ALTER TABLE {$table} ADD COLUMN bundle_config longtext",
+            // Note: 'bundle_config' was never read or written (bundle data lives
+            // in the 'packages' column via wpraffle_normalise_packages()). It is
+            // dropped by migration_v17_drop_dead_bundle_config() below.
             'enable_number_grid'       => "ALTER TABLE {$table} ADD COLUMN enable_number_grid tinyint(1) NOT NULL DEFAULT 0",
             'enable_scarcity'          => "ALTER TABLE {$table} ADD COLUMN enable_scarcity tinyint(1) NOT NULL DEFAULT 0",
             'enable_viewers_now'       => "ALTER TABLE {$table} ADD COLUMN enable_viewers_now tinyint(1) NOT NULL DEFAULT 0",
@@ -430,55 +366,17 @@ CREATE TABLE {$wpdb->prefix}raffle_charity_allocations (
 
     /**
      * Mirror one charity CPT post into the raffle_charities DB table.
-     * Used by the v10 backfill. Idempotent on slug.
+     * Used by the v10 backfill. Idempotent on slug. Delegates to the canonical
+     * sync_charity_to_db() so the insert/update logic lives in one place.
+     *
+     * @param WP_Post $post Charity CPT post (accepts the WP_Post the backfill
+     *                      loop already holds, to avoid re-fetching by ID).
      */
     private static function backfill_one_charity( $post ) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'raffle_charities';
-
-        $name        = $post->post_title;
-        $slug        = $post->post_name ?: sanitize_title( $name );
-        $description = get_post_meta( $post->ID, '_charity_description', true );
-        $logo_url    = get_post_meta( $post->ID, '_charity_logo_url', true );
-        $website     = get_post_meta( $post->ID, '_charity_website', true );
-        $reg_number  = get_post_meta( $post->ID, '_charity_registration_number', true );
-        $donation    = get_post_meta( $post->ID, '_charity_donation_address', true );
-        $is_active   = (int) get_post_meta( $post->ID, '_charity_is_active', true );
-
-        $existing = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM {$table} WHERE slug = %s", $slug ) );
-
-        if ( $existing ) {
-            $wpdb->update(
-                $table,
-                array(
-                    'name'                => $name,
-                    'description'         => $description,
-                    'logo_url'            => $logo_url,
-                    'website'             => $website,
-                    'registration_number' => $reg_number,
-                    'donation_address'    => $donation,
-                    'is_active'           => $is_active ?: 1,
-                ),
-                array( 'id' => $existing->id ),
-                array( '%s', '%s', '%s', '%s', '%s', '%s', '%d' ),
-                array( '%d' )
-            );
-        } else {
-            $wpdb->insert(
-                $table,
-                array(
-                    'name'                => $name,
-                    'slug'                => $slug,
-                    'description'         => $description,
-                    'logo_url'            => $logo_url,
-                    'website'             => $website,
-                    'registration_number' => $reg_number,
-                    'donation_address'    => $donation,
-                    'is_active'           => $is_active ?: 1,
-                    'created_at'          => current_time( 'mysql' ),
-                ),
-                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s' )
-            );
+        if ( $post instanceof WP_Post ) {
+            self::sync_charity_to_db( $post->ID );
+        } elseif ( $post ) {
+            self::sync_charity_to_db( (int) $post );
         }
     }
 
@@ -942,5 +840,62 @@ CREATE TABLE {$wpdb->prefix}raffle_charity_allocations (
         }
 
         update_option( 'raffle_system_db_migrated_v15', 1 );
+    }
+
+    /**
+     * v16 — Featured competition flag.
+     *
+     * Adds an `is_featured` column to the raffles table so an active (or
+     * upcoming) competition can be promoted in a homepage "Featured
+     * Spotlight" section. Distinct from the v15 "featured *winner*" table —
+     * this flags a live/any competition, set per-raffle from the admin form.
+     * Defaults to 0 (off) so existing raffles are unaffected until opted in.
+     * Also adds a covering index so `[raffle_list featured="1"]` stays fast.
+     */
+    private static function migration_v16_featured_competitions() {
+        if ( get_option( 'raffle_system_db_migrated_v16' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $raffles = $wpdb->prefix . 'raffles';
+
+        $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$raffles} LIKE %s", 'is_featured' ) );
+        if ( empty( $exists ) ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL built from hardcoded literals.
+            $wpdb->query( "ALTER TABLE {$raffles} ADD COLUMN is_featured tinyint(1) NOT NULL DEFAULT 0" );
+        }
+
+        $idx = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM {$raffles} WHERE Key_name = %s", 'is_featured' ) );
+        if ( empty( $idx ) ) {
+            $wpdb->query( "ALTER TABLE {$raffles} ADD KEY is_featured (is_featured)" );
+        }
+
+        update_option( 'raffle_system_db_migrated_v16', 1 );
+    }
+
+    /**
+     * v17 — Drop the dead `bundle_config` column from the raffles table.
+     *
+     * The column was added in v9 but was never read or written anywhere in the
+     * plugin. Bundle data is stored in the `packages` column and parsed via
+     * wpraffle_normalise_packages(). The column is dropped to remove dead
+     * schema; the DROP is guarded by a SHOW COLUMNS check so it is safe on
+     * installs that never had the column.
+     */
+    private static function migration_v17_drop_dead_bundle_config() {
+        if ( get_option( 'raffle_system_db_migrated_v17' ) ) {
+            return;
+        }
+
+        global $wpdb;
+        $raffles = $wpdb->prefix . 'raffles';
+
+        $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$raffles} LIKE %s", 'bundle_config' ) );
+        if ( ! empty( $exists ) ) {
+            $wpdb->query( "ALTER TABLE {$raffles} DROP COLUMN bundle_config" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        }
+
+        update_option( 'raffle_system_db_migrated_v17', 1 );
     }
 }

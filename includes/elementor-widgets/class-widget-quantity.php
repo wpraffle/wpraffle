@@ -15,6 +15,68 @@ class Raffle_Widget_Quantity extends \Elementor\Widget_Base {
         $this->add_control( 'show_slider', array( 'label' => __( 'Show Slider', 'wpraffle' ), 'type' => \Elementor\Controls_Manager::SWITCHER, 'default' => 'yes' ) );
         $this->add_control( 'show_manual', array( 'label' => __( 'Show Manual Input', 'wpraffle' ), 'type' => \Elementor\Controls_Manager::SWITCHER, 'default' => 'yes' ) );
         $this->end_controls_section();
+
+        $this->start_controls_section( 'style', array( 'label' => __( 'Style', 'wpraffle' ) ) );
+
+        // Quick-select heading.
+        $this->add_group_control( \Elementor\Group_Control_Typography::get_type(), array(
+            'name'     => 'heading_typography',
+            'label'    => __( 'Heading Typography', 'wpraffle' ),
+            'selector' => '{{WRAPPER}} .raffle-qty-heading',
+            'fields_options' => array(
+                'font_size'   => array( 'default' => array( 'unit' => 'px', 'size' => 11 ) ),
+                'font_weight' => array( 'default' => '700' ),
+            ),
+        ) );
+
+        // Quick-select pills.
+        $this->add_control( 'pill_bg', array(
+            'label'     => __( 'Pill Background', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#ffffff',
+            'selectors' => array( '{{WRAPPER}} .raffle-qty-pill' => 'background: {{VALUE}};' ),
+        ) );
+        $this->add_control( 'pill_color', array(
+            'label'     => __( 'Pill Text Color', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#111827',
+            'selectors' => array( '{{WRAPPER}} .raffle-qty-pill' => 'color: {{VALUE}};' ),
+        ) );
+        $this->add_responsive_control( 'pill_radius', array(
+            'label'      => __( 'Pill Border Radius', 'wpraffle' ),
+            'type'       => \Elementor\Controls_Manager::SLIDER,
+            'range'      => array( 'px' => array( 'min' => 0, 'max' => 30 ) ),
+            'default'    => array( 'size' => 6 ),
+            'selectors'  => array( '{{WRAPPER}} .raffle-qty-pill' => 'border-radius: {{SIZE}}px;' ),
+        ) );
+        $this->add_control( 'pill_active_bg', array(
+            'label'     => __( 'Active Pill Background', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#d4a017',
+            'selectors' => array(
+                '{{WRAPPER}} .raffle-qty-pill.active'                 => 'background: {{VALUE}};',
+                '{{WRAPPER}} .raffle-qty-pill[aria-pressed="true"]'   => 'background: {{VALUE}};',
+            ),
+        ) );
+
+        // Range slider.
+        $this->add_control( 'slider_track', array(
+            'label'     => __( 'Slider Track Color', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#e5e7eb',
+            'selectors' => array( '{{WRAPPER}} #raffle-qty-range-slider' => 'background: {{VALUE}};' ),
+        ) );
+        $this->add_control( 'slider_thumb', array(
+            'label'     => __( 'Slider Thumb Color', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#d4a017',
+            'selectors' => array(
+                '{{WRAPPER}} #raffle-qty-range-slider::-webkit-slider-thumb' => 'background: {{VALUE}};',
+                '{{WRAPPER}} #raffle-qty-range-slider::-moz-range-thumb'     => 'background: {{VALUE}};',
+            ),
+        ) );
+
+        $this->end_controls_section();
     }
 
     protected function render() {
@@ -47,14 +109,14 @@ class Raffle_Widget_Quantity extends \Elementor\Widget_Base {
         if ( $s['show_pills'] === 'yes' && ! empty( $qtys ) ) {
             echo '<div class="raffle-quick-select-qty"><span class="raffle-qty-heading">QUICK SELECT QUANTITY</span><div class="raffle-qty-pills-row">';
             foreach ( $qtys as $q ) {
-                echo '<button type="button" class="raffle-qty-pill" data-qty="' . esc_attr( $q ) . '">' . esc_html( $q ) . '</button>';
+                echo '<button type="button" class="raffle-qty-pill" data-qty="' . esc_attr( $q ) . '" aria-pressed="false">' . esc_html( $q ) . '</button>';
             }
             echo '</div></div>';
         }
         if ( $s['show_slider'] === 'yes' ) {
             echo '<div class="raffle-slider-qty-selector"><div class="raffle-slider-controls">';
             echo '<button type="button" class="raffle-slider-btn minus">-</button>';
-            echo '<div class="raffle-slider-track-wrap"><input type="range" id="raffle-qty-range-slider" min="1" max="' . esc_attr( $max ) . '" value="1"><div class="raffle-slider-tooltip" id="raffle-qty-slider-tooltip">1 TICKET</div></div>';
+            echo '<div class="raffle-slider-track-wrap"><input type="range" id="raffle-qty-range-slider" min="1" max="' . esc_attr( $max ) . '" value="1" aria-label="' . esc_attr__( 'Quantity', 'wpraffle' ) . '"><div class="raffle-slider-tooltip" id="raffle-qty-slider-tooltip">1 TICKET</div></div>';
             echo '<button type="button" class="raffle-slider-btn plus">+</button></div>';
             if ( $s['show_manual'] === 'yes' ) {
                 echo '<div class="raffle-manual-qty-input-wrap"><input type="number" id="raffle-manual-qty-num" min="1" max="' . esc_attr( $max ) . '" value="1"></div>';

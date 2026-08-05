@@ -119,8 +119,15 @@ class Raffle_Admin_Validation {
 
         // ── Packages / bundles ───────────────────────────────────────────
         if ( ! empty( $data['enable_bundles'] ) ) {
-            $bundles = isset( $data['packages'] ) ? json_decode( $data['packages'], true ) : null;
-            if ( ! is_array( $bundles ) || empty( $bundles ) ) {
+            $raw = isset( $data['packages'] ) ? json_decode( $data['packages'], true ) : null;
+            // Normalise both shapes (objects and bare ints) via the shared helper
+            // so a legacy [5,10,15,25] value validates the same as [{"qty":5,...}].
+            if ( function_exists( 'wpraffle_normalise_packages' ) && is_array( $raw ) ) {
+                $bundles = wpraffle_normalise_packages( wp_json_encode( $raw ) );
+            } else {
+                $bundles = is_array( $raw ) ? $raw : array();
+            }
+            if ( empty( $bundles ) ) {
                 $errors['packages'] = __( 'Add at least one bundle when bundles are enabled.', 'wpraffle' );
             } else {
                 $bundle_errors = array();

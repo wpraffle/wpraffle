@@ -74,4 +74,27 @@ class Raffle_Widget_Ended_Raffles extends \Elementor\Widget_Base {
             $s['show_entries'] === 'yes' ? 'yes' : 'no'
         ) );
     }
+
+    /**
+     * Static editor preview (the live grid is shortcode-driven and unavailable
+     * in the editor canvas).
+     */
+    protected function content_template() {
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:8px;">
+            <# _.times( 3, function() { #>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+                    <div style="height:120px;background:linear-gradient(135deg,#f3f4f6,#e5e7eb);position:relative;">
+                        <span style="position:absolute;top:8px;left:8px;background:#dc2626;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;">Ended</span>
+                    </div>
+                    <div style="padding:12px;">
+                        <div style="height:14px;width:70%;background:#e5e7eb;border-radius:4px;margin-bottom:6px;"></div>
+                        <div style="font-size:12px;color:#6b7280;">Winner: #12345 &mdash; J. Smith</div>
+                    </div>
+                </div>
+            <# } ); #>
+        </div>
+        <?php
+    }
+
 }

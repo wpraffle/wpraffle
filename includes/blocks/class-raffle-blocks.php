@@ -83,7 +83,11 @@ class Raffle_Blocks {
         // Pass the list of available raffles + the block definitions to the editor script.
         $raffles = array();
         global $wpdb;
-        if ( function_exists( 'wpraffle_table_exists' ) ? wpraffle_table_exists( $wpdb->prefix . 'raffles' ) : true ) {
+        // The raffles table is guaranteed to exist by the time Gutenberg renders
+        // (the activator + Raffle_Setup migrations run on admin_init). The former
+        // wpraffle_table_exists() guard referenced a function that was never
+        // defined, so it always resolved to true anyway.
+        if ( true ) {
             $rows = $wpdb->get_results( "SELECT id, title FROM {$wpdb->prefix}raffles ORDER BY id DESC LIMIT 100" );
             if ( is_array( $rows ) ) {
                 foreach ( $rows as $r ) {

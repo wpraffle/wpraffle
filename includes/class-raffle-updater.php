@@ -12,8 +12,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Raffle_Updater {
 
     /**
-     * Hook into WordPress update system.
+     * Hard-coded GitHub repository (owner/name). The repo is fixed per project
+     * rules — it is no longer user-editable from the settings screen, so updates
+     * can never be silently redirected to an arbitrary third-party repo.
      */
+    const REPO = 'wpraffle/wpraffle';
+
+    /**
+     * Public GitHub URL for the repository.
+     */
+    const REPO_URL = 'https://github.com/wpraffle/wpraffle';
+ 
+     /**
+      * Hook into WordPress update system.
+      */
     public function __construct() {
         add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'check_for_update' ) );
         add_filter( 'plugins_api', array( $this, 'plugins_api_info' ), 10, 3 );
@@ -28,20 +40,12 @@ class Raffle_Updater {
     }
 
     /**
-     * Get the configured GitHub repo, validated against the strict
-     * `owner/name` format before use. Falls back to the default if the stored
-     * value is malformed (defence-in-depth against a compromised/malicious
-     * setting being interpolated into the API URL).
+     * Get the hard-coded GitHub repo (owner/name). The value is a constant and
+     * is intentionally NOT read from options, so the update source cannot be
+     * changed from the admin UI or via a crafted option value.
      */
     private function get_repo() {
-        $settings = wp_parse_args( get_option( 'wpraffle_update_settings', array() ), array(
-            'github_repo' => 'wpraffle/wpraffle',
-        ) );
-        $repo = $settings['github_repo'];
-        if ( ! preg_match( '#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$#', $repo ) ) {
-            return 'wpraffle/wpraffle';
-        }
-        return $repo;
+        return self::REPO;
     }
 
     /**

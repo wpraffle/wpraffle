@@ -86,7 +86,8 @@ class Raffle_Widget_Question extends \Elementor\Widget_Base {
         ?>
         <div class="raffle-question-wrapper">
             <h3 class="raffle-question-title"><?php echo esc_html( $raffle->question_text ); ?></h3>
-            <div class="raffle-question-options">
+            <fieldset class="raffle-question-options">
+                <legend class="screen-reader-text"><?php echo esc_html( $raffle->question_text ); ?></legend>
                 <?php foreach ( $answers as $idx => $opt ) : ?>
                     <label class="raffle-question-option-card">
                         <input type="radio" name="raffle_skill_answer" value="<?php echo esc_attr( $idx ); ?>">
@@ -94,8 +95,8 @@ class Raffle_Widget_Question extends \Elementor\Widget_Base {
                         <span class="raffle-question-option-text"><?php echo esc_html( $opt ); ?></span>
                     </label>
                 <?php endforeach; ?>
-            </div>
-            <div class="raffle-question-error" style="display: none;"></div>
+            </fieldset>
+            <div class="raffle-question-error" role="alert" style="display: none;"></div>
         </div>
         <?php
     }

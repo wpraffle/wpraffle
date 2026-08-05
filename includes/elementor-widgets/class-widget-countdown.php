@@ -81,7 +81,7 @@ class Raffle_Widget_Countdown extends \Elementor\Widget_Base {
             $units['seconds'] = $s['seconds_label'];
         }
 
-        echo '<div class="raffle-countdown-timer-inline" id="raffle-countdown-inline" data-draw-date="' . esc_attr( gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->draw_date ) ) ) . '">';
+        echo '<div class="raffle-countdown-timer-inline" id="raffle-countdown-inline" role="timer" aria-live="off" data-draw-date="' . esc_attr( gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $raffle->draw_date ) ) ) . '">';
         foreach ( $units as $k => $lbl ) {
             echo '<div class="raffle-cd-box"><span class="raffle-cd-num" id="cd-inline-' . esc_attr( $k ) . '">00</span><span class="raffle-cd-lbl">' . esc_html( $lbl ) . '</span></div>';
         }

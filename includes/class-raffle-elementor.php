@@ -13,6 +13,7 @@ class Raffle_Elementor {
 
         add_action( 'elementor/widgets/register', array( $this, 'register_widgets' ) );
         add_action( 'elementor/elements/categories_registered', array( $this, 'register_category' ) );
+        add_action( 'elementor/dynamic_tags/register', array( $this, 'register_dynamic_tags' ) );
         add_action( 'elementor/frontend/after_enqueue_scripts', array( $this, 'enqueue_frontend' ) );
     }
 
@@ -57,6 +58,45 @@ class Raffle_Elementor {
 
             if ( class_exists( $class ) ) {
                 $widgets_manager->register( new $class() );
+            }
+        }
+    }
+
+    /**
+     * Register dynamic tags.
+     *
+     * Auto-discovers any `class-tag-*.php` file in the dynamic-tags directory
+     * (mirroring the widget autoloader) and registers a `raffle-system` tag
+     * group so the tags are grouped under one heading in the dynamic-tag picker.
+     *
+     * @param \Elementor\Core\DynamicTags\Manager $dynamic_tags
+     */
+    public function register_dynamic_tags( $dynamic_tags ) {
+        // Register the group once.
+        $groups = \Elementor\Plugin::$instance->dynamic_tags->get_config( 'groups' );
+        if ( ! is_array( $groups ) || ! isset( $groups['raffle-system'] ) ) {
+            \Elementor\Plugin::$instance->dynamic_tags->register_group( 'raffle-system', array(
+                'title' => '🎟️ ' . __( 'Raffle System', 'wpraffle' ),
+            ) );
+        }
+
+        $dir = RAFFLE_SYSTEM_PATH . 'includes/elementor-dynamic-tags/';
+        $files = glob( $dir . 'class-tag-*.php' );
+        if ( empty( $files ) ) {
+            return;
+        }
+
+        foreach ( $files as $file ) {
+            require_once $file;
+
+            // class-tag-raffle-field.php → Raffle_Tag_Raffle_Field
+            $basename = basename( $file, '.php' );                    // class-tag-raffle-field
+            $basename = str_replace( 'class-tag-', '', $basename );   // raffle-field
+            $segments = array_map( 'ucfirst', explode( '-', $basename ) );
+            $class    = 'Raffle_Tag_' . implode( '_', $segments );
+
+            if ( class_exists( $class ) ) {
+                $dynamic_tags->register( new $class() );
             }
         }
     }

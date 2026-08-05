@@ -8,17 +8,24 @@
 if ( ! isset( $errors ) ) {
     $errors = array();
 }
+// Expose $errors in the global namespace so rs_error_msg() — a function with
+// its own scope — can read the same map the inline banner uses. Previously it
+// declared `global $errors` against a name that was never globalised, so
+// per-field inline errors silently never rendered.
+$GLOBALS['wpraffle_form_errors_view'] = $errors;
 
 /**
  * Echo the inline error message for a field, if any.
  *
  * @param string $field Field key in $errors.
  */
-function rs_error_msg( $field ) {
-    global $errors;
-    if ( ! empty( $errors[ $field ] ) ) {
-        echo '<p class="rs-inline-error" id="' . esc_attr( $field . '-error' ) . '">' . esc_html( $errors[ $field ] ) . '</p>';
-    }
+if ( ! function_exists( 'rs_error_msg' ) ) {
+	function rs_error_msg( $field ) {
+		$errors = isset( $GLOBALS['wpraffle_form_errors_view'] ) ? $GLOBALS['wpraffle_form_errors_view'] : array();
+		if ( ! empty( $errors[ $field ] ) ) {
+			echo '<p class="rs-inline-error" id="' . esc_attr( $field . '-error' ) . '">' . esc_html( $errors[ $field ] ) . '</p>';
+		}
+	}
 }
 ?>
 
@@ -414,8 +421,9 @@ function rs_error_msg( $field ) {
                                                 <?php esc_html_e( 'Email a WooCommerce coupon to every non-winning entrant after the draw.', 'wpraffle' ); ?>
                                             </label>
                                             <?php
-                                            $consolation_config = $raffle && ( $raffle->consolation_config ?? '' ) ? json_decode( $raffle->consolation_config, true ) : array();
-                                            $consolation_config = wp_parse_args( $consolation_config, array( 'type' => 'percent', 'amount' => 10, 'expiry_days' => 30 ) );
+                                            $consolation_config = function_exists( 'wpraffle_parse_consolation_config' )
+                                                ? wpraffle_parse_consolation_config( $raffle ? ( $raffle->consolation_config ?? '' ) : '' )
+                                                : array( 'type' => 'percent', 'amount' => 10, 'expiry_days' => 30 );
                                             ?>
                                             <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">
                                                 <label><?php esc_html_e( 'Type:', 'wpraffle' ); ?>
@@ -460,6 +468,15 @@ function rs_error_msg( $field ) {
                                             <label style="display:inline-flex;align-items:center;gap:6px;">
                                                 <input type="checkbox" name="enable_share" value="1" <?php checked( $raffle && ! empty( $raffle->enable_share ), true ); ?>>
                                                 <?php esc_html_e( 'Show social share buttons (WhatsApp, Facebook, X, copy-link) on the entry page.', 'wpraffle' ); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><?php esc_html_e( 'Featured Spotlight', 'wpraffle' ); ?></th>
+                                        <td>
+                                            <label style="display:inline-flex;align-items:center;gap:6px;">
+                                                <input type="checkbox" name="is_featured" value="1" <?php checked( $raffle && ! empty( $raffle->is_featured ), true ); ?>>
+                                                <?php esc_html_e( 'Mark as a featured competition (shown in the homepage Featured Spotlight section, if enabled).', 'wpraffle' ); ?>
                                             </label>
                                         </td>
                                     </tr>
@@ -916,18 +933,62 @@ function rs_error_msg( $field ) {
                                     </div>
                                 </div>
 
-                                <!-- CSV import (1.3.0) -->
+                                <!-- CSV import (1.3.0)
+                                     NOTE: previously a nested <form> inside the main raffle form.
+                                     HTML forbids nested forms — the parser auto-closes the outer
+                                     form, leaving the "Update Raffle" submit button outside it, so
+                                     the save silently no-op'd. Converted to an AJAX upload (fetch +
+                                     FormData) which needs no form element at all. -->
                                 <details style="margin-bottom:15px;">
                                     <summary style="cursor:pointer; font-weight:600; font-size:12px; color:#6c5ce7;">Bulk-import instant wins from CSV</summary>
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                                        <?php wp_nonce_field( 'wpraffle_import_iw', 'wpraffle_import_iw_nonce' ); ?>
-                                        <input type="hidden" name="action" value="wpraffle_import_instant_wins">
-                                        <input type="hidden" name="raffle_id" value="<?php echo esc_attr( $raffle->id ); ?>">
-                                        <input type="file" name="import_file" accept=".csv" required style="font-size:12px;">
-                                        <?php submit_button( 'Import CSV', 'secondary', '', false, array( 'style' => 'height:32px; line-height:30px;' ) ); ?>
-                                        <span style="font-size:11px; color:#6b7280;">Columns: Ticket Number, Prize Name, Prize Type, Prize Config (JSON). Ticket Number may be blank for auto-assign.</span>
-                                    </form>
+                                    <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <input type="file" accept=".csv" id="wprt-import-file" style="font-size:12px;">
+                                        <button type="button" class="button button-secondary" id="wprt-import-btn" style="height:32px; line-height:30px;">
+                                            <?php esc_html_e( 'Import CSV', 'wpraffle' ); ?>
+                                        </button>
+                                        <span id="wprt-import-status" style="font-size:11px; color:#6b7280;">Columns: Ticket Number, Prize Name, Prize Type, Prize Config (JSON). Ticket Number may be blank for auto-assign.</span>
+                                    </div>
                                 </details>
+                                <script>
+                                (function(){
+                                    var btn = document.getElementById('wprt-import-btn');
+                                    var fileInput = document.getElementById('wprt-import-file');
+                                    var status = document.getElementById('wprt-import-status');
+                                    if ( ! btn || ! fileInput ) { return; }
+                                    btn.addEventListener('click', function(){
+                                        if ( ! fileInput.files || ! fileInput.files.length ) {
+                                            alert('<?php echo esc_js( __( 'Please choose a CSV file first.', 'wpraffle' ) ); ?>');
+                                            return;
+                                        }
+                                        var fd = new FormData();
+                                        fd.append('action', 'wpraffle_import_instant_wins');
+                                        fd.append('raffle_id', '<?php echo esc_js( (string) $raffle->id ); ?>');
+                                        fd.append('import_file', fileInput.files[0]);
+                                        // Nonce via the localized object if available, else read from the page.
+                                        var nonce = ( window.wpraffleAdmin && window.wpraffleAdmin.nonce ) || '<?php echo esc_js( wp_create_nonce( 'wpraffle_import_iw' ) ); ?>';
+                                        fd.append('wpraffle_import_iw_nonce', nonce);
+                                        status.textContent = '<?php echo esc_js( __( 'Importing…', 'wpraffle' ) ); ?>';
+                                        fetch( ajaxurl || '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>', {
+                                            method: 'POST',
+                                            body: fd
+                                        }).then(function(r){ return r.json(); })
+                                          .then(function(res){
+                                              if ( res && res.success ) {
+                                                  status.style.color = '#2e7d32';
+                                                  status.textContent = res.data || '<?php echo esc_js( __( 'Import complete.', 'wpraffle' ) ); ?>';
+                                              } else {
+                                                  status.style.color = '#b91c1c';
+                                                  status.textContent = ( res && res.data ) || '<?php echo esc_js( __( 'Import failed.', 'wpraffle' ) ); ?>';
+                                              }
+                                              fileInput.value = '';
+                                          })
+                                          .catch(function(){
+                                              status.style.color = '#b91c1c';
+                                              status.textContent = '<?php echo esc_js( __( 'Import failed.', 'wpraffle' ) ); ?>';
+                                          });
+                                    });
+                                })();
+                                </script>
 
                                 <table class="wp-list-table widefat fixed striped posts">
                                     <thead>

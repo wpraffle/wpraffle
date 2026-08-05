@@ -93,7 +93,7 @@ class Raffle_Widget_Enter_Btn extends \Elementor\Widget_Base {
                 . esc_html( $s['button_text'] )
                 . '</button>';
         } else {
-            echo '<div class="raffle-sold-out-badge">' . esc_html( $s['sold_out_text'] ) . '</div>';
+            echo '<div class="raffle-sold-out-badge" aria-disabled="true">' . esc_html( $s['sold_out_text'] ) . '</div>';
         }
         echo '</div>';
     }

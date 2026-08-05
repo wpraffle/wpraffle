@@ -1559,10 +1559,11 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
             <h2 class="rs-card-title">GitHub Repository</h2>
             <table class="form-table" style="margin:0;">
                 <tr>
-                    <th scope="row"><label for="github_repo">Repository</label></th>
+                    <th scope="row">Repository</th>
                     <td>
-                        <input type="text" id="github_repo" name="github_repo" value="<?php echo esc_attr( $updates['github_repo'] ); ?>" class="regular-text" placeholder="owner/repo">
-                        <p class="description">GitHub repository in <code>owner/repo</code> format. Releases are checked for updates.</p>
+                        <code style="font-size:14px;padding:4px 10px;background:#f3f4f6;border-radius:4px;">wpraffle/wpraffle</code>
+                        <a href="https://github.com/wpraffle/wpraffle" target="_blank" rel="noopener noreferrer" style="margin-left:10px;">View on GitHub ↗</a>
+                        <p class="description">The update source is hard-coded and cannot be changed. Plugin releases are pulled from this repository.</p>
                     </td>
                 </tr>
                 <tr>

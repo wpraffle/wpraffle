@@ -26,6 +26,41 @@ class Raffle_Widget_Modal extends \Elementor\Widget_Base {
             'content_classes' => 'elementor-descriptor',
         ) );
         $this->end_controls_section();
+
+        $this->start_controls_section( 'style', array( 'label' => __( 'Style', 'wpraffle' ) ) );
+
+        $this->add_control( 'overlay_bg', array(
+            'label'     => __( 'Overlay / Backdrop', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => 'rgba(0,0,0,0.6)',
+            'selectors' => array( '{{WRAPPER}} .raffle-modal' => 'background: {{VALUE}};' ),
+        ) );
+        $this->add_control( 'modal_bg', array(
+            'label'     => __( 'Modal Background', 'wpraffle' ),
+            'type'      => \Elementor\Controls_Manager::COLOR,
+            'default'   => '#ffffff',
+            'selectors' => array( '{{WRAPPER}} .raffle-modal-content' => 'background: {{VALUE}};' ),
+        ) );
+        $this->add_responsive_control( 'modal_radius', array(
+            'label'      => __( 'Modal Border Radius', 'wpraffle' ),
+            'type'       => \Elementor\Controls_Manager::SLIDER,
+            'range'      => array( 'px' => array( 'min' => 0, 'max' => 40 ) ),
+            'default'    => array( 'size' => 12 ),
+            'selectors'  => array( '{{WRAPPER}} .raffle-modal-content' => 'border-radius: {{SIZE}}px;' ),
+        ) );
+        $this->add_responsive_control( 'modal_padding', array(
+            'label'      => __( 'Modal Padding', 'wpraffle' ),
+            'type'       => \Elementor\Controls_Manager::DIMENSIONS,
+            'default'    => array( 'top' => '24', 'right' => '24', 'bottom' => '24', 'left' => '24', 'unit' => 'px', 'isLinked' => true ),
+            'selectors'  => array( '{{WRAPPER}} .raffle-modal-content' => 'padding: {{TOP}}{{UNIT}} {{RIGHT}}{{UNIT}} {{BOTTOM}}{{UNIT}} {{LEFT}}{{UNIT}};' ),
+        ) );
+        $this->add_group_control( \Elementor\Group_Control_Box_Shadow::get_type(), array(
+            'name'     => 'modal_box_shadow',
+            'label'    => __( 'Modal Box Shadow', 'wpraffle' ),
+            'selector' => '{{WRAPPER}} .raffle-modal-content',
+        ) );
+
+        $this->end_controls_section();
     }
 
     protected function render() {

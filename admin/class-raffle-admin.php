@@ -39,193 +39,20 @@ class Raffle_Admin {
         }
     }
 
+    /**
+     * Run DB migrations.
+     *
+     * The v2-v5 ALTER/CREATE statements that used to live here duplicated the
+     * schema already created idempotently by the activator
+     * (includes/class-raffle-activator.php) and by Raffle_Setup::run_migrations()
+     * (also called on admin_init from raffle-system.php). They only ever fired
+     * once per site via `raffle_system_db_migrated_v{2,3,4,5}` option flags and
+     * were pure no-ops on any install that had been activated. Retained as a
+     * thin back-compat shim because the constructor calls it.
+     */
     public function run_migrations() {
-        global $wpdb;
-        $table = $wpdb->prefix . 'raffles';
-
-        // v2 migration
-        if ( ! get_option( 'raffle_system_db_migrated_v2' ) ) {
-            $col_exists = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'enable_question'" );
-            if ( empty( $col_exists ) ) {
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN enable_question tinyint(1) NOT NULL DEFAULT 0" );
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN question_text text" );
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN question_answers text" );
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN correct_answer_index int(11) NOT NULL DEFAULT 0" );
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN postal_instructions text" );
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN max_tickets_per_user int(11) NOT NULL DEFAULT 100" );
-            }
-            update_option( 'raffle_system_db_migrated_v2', 1 );
-        }
-
-        // v3 migration: add reminder_sent column
-        // SEC-16 FIX: Add version flag to avoid SHOW COLUMNS on every page load
-        if ( ! get_option( 'raffle_system_db_migrated_v3' ) ) {
-            $col_v3 = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'reminder_sent'" );
-            if ( empty( $col_v3 ) ) {
-                $wpdb->query( "ALTER TABLE {$table} ADD COLUMN reminder_sent tinyint(1) NOT NULL DEFAULT 0" );
-            }
-            update_option( 'raffle_system_db_migrated_v3', 1 );
-        }
-
-        // v4 migration: new feature columns + tables
-        if ( ! get_option( 'raffle_system_db_migrated_v4' ) ) {
-            $v4_cols = array(
-                'multi_winner'            => "ALTER TABLE {$table} ADD COLUMN multi_winner tinyint(1) NOT NULL DEFAULT 0",
-                'number_of_winners'       => "ALTER TABLE {$table} ADD COLUMN number_of_winners int(11) NOT NULL DEFAULT 2",
-                'allow_free_entry'        => "ALTER TABLE {$table} ADD COLUMN allow_free_entry tinyint(1) NOT NULL DEFAULT 0",
-                'free_entry_question'     => "ALTER TABLE {$table} ADD COLUMN free_entry_question text",
-                'free_entry_answers'      => "ALTER TABLE {$table} ADD COLUMN free_entry_answers text",
-                'free_entry_correct_index' => "ALTER TABLE {$table} ADD COLUMN free_entry_correct_index int(11) NOT NULL DEFAULT 0",
-                'geo_restricted'          => "ALTER TABLE {$table} ADD COLUMN geo_restricted tinyint(1) NOT NULL DEFAULT 0",
-                'geo_allowed_countries'   => "ALTER TABLE {$table} ADD COLUMN geo_allowed_countries text",
-                'allow_referrals'         => "ALTER TABLE {$table} ADD COLUMN allow_referrals tinyint(1) NOT NULL DEFAULT 0",
-                'referral_bonus_entries'  => "ALTER TABLE {$table} ADD COLUMN referral_bonus_entries int(11) NOT NULL DEFAULT 1",
-                'template_id'             => "ALTER TABLE {$table} ADD COLUMN template_id int(11) DEFAULT NULL",
-            );
-            foreach ( $v4_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
-                if ( empty( $exists ) ) {
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals, cannot use placeholders.
-                    $wpdb->query( $sql );
-                }
-            }
-
-            // v4: new tables
-            $charset = $wpdb->get_charset_collate();
-
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_prizes (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                raffle_id bigint(20) NOT NULL,
-                position int(11) NOT NULL DEFAULT 0,
-                prize_name varchar(255) NOT NULL,
-                prize_value decimal(10,2) DEFAULT 0,
-                winner_ticket_id bigint(20) DEFAULT NULL,
-                PRIMARY KEY (id),
-                KEY raffle_id (raffle_id)
-            ) {$charset}" );
-
-            // BUG-1 FIX: Use user_email instead of user_id to match activator schema and code usage
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_referrals (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                raffle_id bigint(20) NOT NULL,
-                user_email varchar(255) NOT NULL,
-                referral_code varchar(50) NOT NULL,
-                referred_email varchar(255) DEFAULT NULL,
-                bonus_entries int(11) NOT NULL DEFAULT 0,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY unique_user_raffle (raffle_id, user_email),
-                UNIQUE KEY unique_referral_code (referral_code),
-                KEY raffle_id (raffle_id)
-            ) {$charset}" );
-
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_reservations (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                raffle_id bigint(20) NOT NULL,
-                ticket_numbers text NOT NULL,
-                user_email varchar(255) NOT NULL,
-                session_id varchar(128) NOT NULL,
-                expires_at datetime NOT NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY raffle_id (raffle_id),
-                KEY session_id (session_id),
-                KEY expires_at (expires_at)
-            ) {$charset}" );
-
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_audit_log (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                raffle_id bigint(20) NOT NULL,
-                action_type varchar(50) NOT NULL,
-                user_id bigint(20) DEFAULT NULL,
-                details longtext,
-                fairness_proof varchar(128) DEFAULT NULL,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY raffle_id (raffle_id)
-            ) {$charset}" );
-
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_templates (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                name varchar(255) NOT NULL,
-                config longtext NOT NULL,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id)
-            ) {$charset}" );
-
-            // BUG-6 FIX: Match schema to actual insert statements (buyer_name, buyer_email, status columns)
-            $wpdb->query( "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}raffle_free_entries (
-                id bigint(20) NOT NULL AUTO_INCREMENT,
-                raffle_id bigint(20) NOT NULL,
-                buyer_name varchar(255) NOT NULL,
-                buyer_email varchar(255) NOT NULL,
-                answer_index int(11) NOT NULL DEFAULT 0,
-                ticket_number int(11) NOT NULL DEFAULT 0,
-                status varchar(20) NOT NULL DEFAULT 'pending',
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY raffle_id (raffle_id),
-                KEY buyer_email (buyer_email)
-            ) {$charset}" );
-
-            // Add new columns to purchases and tickets tables
-            $purchases_table = $wpdb->prefix . 'raffle_purchases';
-            $tickets_table = $wpdb->prefix . 'raffle_tickets';
-
-            $purch_cols = array(
-                'referral_code' => "ALTER TABLE {$purchases_table} ADD COLUMN referral_code varchar(32) DEFAULT NULL",
-                'entry_type'    => "ALTER TABLE {$purchases_table} ADD COLUMN entry_type varchar(20) DEFAULT 'purchase'",
-            );
-            foreach ( $purch_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$purchases_table} LIKE %s", $col ) );
-                if ( empty( $exists ) ) {
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
-                    $wpdb->query( $sql );
-                }
-            }
-
-            $ticket_cols = array(
-                'is_reserved' => "ALTER TABLE {$tickets_table} ADD COLUMN is_reserved tinyint(1) NOT NULL DEFAULT 0",
-                'reserved_at' => "ALTER TABLE {$tickets_table} ADD COLUMN reserved_at datetime DEFAULT NULL",
-            );
-            foreach ( $ticket_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$tickets_table} LIKE %s", $col ) );
-                if ( empty( $exists ) ) {
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
-                    $wpdb->query( $sql );
-                }
-            }
-
-            $reservations_table = $wpdb->prefix . 'raffle_reservations';
-            $res_cols = array(
-                'user_email' => "ALTER TABLE {$reservations_table} ADD COLUMN user_email varchar(255) NOT NULL",
-                'created_at' => "ALTER TABLE {$reservations_table} ADD COLUMN created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP",
-            );
-            foreach ( $res_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$reservations_table} LIKE %s", $col ) );
-                if ( empty( $exists ) ) {
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
-                    $wpdb->query( $sql );
-                }
-            }
-
-            update_option( 'raffle_system_db_migrated_v4', 1 );
-        }
-
-        // v5 migration: draw_video_url + verified_result
-        if ( ! get_option( 'raffle_system_db_migrated_v5' ) ) {
-            $v5_cols = array(
-                'draw_video_url'  => "ALTER TABLE {$table} ADD COLUMN draw_video_url varchar(500) DEFAULT ''",
-                'verified_result' => "ALTER TABLE {$table} ADD COLUMN verified_result text",
-            );
-            foreach ( $v5_cols as $col => $sql ) {
-                $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
-                if ( empty( $exists ) ) {
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- DDL ALTER statement built from hardcoded literals.
-                    $wpdb->query( $sql );
-                }
-            }
-            update_option( 'raffle_system_db_migrated_v5', 1 );
+        if ( class_exists( 'Raffle_Setup' ) ) {
+            Raffle_Setup::run_migrations();
         }
     }
 
@@ -463,6 +290,9 @@ class Raffle_Admin {
         $data['enable_viewers_now']        = ! empty( $_POST['enable_viewers_now'] ) ? 1 : 0;
         $data['enable_share']              = ! empty( $_POST['enable_share'] ) ? 1 : 0;
 
+        // v1.3.1 — Featured competition flag (homepage spotlight).
+        $data['is_featured'] = ! empty( $_POST['is_featured'] ) ? 1 : 0;
+
         // Consolation coupon config.
         if ( $data['enable_consolation_coupon'] ) {
             $data['consolation_config'] = wp_json_encode( array(
@@ -487,22 +317,25 @@ class Raffle_Admin {
         }
 
         if ( $enable_bundles && $packages_raw !== '' && $packages_raw[0] === '[' ) {
-            // JSON bundle syntax — sanitise each object's scalar fields.
-            $decoded = json_decode( $packages_raw, true );
-            $clean   = array();
-            if ( is_array( $decoded ) ) {
-                foreach ( $decoded as $b ) {
-                    if ( ! is_array( $b ) || empty( $b['qty'] ) ) {
-                        continue;
-                    }
-                    $clean[] = array(
-                        'qty'   => absint( $b['qty'] ),
-                        'price' => isset( $b['price'] ) ? (float) $b['price'] : 0.0,
-                        'label' => isset( $b['label'] ) ? sanitize_text_field( $b['label'] ) : '',
-                        'badge' => isset( $b['badge'] ) ? sanitize_text_field( $b['badge'] ) : '',
-                    );
-                }
+            // JSON bundle syntax. The submitted value may be either the modern
+            // object form ([{"qty":5,"price":...}]) or a legacy bare-int form
+            // ([5,10,15,25]). Normalise via the shared helper so BOTH shapes
+            // survive the save + validation — previously bare ints were dropped
+            // by the is_array() guard, leaving packages empty and triggering a
+            // false "Add at least one bundle" validation error.
+            $clean = function_exists( 'wpraffle_normalise_packages' )
+                ? wpraffle_normalise_packages( $packages_raw, (float) ( $data['ticket_price'] ?? 0 ) )
+                : array();
+            // Re-sanitise to be safe (normalise_packages is already clean, but
+            // this is the write path so defend in depth).
+            foreach ( $clean as $k => $b ) {
+                $clean[ $k ]['qty']   = isset( $b['qty'] ) ? absint( $b['qty'] ) : 0;
+                $clean[ $k ]['price'] = isset( $b['price'] ) ? (float) $b['price'] : 0.0;
+                $clean[ $k ]['label'] = isset( $b['label'] ) ? sanitize_text_field( $b['label'] ) : '';
+                $clean[ $k ]['badge'] = isset( $b['badge'] ) ? sanitize_text_field( $b['badge'] ) : '';
             }
+            // Drop anything without a positive qty (defensive).
+            $clean = array_values( array_filter( $clean, function ( $b ) { return ! empty( $b['qty'] ); } ) );
             $data['packages'] = wp_json_encode( $clean );
         } else {
             // Legacy comma-separated ints.
@@ -550,7 +383,13 @@ class Raffle_Admin {
             foreach ( array( 'enable_auto_relist', 'relist_days', 'relist_pause_days', 'relist_count' ) as $f ) {
                 $posted->{$f} = sanitize_text_field( wp_unslash( $_POST[ $f ] ?? '' ) );
             }
-            $this->render_form_page();
+            // Set the globals so the normal menu page callback
+            // (render_form_page / render_list_page) re-renders the form with the
+            // posted values + per-field errors, then RETURN — do not render here
+            // and do not exit. Rendering here would either double-render the
+            // view (when the menu callback also runs) or produce a chromeless
+            // page (exit before admin header). Returning keeps everything inside
+            // normal admin scaffolding and lets the callback render exactly once.
             return;
         }
 
@@ -1078,6 +917,7 @@ class Raffle_Admin {
                             'enable_scarcity'          => 0,
                             'enable_viewers_now'       => 0,
                             'enable_share'             => 0,
+                            'is_featured'              => 0,
                             'wc_product_id'            => 0,
                             'sold_tickets'             => 0,
                             'charity_id'               => null,
@@ -1360,8 +1200,11 @@ class Raffle_Admin {
 
     public function save_update_settings() {
         $this->verify_settings_nonce();
+        // NOTE: 'github_repo' is intentionally NOT saved here. The update
+        // repository is hard-coded in Raffle_Updater::REPO and can no longer be
+        // changed from the UI — see includes/class-raffle-updater.php.
         $settings = array(
-            'github_repo'     => sanitize_text_field( wp_unslash( $_POST['github_repo'] ?? 'wpraffle/wpraffle' ) ),
+            'github_repo'     => 'wpraffle/wpraffle',
             'auto_update'     => absint( $_POST['auto_update'] ?? 0 ),
             'update_channel'  => sanitize_text_field( wp_unslash( $_POST['update_channel'] ?? 'stable' ) ),
         );
@@ -1370,7 +1213,7 @@ class Raffle_Admin {
         // Anonymous activation notice opt-out (checkbox checked = opted out).
         update_option( 'wpraffle_tracking_opted_out', isset( $_POST['wpraffle_tracking_opted_out'] ) ? 1 : 0 );
 
-        // Clear cache so next check uses new repo
+        // Clear cache so next check uses the hard-coded repo.
         delete_transient( 'wpraffle_release_info' );
         delete_transient( 'wpraffle_latest_version' );
         $this->redirect_settings( 'updates' );
