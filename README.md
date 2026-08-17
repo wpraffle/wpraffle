@@ -24,7 +24,7 @@
 
 ## What's new in 1.3.1
 
-A maintenance + Elementor release that pairs with **WPRaffle Theme v1.3.0**.
+A maintenance + Elementor release that pairs with **WPRaffle Theme v1.3.1**.
 Fixes the raffle save/validation path, hard-codes the update repository, removes
 ~340 lines of redundant code, and ships a substantial Elementor expansion.
 
