@@ -1582,7 +1582,7 @@ $update_available = $latest_version && version_compare( $latest_version, RAFFLE_
                 <tr>
                     <th scope="row">Usage Tracking</th>
                     <td>
-                        <label><input type="checkbox" name="wpraffle_tracking_opted_out" value="1" <?php checked( get_option( 'wpraffle_tracking_opted_out' ), 1 ); ?>> Opt <strong>out</strong> of the anonymous activation notice</label>
+                        <label><input type="checkbox" name="wpraffle_tracking_enabled" value="1" <?php checked( get_option( 'wpraffle_tracking_enabled', 0 ), 1 ); ?>> Allow a one-time anonymous activation notice</label>
                         <p class="description">
                             On first activation, WPRaffle sends a <strong>single, anonymous notice</strong> to <code>wpraffle.dev</code> so we can display a unique-install count on the marketing site. It sends <strong>only</strong> a random ID and the plugin version — <strong>no site URL, no user data, no personal information</strong>, and nothing else, ever. Uncheck to opt out; the notice is sent once per install and the count is deduped, so it can never be inflated.
                         </p>

@@ -1211,7 +1211,10 @@ class Raffle_Admin {
         update_option( 'wpraffle_update_settings', $settings );
 
         // Anonymous activation notice opt-out (checkbox checked = opted out).
-        update_option( 'wpraffle_tracking_opted_out', isset( $_POST['wpraffle_tracking_opted_out'] ) ? 1 : 0 );
+        update_option( 'wpraffle_tracking_enabled', isset( $_POST['wpraffle_tracking_enabled'] ) ? 1 : 0 );
+		if ( isset( $_POST['wpraffle_tracking_enabled'] ) && class_exists( 'Raffle_Tracker' ) ) {
+			Raffle_Tracker::notify_activation();
+		}
 
         // Clear cache so next check uses the hard-coded repo.
         delete_transient( 'wpraffle_release_info' );

@@ -73,6 +73,14 @@ class Raffle_Tag_Raffle_Field extends \Elementor\Base_Data_Tag {
 			'start_date'      => __( 'Start Date', 'wpraffle' ),
 			'status'          => __( 'Status', 'wpraffle' ),
 			'instant_win_qty' => __( 'Instant-Win Count', 'wpraffle' ),
+			'max_entries'      => __( 'Maximum Entries Per User', 'wpraffle' ),
+			'cash_alternative'=> __( 'Cash Alternative', 'wpraffle' ),
+			'product_id'       => __( 'WooCommerce Product ID', 'wpraffle' ),
+			'product_url'      => __( 'Competition URL', 'wpraffle' ),
+			'draw_time'        => __( 'Draw Time', 'wpraffle' ),
+			'draw_type'        => __( 'Draw Type', 'wpraffle' ),
+			'number_of_winners'=> __( 'Number of Winners', 'wpraffle' ),
+			'live_draw_url'    => __( 'Live Draw URL', 'wpraffle' ),
 		);
 	}
 
@@ -153,6 +161,23 @@ class Raffle_Tag_Raffle_Field extends \Elementor\Base_Data_Tag {
 				return ucfirst( $raffle->status );
 			case 'instant_win_qty':
 				return $this->count_instant_wins( $raffle->id );
+			case 'max_entries':
+				return isset( $raffle->max_tickets_per_user ) ? (int) $raffle->max_tickets_per_user : 100;
+			case 'cash_alternative':
+				if ( empty( $raffle->enable_cash_alternative ) ) { return ''; }
+				return function_exists( 'wpr_price' ) ? wpr_price( $raffle->cash_alternative_amount ) : $raffle->cash_alternative_amount;
+			case 'product_id':
+				return isset( $raffle->wc_product_id ) ? (int) $raffle->wc_product_id : 0;
+			case 'product_url':
+				return ! empty( $raffle->wc_product_id ) ? get_permalink( (int) $raffle->wc_product_id ) : '';
+			case 'draw_time':
+				return $raffle->draw_date ? mysql2date( get_option( 'time_format' ), $raffle->draw_date ) : '';
+			case 'draw_type':
+				return isset( $raffle->draw_type ) ? ucfirst( (string) $raffle->draw_type ) : '';
+			case 'number_of_winners':
+				return isset( $raffle->number_of_winners ) ? (int) $raffle->number_of_winners : 1;
+			case 'live_draw_url':
+				return isset( $raffle->live_draw_url ) ? esc_url_raw( $raffle->live_draw_url ) : '';
 			default:
 				return '';
 		}

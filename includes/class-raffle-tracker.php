@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * customer data, or any personal information. The ping is one-shot per
  * install (guarded by wpraffle_activation_ping_sent) and the server
  * dedupes by install_id, so re-activating on the same site never
- * inflates the count. Opt out anytime via Settings → Updates.
+ * inflates the count. Tracking is disabled unless an administrator opts in.
  *
  * All failures are silent — a downed endpoint never affects activation
  * or the admin UX (mirrors the updater + geo conventions).
@@ -53,8 +53,8 @@ class Raffle_Tracker {
      * fire-and-forget: never throws, never logs, never admin-notices.
      */
     public static function notify_activation() {
-        // Respect the opt-out flag (default off → ping proceeds).
-        if ( get_option( 'wpraffle_tracking_opted_out' ) ) {
+        // Privacy by default: transmit nothing until an administrator opts in.
+        if ( ! get_option( 'wpraffle_tracking_enabled', 0 ) ) {
             return;
         }
         // Never re-send on the same install.

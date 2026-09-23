@@ -12,7 +12,8 @@ class Raffle_Public {
         add_shortcode( 'raffle_ended_list', array( $this, 'render_raffle_ended_list_shortcode' ) );
         add_shortcode( 'raffle_entry_list', array( $this, 'render_entry_list_shortcode' ) );
         add_shortcode( 'raffle_refer', array( $this, 'render_refer_shortcode' ) );
-        add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+        add_action( 'wp_enqueue_scripts', array( $this, 'register_assets' ), 5 );
+        add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ), 10 );
 
         add_action( 'wp_ajax_raffle_get_sold_numbers', array( $this, 'ajax_get_sold_numbers' ) );
         add_action( 'wp_ajax_nopriv_raffle_get_sold_numbers', array( $this, 'ajax_get_sold_numbers' ) );
@@ -35,7 +36,26 @@ class Raffle_Public {
         add_filter( 'template_include', array( $this, 'override_single_product_template' ), 99 );
     }
 
-    public function enqueue_assets() {
+    /**
+     * Register public assets early so themes can declare dependable style
+     * dependencies without copying plugin URLs or version constants.
+     */
+    public function register_assets() {
+        wp_register_style( 'wpraffle-icons', RAFFLE_SYSTEM_URL . 'assets/css/icons.css', array(), RAFFLE_SYSTEM_VERSION );
+        wp_register_style( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/css/public.css', array( 'wpraffle-icons' ), RAFFLE_SYSTEM_VERSION );
+        wp_register_script( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/js/public.js', array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
+    }
+
+    /**
+     * Determine whether the current request can render WPRaffle UI.
+     *
+     * Theme templates commonly call shortcodes from PHP, so inspecting only
+     * post_content is not sufficient. The filter is the supported extension
+     * point for themes/builders with additional rendering contexts.
+     *
+     * @return bool
+     */
+    public static function is_frontend_context() {
         global $post;
         $is_raffle_product = false;
         if ( is_a( $post, 'WP_Post' ) && $post->post_type === 'product' ) {
@@ -57,34 +77,69 @@ class Raffle_Public {
             )
         );
 
-        if ( $needs_raffle_assets ) {
-            wp_enqueue_style( 'wpraffle-icons', RAFFLE_SYSTEM_URL . 'assets/css/icons.css', array(), RAFFLE_SYSTEM_VERSION );
-            wp_enqueue_style( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/css/public.css', array( 'wpraffle-icons' ), RAFFLE_SYSTEM_VERSION );
-
-            wp_enqueue_script( 'raffle-public', RAFFLE_SYSTEM_URL . 'assets/js/public.js', array( 'jquery' ), RAFFLE_SYSTEM_VERSION, true );
-
-            $localize_data = array(
-                'ajax_url'       => admin_url( 'admin-ajax.php' ),
-                'nonce'          => wp_create_nonce( 'raffle_purchase_nonce' ),
-                'currency_symbol' => wpr_currency_symbol(),
-            );
-
-            if ( Raffle_WooCommerce::is_available() ) {
-                $localize_data['wc_enabled'] = '1';
-                $localize_data['cart_url']   = wc_get_cart_url();
-                $localize_data['checkout_url'] = wc_get_checkout_url();
+        if ( is_a( $post, 'WP_Post' ) && function_exists( 'has_block' ) ) {
+            foreach ( array( 'raffle/countdown', 'raffle/progress', 'raffle/entry-button', 'raffle/instant-wins', 'raffle/list' ) as $block_name ) {
+                if ( has_block( $block_name, $post ) ) {
+                    $needs_raffle_assets = true;
+                    break;
+                }
             }
+        }
 
-            wp_localize_script( 'raffle-public', 'rafflePublic', $localize_data );
-            wp_localize_script( 'raffle-public', 'raffleCountdown', array(
-                'labels' => array(
-                    'days'    => 'Days',
-                    'hours'   => 'Hours',
-                    'minutes' => 'Min',
-                    'seconds' => 'Sec',
-                    'expired' => "It's draw time!",
-                ),
-            ) );
+        if ( function_exists( 'is_shop' ) && is_shop() ) {
+            $needs_raffle_assets = true;
+        }
+        if ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) {
+            $needs_raffle_assets = true;
+        }
+
+        /**
+         * Filters whether WPRaffle public assets are needed on this request.
+         *
+         * @param bool         $needs_raffle_assets Current decision.
+         * @param WP_Post|null $post                Current queried post.
+         */
+        return (bool) apply_filters( 'wpraffle_frontend_context', $needs_raffle_assets, is_a( $post, 'WP_Post' ) ? $post : null );
+    }
+
+    /**
+     * Enqueue and configure the public asset bundle.
+     */
+    public static function enqueue_public_assets() {
+        wp_enqueue_style( 'wpraffle-icons' );
+        wp_enqueue_style( 'raffle-public' );
+        wp_enqueue_script( 'raffle-public' );
+
+        $localize_data = array(
+            'ajax_url'        => admin_url( 'admin-ajax.php' ),
+            'nonce'           => wp_create_nonce( 'raffle_purchase_nonce' ),
+            'currency_symbol' => wpr_currency_symbol(),
+        );
+
+        if ( Raffle_WooCommerce::is_available() ) {
+            $localize_data['wc_enabled']   = '1';
+            $localize_data['cart_url']     = wc_get_cart_url();
+            $localize_data['checkout_url'] = wc_get_checkout_url();
+        }
+
+        wp_localize_script( 'raffle-public', 'rafflePublic', $localize_data );
+        wp_localize_script( 'raffle-public', 'raffleCountdown', array(
+            'labels' => array(
+                'days'    => __( 'Days', 'wpraffle' ),
+                'hours'   => __( 'Hours', 'wpraffle' ),
+                'minutes' => __( 'Min', 'wpraffle' ),
+                'seconds' => __( 'Sec', 'wpraffle' ),
+                'expired' => __( "It's draw time!", 'wpraffle' ),
+            ),
+        ) );
+    }
+
+    public function enqueue_assets() {
+        global $post;
+        $is_raffle_product = is_a( $post, 'WP_Post' ) && 'product' === $post->post_type && (bool) get_post_meta( $post->ID, '_raffle_id', true );
+
+        if ( self::is_frontend_context() ) {
+            self::enqueue_public_assets();
         }
 
         // For raffle products using custom template, dequeue WooCommerce block/interactivity scripts

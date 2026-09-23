@@ -122,14 +122,14 @@ class Raffle_WooCommerce {
             'data-privacy'       => 'Data & Privacy',
         );
 
-        echo '<div class="wpraffle-account-tabs" style="margin-bottom:20px;border-bottom:2px solid var(--wpr-border-color);display:flex;gap:0;">';
-        $base_url = wc_get_endpoint_url( 'my-raffles', '', wc_get_page_permalink( 'myaccount' ) );
-        foreach ( $raffle_tabs as $key => $label ) {
-            $active = ( $sub === $key ) ? 'border-bottom:3px solid var(--wpr-accent);color:var(--wpr-accent);font-weight:700;' : 'color:var(--wpr-text-muted);';
-            $url = $key === '' ? $base_url : add_query_arg( 'sub', $key, $base_url );
-            echo '<a href="' . esc_url( $url ) . '" style="padding:10px 16px;text-decoration:none;font-size:14px;' . esc_attr( $active ) . 'margin-bottom:-2px;">' . esc_html( $label ) . '</a>';
-        }
-        echo '</div>';
+		echo '<nav class="wpraffle-account-tabs" aria-label="' . esc_attr__( 'My Raffles sections', 'wpraffle' ) . '">';
+		$base_url = wc_get_endpoint_url( 'my-raffles', '', wc_get_page_permalink( 'myaccount' ) );
+		foreach ( $raffle_tabs as $key => $label ) {
+			$is_active = ( $sub === $key );
+			$url = $key === '' ? $base_url : add_query_arg( 'sub', $key, $base_url );
+			echo '<a class="wpraffle-account-tabs__link' . ( $is_active ? ' is-active' : '' ) . '" href="' . esc_url( $url ) . '"' . ( $is_active ? ' aria-current="page"' : '' ) . '>' . esc_html( $label ) . '</a>';
+		}
+		echo '</nav>';
 
         switch ( $sub ) {
             case 'wins':
