@@ -2,7 +2,6 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class Raffle_Insights {
     public static function init() {
-        add_action( 'admin_menu', static function() { add_submenu_page( 'raffle-system', __( 'Competition insights', 'wpraffle' ), __( 'Insights', 'wpraffle' ), 'manage_options', 'wpraffle-insights', array( __CLASS__, 'render' ) ); } );
     }
     public static function report() {
         global $wpdb;
@@ -13,11 +12,10 @@ final class Raffle_Insights {
     }
     public static function render() {
         if ( ! current_user_can( 'manage_options' ) ) { return; }
-        $r = self::report(); $s = $r['summary'];
-        echo '<div class="wrap"><h1>' . esc_html__( 'Competition insights', 'wpraffle' ) . '</h1><p>' . esc_html__( 'Current completed-purchase records only. Gross values are not profit, conversion rates or historical net revenue. Deleted/refunded records and old relists may no longer be represented.', 'wpraffle' ) . '</p><dl>';
-        foreach ( array( 'purchases' => __( 'Completed purchases', 'wpraffle' ), 'tickets' => __( 'Confirmed tickets', 'wpraffle' ), 'customers' => __( 'Unique buyer email addresses', 'wpraffle' ), 'gross' => __( 'Gross recorded sales', 'wpraffle' ) ) as $key => $label ) { echo '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $s->$key ) . '</dd>'; }
-        echo '<dt>' . esc_html__( 'Repeat buyer email addresses', 'wpraffle' ) . '</dt><dd>' . esc_html( $r['repeat_buyers'] ) . '</dd><dt>' . esc_html__( 'Average recorded purchase value', 'wpraffle' ) . '</dt><dd>' . esc_html( number_format_i18n( $s->purchases ? $s->gross / $s->purchases : 0, 2 ) ) . '</dd></dl><h2>' . esc_html__( 'Top 100 competitions by gross recorded sales', 'wpraffle' ) . '</h2><table class="widefat striped"><thead><tr><th>' . esc_html__( 'Competition', 'wpraffle' ) . '</th><th>' . esc_html__( 'Purchases', 'wpraffle' ) . '</th><th>' . esc_html__( 'Tickets', 'wpraffle' ) . '</th><th>' . esc_html__( 'Customers', 'wpraffle' ) . '</th><th>' . esc_html__( 'Gross', 'wpraffle' ) . '</th></tr></thead><tbody>';
-        foreach ( $r['competitions'] as $row ) { echo '<tr><td>' . esc_html( $row->title ) . '</td><td>' . esc_html( $row->purchases ) . '</td><td>' . esc_html( $row->tickets ) . '</td><td>' . esc_html( $row->customers ) . '</td><td>' . esc_html( $row->gross ) . '</td></tr>'; }
-        echo '</tbody></table></div>';
+        $report = self::report();
+        $money = static function( $amount ) {
+            return function_exists( 'wc_price' ) ? wp_kses_post( wc_price( $amount ) ) : esc_html( number_format_i18n( $amount, 2 ) );
+        };
+        require RAFFLE_SYSTEM_PATH . 'admin/views/insights.php';
     }
 }

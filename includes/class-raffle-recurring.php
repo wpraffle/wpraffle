@@ -4,7 +4,6 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class Raffle_Recurring {
     const OPTION = 'wpraffle_recurring_schedules';
     public static function init() {
-        add_action( 'admin_menu', static function() { add_submenu_page( 'raffle-system', __( 'Recurring competitions', 'wpraffle' ), __( 'Recurring competitions', 'wpraffle' ), 'manage_options', 'wpraffle-recurring', array( __CLASS__, 'render' ) ); } );
         add_action( 'admin_post_wpraffle_recurring', array( __CLASS__, 'save' ) );
         add_action( 'wpraffle_recurring_check', array( __CLASS__, 'run' ) );
         if ( ! wp_next_scheduled( 'wpraffle_recurring_check' ) ) { wp_schedule_event( time() + 300, 'hourly', 'wpraffle_recurring_check' ); }
@@ -83,14 +82,7 @@ final class Raffle_Recurring {
     }
     public static function render() {
         if ( ! current_user_can( 'manage_options' ) ) { return; }
-        echo '<div class="wrap"><h1>' . esc_html__( 'Recurring competition drafts', 'wpraffle' ) . '</h1><p>' . esc_html__( 'Create fresh drafts at a fixed interval without resetting previous competitions. Review each draft, prize rules and dates before publishing. WP-Cron runs when the site receives traffic.', 'wpraffle' ) . '</p><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="wpraffle_recurring">';
-        wp_nonce_field( 'wpraffle_recurring' );
-        foreach ( array( 'source_id' => 'Source competition ID', 'interval_days' => 'Interval in days (1–365)', 'count' => 'Number of drafts (1–52)' ) as $key => $label ) { echo '<p><label>' . esc_html( $label ) . ' <input required type="number" min="1" max="' . ( 'count' === $key ? '52' : ( 'interval_days' === $key ? '365' : '999999999' ) ) . '" name="' . esc_attr( $key ) . '"></label></p>'; }
-        submit_button( __( 'Schedule drafts', 'wpraffle' ) ); echo '</form><h2>' . esc_html__( 'Schedules', 'wpraffle' ) . '</h2>';
-        foreach ( (array) get_option( self::OPTION, array() ) as $id => $item ) {
-            echo '<div><p>' . esc_html( sprintf( __( 'Source #%d — %d drafts remaining — next check: %s', 'wpraffle' ), $item['source_id'], $item['remaining'], wp_date( 'Y-m-d H:i', $item['next'] ) ) ) . '</p><p>' . esc_html__( 'Created draft IDs:', 'wpraffle' ) . ' ' . esc_html( implode( ', ', $item['created_ids'] ) ) . '</p><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="wpraffle_recurring"><input type="hidden" name="operation" value="delete"><input type="hidden" name="schedule_id" value="' . esc_attr( $id ) . '">';
-            wp_nonce_field( 'wpraffle_recurring' ); submit_button( __( 'Remove schedule', 'wpraffle' ), 'secondary', 'submit', false ); echo '</form></div>';
-        }
-        echo '</div>';
+        $schedules = (array) get_option( self::OPTION, array() );
+        require RAFFLE_SYSTEM_PATH . 'admin/views/recurring-raffles.php';
     }
 }

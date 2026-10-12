@@ -3,15 +3,11 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class Raffle_Draw_Receipts {
     public static function init() {
-        add_action( 'admin_menu', static function() { add_submenu_page( 'raffle-system', __( 'Draw verification', 'wpraffle' ), __( 'Draw verification', 'wpraffle' ), 'manage_options', 'wpraffle-verification', array( __CLASS__, 'settings' ) ); } );
         add_action( 'admin_post_wpraffle_commit_draw', array( __CLASS__, 'commit_draw' ) );
     }
     public static function settings() {
         if ( ! current_user_can( 'manage_options' ) ) { return; }
-        echo '<div class="wrap"><h1>' . esc_html__( 'Reproducible draw verification', 'wpraffle' ) . '</h1><p>' . esc_html__( 'Optional for new competitions with no entries. Publish a seed commitment before entrants buy tickets. The draw reveals the seed and pool so anyone can reproduce the selected ticket numbers. This does not prove pool completeness, independent operation, or regulatory compliance. Keep the secret seed private until the draw.', 'wpraffle' ) . '</p><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="wpraffle_commit_draw">';
-        wp_nonce_field( 'wpraffle_commit_draw' );
-        echo '<p><label>' . esc_html__( 'Competition ID', 'wpraffle' ) . ' <input name="raffle_id" type="number" min="1" required></label></p>';
-        submit_button( __( 'Enable and publish commitment', 'wpraffle' ) ); echo '</form></div>';
+        require RAFFLE_SYSTEM_PATH . 'admin/views/draw-verification.php';
     }
     public static function commit_draw() {
         if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Unauthorized.', '', array( 'response' => 403 ) ); }
