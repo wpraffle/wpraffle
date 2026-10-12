@@ -98,7 +98,7 @@ class Raffle_Prizes {
             "SELECT t.*, p.buyer_name, p.buyer_email
              FROM {$wpdb->prefix}raffle_tickets t
              JOIN {$wpdb->prefix}raffle_purchases p ON t.purchase_id = p.id
-             WHERE t.raffle_id = %d",
+             WHERE t.raffle_id = %d AND p.payment_status = 'completed'",
             $raffle_id
         ) );
 
@@ -112,6 +112,10 @@ class Raffle_Prizes {
             'num_winners'  => $num_winners,
         ) );
 
+        $selection = class_exists( 'Raffle_Draw_Receipts' ) ? Raffle_Draw_Receipts::select( $raffle_id, $tickets, $num_winners ) : null;
+        if ( is_wp_error( $selection ) ) { return $selection; }
+        if ( $selection ) { $winners = $selection['winners']; }
+        else {
         $winners = array();
         $used    = array();
 
@@ -123,6 +127,8 @@ class Raffle_Prizes {
             $winners[] = $tickets[ $idx ];
         }
 
+        }
+
         // Assign winners to prizes
         $prizes = self::get_prizes( $raffle_id );
         $results = array();
@@ -131,24 +137,30 @@ class Raffle_Prizes {
             $prize_id = isset( $prizes[ $pos ] ) ? $prizes[ $pos ]->id : 0;
 
             if ( $prize_id ) {
-                $wpdb->update(
+                $saved = $wpdb->update(
                     $wpdb->prefix . 'raffle_prizes',
                     array( 'winner_ticket_id' => $winner->id ),
                     array( 'id' => $prize_id ),
                     array( '%d' ),
                     array( '%d' )
                 );
+                if ( false === $saved ) {
+                    return new WP_Error( 'draw_save_failed', 'Could not save a prize winner.' );
+                }
             }
 
             // First winner gets the main winner_ticket_id field
             if ( $pos === 0 ) {
-                $wpdb->update(
+                $saved = $wpdb->update(
                     $wpdb->prefix . 'raffles',
                     array( 'winner_ticket_id' => $winner->id, 'status' => 'finished' ),
                     array( 'id' => $raffle_id ),
                     array( '%d', '%s' ),
                     array( '%d' )
                 );
+                if ( false === $saved ) {
+                    return new WP_Error( 'draw_save_failed', 'Could not save a prize winner.' );
+                }
             }
 
             $results[] = array(
@@ -160,16 +172,6 @@ class Raffle_Prizes {
                 'prize_id'      => $prize_id,
             );
 
-            // Send winner email
-            if ( class_exists( 'Raffle_Email' ) ) {
-                Raffle_Email::send_winner_notification(
-                    $winner->buyer_email,
-                    $winner->buyer_name,
-                    self::get_raffle_for_email( $raffle_id ),
-                    $winner->ticket_number
-                );
-            }
-
             Raffle_Audit::log( $raffle_id, 'winner_drawn', array(
                 'position' => $pos + 1,
                 'ticket'   => $winner->ticket_number,
@@ -177,6 +179,9 @@ class Raffle_Prizes {
             ), 'system' );
         }
 
+        if ( class_exists( 'Raffle_Draw_Receipts' ) && ! Raffle_Draw_Receipts::persist( $raffle_id, $tickets, $results, $selection ?: array() ) ) {
+            return new WP_Error( 'receipt_failed', 'Could not record the draw result.' );
+        }
         return $results;
     }
 }

@@ -133,61 +133,44 @@ class Raffle_Free_Entry {
             wp_send_json_error( array( 'message' => 'No tickets available.' ) );
         }
 
-        // SEC-4 FIX: Create purchase record FIRST so generate_tickets() gets a valid purchase_id
-        $wpdb->query( 'START TRANSACTION' );
-
-        // Create the purchase record first
-        $wpdb->insert(
-            $wpdb->prefix . 'raffle_purchases',
-            array(
-                'raffle_id'      => $raffle_id,
-                'buyer_name'     => $buyer_name,
-                'buyer_email'    => $buyer_email,
-                'quantity'       => 1,
-                'total_amount'   => 0,
-                'payment_status' => 'completed',
-                'purchase_date'  => current_time( 'mysql' ),
-                'entry_type'     => 'free',
-            ),
-            array( '%d', '%s', '%s', '%d', '%f', '%s', '%s', '%s' )
-        );
-        $purchase_id = $wpdb->insert_id;
-
-        if ( ! $purchase_id ) {
-            $wpdb->query( 'ROLLBACK' );
-            wp_send_json_error( array( 'message' => 'Error registering free entry. Please try again.' ) );
-        }
-
-        // Generate ticket with valid purchase_id
-        $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, 1, $buyer_email, false );
-
-        if ( is_wp_error( $tickets ) ) {
-            $wpdb->query( 'ROLLBACK' );
-            wp_send_json_error( array( 'message' => $tickets->get_error_message() ) );
-        }
-
-        $ticket_number = $tickets[0];
-
-        // Create free entry record for tracking
-        $wpdb->insert(
-            $wpdb->prefix . 'raffle_free_entries',
-            array(
-                'raffle_id'     => $raffle_id,
-                'buyer_name'    => $buyer_name,
-                'buyer_email'   => $buyer_email,
-                'answer_index'  => $answer_index,
-                'ticket_number' => $ticket_number,
-                'status'        => 'completed',
-                'created_at'    => current_time( 'mysql' ),
-            ),
-            array( '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
-        );
-
-        $wpdb->query( 'COMMIT' );
-
-        // Set rate limits (24 hours)
-        set_transient( $rate_key, '1', DAY_IN_SECONDS );
-        set_transient( $email_rate_key, '1', DAY_IN_SECONDS );
+        // Serialize both buyer quota checks and per-IP daily free entries.
+        $result = Raffle_Transactions::run( array(
+            'wpraffle_purchase_' . md5( strtolower( $buyer_email ) ),
+            'wpraffle_free_ip_' . md5( $raffle_id . '_' . $client_ip ),
+        ), static function() use ( $wpdb, $raffle_id, $buyer_name, $buyer_email, $answer_index, $max_per_user, $rate_key, $email_rate_key ) {
+            // Pre-lock reads may have cached misses in this PHP request.
+            wp_cache_delete( 'notoptions', 'options' );
+            foreach ( array( $rate_key, $email_rate_key ) as $key ) {
+                wp_cache_delete( $key, 'transient' );
+                wp_cache_delete( '_transient_' . $key, 'options' );
+                wp_cache_delete( '_transient_timeout_' . $key, 'options' );
+            }
+            if ( get_transient( $rate_key ) || get_transient( $email_rate_key ) ) {
+                return new WP_Error( 'already_entered', 'A free entry has already been submitted today.' );
+            }
+            $locked = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d FOR UPDATE", $raffle_id ) );
+            if ( ! $locked || 'active' !== $locked->status || ! $locked->allow_free_entry ||
+                 ( $locked->start_date && $locked->start_date > current_time( 'mysql' ) ) ||
+                 ( $locked->draw_date && $locked->draw_date <= current_time( 'mysql' ) ) ) {
+                return new WP_Error( 'not_open', 'This competition is not open for free entries.' );
+            }
+            $existing = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(SUM(quantity),0) FROM {$wpdb->prefix}raffle_purchases WHERE raffle_id = %d AND buyer_email = %s AND payment_status IN ('completed','pending')", $raffle_id, $buyer_email ) );
+            if ( $existing >= (int) $locked->max_tickets_per_user ) { return new WP_Error( 'entry_limit', 'The entry limit has been reached.' ); }
+            $inserted = $wpdb->insert( $wpdb->prefix . 'raffle_purchases', array( 'raffle_id' => $raffle_id, 'buyer_name' => $buyer_name, 'buyer_email' => $buyer_email, 'quantity' => 1, 'total_amount' => 0, 'payment_status' => 'completed', 'purchase_date' => current_time( 'mysql' ), 'entry_type' => 'free' ), array( '%d','%s','%s','%d','%f','%s','%s','%s' ) );
+            if ( ! $inserted || ! $wpdb->insert_id ) { return new WP_Error( 'insert_failed', 'Could not register the free entry.' ); }
+            $purchase_id = $wpdb->insert_id;
+            $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, 1, $buyer_email, false );
+            if ( is_wp_error( $tickets ) ) { return $tickets; }
+            $ticket_number = $tickets[0];
+            if ( false === $wpdb->insert( $wpdb->prefix . 'raffle_free_entries', array( 'raffle_id' => $raffle_id, 'buyer_name' => $buyer_name, 'buyer_email' => $buyer_email, 'answer_index' => $answer_index, 'ticket_number' => $ticket_number, 'status' => 'completed', 'created_at' => current_time( 'mysql' ) ), array( '%d','%s','%s','%d','%d','%s','%s' ) ) ) { return new WP_Error( 'insert_failed', 'Could not record the free entry.' ); }
+            return $ticket_number;
+        }, static function() use ( $rate_key, $email_rate_key ) {
+            // Only successful commits consume the daily guard, under both locks.
+            set_transient( $rate_key, '1', DAY_IN_SECONDS );
+            set_transient( $email_rate_key, '1', DAY_IN_SECONDS );
+        } );
+        if ( is_wp_error( $result ) ) { wp_send_json_error( array( 'message' => $result->get_error_message() ) ); }
+        $ticket_number = $result;
 
         // Record in centralized rate limiter
         Raffle_Rate_Limiter::hit( 'free_entry', $rate_id );

@@ -17,10 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Raffle_Field dynamic tag.
  *
- * Extends \Elementor\Base_Data_Tag so the editor treats it as a data source.
- * Note: Base_Data_Tag lives in Elementor Core (no Pro required) since 3.0.
+ * Extends \Elementor\Core\DynamicTags\Data_Tag so the editor treats it as a data source.
+ * Uses the Elementor Core data-tag API (no Pro base class required).
  */
-class Raffle_Tag_Raffle_Field extends \Elementor\Base_Data_Tag {
+class Raffle_Tag_Raffle_Field extends \Elementor\Core\DynamicTags\Data_Tag {
 
 	/**
 	 * Tag internal name.

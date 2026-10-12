@@ -35,6 +35,11 @@ class Raffle_Tickets {
         $table_tickets = $wpdb->prefix . 'raffle_tickets';
         $table_raffles = $wpdb->prefix . 'raffles';
 
+        $quantity = (int) $quantity;
+        if ( $raffle_id < 1 || $purchase_id < 1 || $quantity < 1 ) {
+            return new WP_Error( 'invalid_allocation', 'A valid purchase and positive ticket quantity are required.' );
+        }
+
         // If $manage_transaction is false, the caller has already opened the transaction
         if ( $manage_transaction ) {
             $wpdb->query( 'START TRANSACTION' );
@@ -43,13 +48,20 @@ class Raffle_Tickets {
         // SELECT ... FOR UPDATE locks the raffle row
         // No other concurrent purchase can read sold_tickets until this transaction ends
         $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT total_tickets, sold_tickets, ticket_numbering, ticket_start_number FROM {$table_raffles} WHERE id = %d FOR UPDATE",
+            "SELECT total_tickets, sold_tickets, ticket_numbering, ticket_start_number, status, winner_ticket_id, start_date, draw_date FROM {$table_raffles} WHERE id = %d FOR UPDATE",
             $raffle_id
         ) );
 
         if ( ! $raffle ) {
             if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
             return new WP_Error( 'invalid_raffle', 'Raffle not found.' );
+        }
+
+        if ( ! empty( $raffle->winner_ticket_id ) || 'active' !== $raffle->status ||
+             ( $raffle->start_date && $raffle->start_date > current_time( 'mysql' ) ) ||
+             ( $raffle->draw_date && $raffle->draw_date <= current_time( 'mysql' ) ) ) {
+            if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+            return new WP_Error( 'allocation_closed', 'Tickets cannot be allocated to this competition.' );
         }
 
         // 1.3.0 — Numbering strategy. Default 'random' preserves the legacy
@@ -219,12 +231,17 @@ class Raffle_Tickets {
         }
 
         // Update sold count + auto-close if sold out
-        $wpdb->query( $wpdb->prepare(
-            "UPDATE {$table_raffles} SET sold_tickets = sold_tickets + %d, status = CASE WHEN sold_tickets + %d >= total_tickets THEN 'finished' ELSE status END WHERE id = %d",
+        $updated = $wpdb->query( $wpdb->prepare(
+            "UPDATE {$table_raffles} SET status = CASE WHEN sold_tickets + %d >= total_tickets THEN 'finished' ELSE status END, sold_tickets = sold_tickets + %d WHERE id = %d",
             $quantity,
             $quantity,
             $raffle_id
         ) );
+
+        if ( false === $updated ) {
+            if ( $manage_transaction ) { $wpdb->query( 'ROLLBACK' ); }
+            return new WP_Error( 'update_failed', 'Error updating ticket availability. Please try again.' );
+        }
 
         // Invalidate the cached raffle row — sold_tickets/status changed.
         if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {

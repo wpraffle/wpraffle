@@ -324,13 +324,10 @@ class Raffle_Privacy {
             wp_send_json_error( array( 'message' => 'No email address found.' ) );
         }
 
-        // Include the WooCommerce billing email when present so the export
-        // covers both the account email and any checkout billing email.
-        // (Previously this was guarded by function_exists('wc_get_customer_email'),
-        //  but that function does not exist in WooCommerce, so the billing-email
-        //  branch was dead and only the account email was ever exported.)
-        $billing_email = get_user_meta( $user_id, 'billing_email', true );
-        $emails        = array_unique( array_filter( array( $email, $billing_email ) ) );
+        // Billing email is customer-editable and does not prove ownership.
+        // Self-service exports are scoped to the authenticated account email.
+        // Other addresses must use WordPress's email-confirmed privacy export.
+        $emails = array( $email );
 
         $export = array(
             'generated_at' => current_time( 'mysql' ),

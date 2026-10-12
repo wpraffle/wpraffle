@@ -9,6 +9,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Raffle_Setup {
 
     public static function run_migrations() {
+        global $wpdb;
+        $base = $wpdb->prefix . 'raffles';
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $base ) ) !== $base ) { return; }
         self::migration_v6_tables();
         self::migration_v7_raffle_charity_cols();
         self::migration_v8_rg_email_and_payouts();

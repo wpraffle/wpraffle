@@ -43,6 +43,16 @@ class Raffle_Lifecycle {
      * @param object $raffle Raffle row.
      * @return true|WP_Error True if thresholds are met (or none set); WP_Error if failed.
      */
+    public static function threshold_reason( $raffle ) {
+        if ( ! empty( $raffle->min_tickets ) && (int) $raffle->sold_tickets < (int) $raffle->min_tickets ) { return 'min_tickets'; }
+        if ( ! empty( $raffle->min_unique_users ) ) {
+            global $wpdb;
+            $unique = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT buyer_email) FROM {$wpdb->prefix}raffle_purchases WHERE raffle_id = %d AND payment_status = 'completed'", $raffle->id ) );
+            if ( $unique < (int) $raffle->min_unique_users ) { return 'min_users'; }
+        }
+        return '';
+    }
+
     public static function evaluate_min_thresholds( $raffle ) {
         global $wpdb;
         $table_raffles = $wpdb->prefix . 'raffles';
@@ -253,6 +263,7 @@ class Raffle_Lifecycle {
      * @return true|WP_Error
      */
     public static function relist_raffle( $raffle_id, $new_draw_date = '' ) {
+        if ( class_exists( 'Raffle_Draw_Receipts' ) && Raffle_Draw_Receipts::commitment( $raffle_id ) ) { return new WP_Error( 'committed_history', 'Create a new competition instead of relisting a committed draw.' ); }
         global $wpdb;
         $table_raffles    = $wpdb->prefix . 'raffles';
         $table_tickets    = $wpdb->prefix . 'raffle_tickets';

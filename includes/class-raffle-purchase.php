@@ -149,7 +149,7 @@ class Raffle_Purchase {
 
         if ( ! $inserted || ! $purchase_id ) {
             $wpdb->query( 'ROLLBACK' );
-            wp_send_json_error( array( 'message' => 'Error registering purchase. Please try again.' ) );
+            throw new RuntimeException( 'Error registering purchase. Please try again.' );
         }
 
             // Generate tickets (transaction managed by the caller)

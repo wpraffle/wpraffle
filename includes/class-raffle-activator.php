@@ -7,6 +7,8 @@ class Raffle_Activator {
 
     public static function activate() {
         self::create_tables();
+        if ( class_exists( 'Raffle_Setup' ) ) { Raffle_Setup::run_migrations(); }
+        if ( class_exists( 'Raffle_Feature_Schema' ) ) { Raffle_Feature_Schema::ensure(); }
         self::create_shadow_product();
         self::create_default_pages();
         update_option( 'raffle_system_version', RAFFLE_SYSTEM_VERSION );

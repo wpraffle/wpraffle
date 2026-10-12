@@ -116,6 +116,8 @@ class Raffle_WooCommerce {
         $sub = isset( $_GET['sub'] ) ? sanitize_text_field( wp_unslash( $_GET['sub'] ) ) : '';
         $raffle_tabs = array(
             ''                   => 'Tickets',
+            'overview'           => 'Overview',
+            'notifications'      => 'Notifications',
             'wins'               => 'Wins',
             'my-coupons'         => 'My Coupons',
             'responsible-gambling' => 'Responsible Gambling',
@@ -132,6 +134,12 @@ class Raffle_WooCommerce {
 		echo '</nav>';
 
         switch ( $sub ) {
+            case 'overview':
+                include RAFFLE_SYSTEM_PATH . 'public/views/account/overview.php';
+                break;
+            case 'notifications':
+                Raffle_Notifications::render();
+                break;
             case 'wins':
                 include RAFFLE_SYSTEM_PATH . 'public/views/account/wins.php';
                 break;
@@ -569,9 +577,17 @@ class Raffle_WooCommerce {
      * Hook: On payment complete, generate raffle tickets.
      */
     public function on_payment_complete( $order_id ) {
+        global $wpdb;
+        $lock = 'wpraffle_order_' . absint( $order_id );
+        if ( 1 !== (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 10)', $lock ) ) ) { return; }
+        try { $this->process_paid_order( $order_id ); }
+        finally { $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) ); }
+    }
+
+    private function process_paid_order( $order_id ) {
         $order = wc_get_order( $order_id );
 
-        if ( ! $order ) {
+        if ( ! $order || ! $order->is_paid() ) {
             return;
         }
 
@@ -589,6 +605,11 @@ class Raffle_WooCommerce {
         $table_purchases = $wpdb->prefix . 'raffle_purchases';
         $table_raffles   = $wpdb->prefix . 'raffles';
 
+        if ( ! Raffle_Feature_Schema::ensure() ) {
+            $order->add_order_note( 'Raffle allocation paused: order-item schema unavailable. Retry payment fulfillment after repairing the schema.' );
+            return;
+        }
+        $had_failure = false;
         $all_tickets_formatted = array();
         $all_instant_wins = array();
 
@@ -635,8 +656,26 @@ class Raffle_WooCommerce {
             $item->update_meta_data( '_raffle_buyer_email', $buyer_email );
             $item->save();
 
-            if ( ! $raffle_id || ! $quantity ) {
-                continue;
+            if ( ! $raffle_id || $quantity < 1 ) {
+                $had_failure = true; continue;
+            }
+
+            $existing = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}raffle_purchases WHERE wc_order_item_id = %d AND payment_status = 'completed'", $item_id ) );
+            // Recover older per-item allocations without issuing their tickets again.
+            $legacy_id = absint( $item->get_meta( '_raffle_purchase_id' ) );
+            if ( ! $existing && $legacy_id ) {
+                $existing = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}raffle_purchases WHERE id = %d AND wc_order_id = %d AND raffle_id = %d AND payment_status = 'completed' AND wc_order_item_id IS NULL", $legacy_id, $order_id, $raffle_id ) );
+                if ( $existing && false === $wpdb->update( $wpdb->prefix . 'raffle_purchases', array( 'wc_order_item_id' => $item_id ), array( 'id' => $existing->id ), array( '%d' ), array( '%d' ) ) ) { $had_failure = true; continue; }
+            }
+            if ( $existing ) {
+                $numbers = $wpdb->get_col( $wpdb->prepare( "SELECT ticket_number FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d ORDER BY ticket_number", $existing->id ) );
+                if ( count( $numbers ) !== $quantity ) { $had_failure = true; $order->add_order_note( 'Existing allocation count differs from the paid line; manual reconciliation required.' ); continue; }
+                $r = wpraffle_get_raffle( $raffle_id );
+                $digits = $r ? strlen( (string) $r->total_tickets ) : 3;
+                $formatted = array_map( static function( $n ) use ( $digits ) { return str_pad( $n, $digits, '0', STR_PAD_LEFT ); }, $numbers );
+                $item->update_meta_data( '_raffle_purchase_id', $existing->id );
+                $item->update_meta_data( '_raffle_ticket_numbers', $formatted ); $item->save();
+                $all_tickets_formatted = array_merge( $all_tickets_formatted, $formatted ); continue;
             }
 
             // FINAL VALIDATION: Re-check quantity against raffle limits before generating tickets
@@ -647,25 +686,17 @@ class Raffle_WooCommerce {
 
             if ( ! $raffle_check ) {
                 $order->add_order_note( "Raffle ID {$raffle_id} not found. Skipping ticket generation." );
-                continue;
+                $had_failure = true; continue;
             }
 
             $max_per_user = (int) $raffle_check->max_tickets_per_user;
             $available    = (int) $raffle_check->total_tickets - (int) $raffle_check->sold_tickets;
 
-            if ( $quantity > $max_per_user ) {
-                $order->add_order_note( "SECURITY: Order attempted {$quantity} tickets for raffle #{$raffle_id} (max: {$max_per_user}). Quantity clamped." );
-                $quantity = min( $quantity, $max_per_user );
-            }
-
-            if ( $quantity > $available ) {
-                $order->add_order_note( "SECURITY: Order attempted {$quantity} tickets but only {$available} available for raffle #{$raffle_id}. Quantity clamped." );
-                $quantity = min( $quantity, max( $available, 0 ) );
-            }
-
-            if ( $quantity < 1 ) {
-                $order->add_order_note( "Raffle #{$raffle_id}: No tickets available. Skipping." );
-                continue;
+            if ( $quantity > $max_per_user || $quantity > $available ) {
+                // Never silently reduce paid ticket quantities. Leave the line
+                // unfulfilled for an explicit refund/reconciliation decision.
+                $order->add_order_note( "Raffle #{$raffle_id}: Paid quantity cannot be fulfilled in full. Manual reconciliation required; no tickets issued for this line." );
+                $had_failure = true; continue;
             }
 
             // Responsible-gambling gate (final defense-in-depth at payment
@@ -677,7 +708,7 @@ class Raffle_WooCommerce {
             $rg = apply_filters( 'raffle_pre_purchase_check', true, $rg_user_id, $rg_amount, $buyer_email );
             if ( is_wp_error( $rg ) ) {
                 $order->add_order_note( sprintf(
-                    'RG: Blocked ticket generation for raffle #%d (%s). Refunding line.',
+                    'RG: Blocked ticket generation for raffle #%d (%s). Line unfulfilled; manual refund/reconciliation required.',
                     $raffle_id, $rg->get_error_code()
                 ) );
                 if ( class_exists( 'Raffle_Audit' ) ) {
@@ -687,44 +718,31 @@ class Raffle_WooCommerce {
                         'message' => $rg->get_error_message(),
                     ), 'system' );
                 }
-                continue;
+                $had_failure = true; continue;
             }
 
-            // Create purchase record now since we are in standard cart flow
-            $wpdb->insert( $table_purchases, array(
-                'raffle_id'      => $raffle_id,
-                'buyer_name'     => $buyer_name,
-                'buyer_email'    => $buyer_email,
-                'quantity'       => $quantity,
-                'total_amount'   => $item->get_total(),
-                'payment_status' => 'completed',
-                'wc_order_id'    => $order_id,
-                'purchase_date'  => current_time( 'mysql' ),
-            ), array( '%d', '%s', '%s', '%d', '%f', '%s', '%d', '%s' ) );
-
-            $purchase_id = $wpdb->insert_id;
-
-            $item->add_meta_data( '_raffle_purchase_id', $purchase_id );
-            $item->save();
-
-            // ATOMIC TRANSACTION: tickets + status update
-            $wpdb->query( 'START TRANSACTION' );
-
-            $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, $quantity, $buyer_email, false, $selected_numbers );
-
-            if ( is_wp_error( $tickets ) ) {
-                $wpdb->query( 'ROLLBACK' );
-                $order->add_order_note( 'Error generating tickets for Raffle ID ' . $raffle_id . ': ' . $tickets->get_error_message() );
-                continue;
+            $allocation = Raffle_Transactions::run( array( 'wpraffle_purchase_' . md5( strtolower( $buyer_email ) ) ), static function() use ( $wpdb, $table_raffles, $table_purchases, $raffle_id, $item_id, $order_id, $item, $quantity, $buyer_name, $buyer_email, $selected_numbers ) {
+                $locked = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_raffles} WHERE id = %d FOR UPDATE", $raffle_id ) );
+                if ( ! $locked || 'active' !== $locked->status || $locked->winner_ticket_id ||
+                     ( $locked->draw_date && $locked->draw_date <= current_time( 'mysql' ) ) ||
+                     ( $locked->start_date && $locked->start_date > current_time( 'mysql' ) ) ) { return new WP_Error( 'competition_closed', 'Competition is not open for allocation.' ); }
+                $owned = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(SUM(quantity),0) FROM {$table_purchases} WHERE raffle_id = %d AND buyer_email = %s AND payment_status IN ('completed','pending')", $raffle_id, $buyer_email ) );
+                if ( $owned + $quantity > (int) $locked->max_tickets_per_user || $quantity > (int) $locked->total_tickets - (int) $locked->sold_tickets ) { return new WP_Error( 'allocation_limit', 'Full paid quantity exceeds the remaining availability or entry limit.' ); }
+                $ok = $wpdb->insert( $table_purchases, array( 'raffle_id' => $raffle_id, 'buyer_name' => $buyer_name, 'buyer_email' => $buyer_email, 'quantity' => $quantity, 'total_amount' => $item->get_total(), 'payment_status' => 'completed', 'wc_order_id' => $order_id, 'wc_order_item_id' => $item_id, 'purchase_date' => current_time( 'mysql' ) ), array( '%d','%s','%s','%d','%f','%s','%d','%d','%s' ) );
+                if ( ! $ok || ! $wpdb->insert_id ) { return new WP_Error( 'purchase_failed', 'Could not record the paid purchase.' ); }
+                $purchase_id = $wpdb->insert_id;
+                $tickets = Raffle_Tickets::generate_tickets( $raffle_id, $purchase_id, $quantity, $buyer_email, false, $selected_numbers );
+                if ( is_wp_error( $tickets ) ) { return $tickets; }
+                $wins = Raffle_Instant_Wins::check_for_instant_wins( $raffle_id, $purchase_id, $tickets, $buyer_email );
+                return array( 'purchase_id' => $purchase_id, 'tickets' => $tickets, 'wins' => $wins );
+            } );
+            if ( is_wp_error( $allocation ) ) {
+                $had_failure = true;
+                $order->add_order_note( 'Raffle allocation failed for #' . $raffle_id . ': ' . $allocation->get_error_message() . ' Retry or reconcile/refund this line.' ); continue;
             }
-
-            // Check for instant wins (inside transaction so FOR UPDATE lock is effective)
-            $instant_wins = Raffle_Instant_Wins::check_for_instant_wins( $raffle_id, $purchase_id, $tickets, $buyer_email );
-            if ( ! empty( $instant_wins ) ) {
-                $all_instant_wins = array_merge( $all_instant_wins, $instant_wins );
-            }
-
-            $wpdb->query( 'COMMIT' );
+            $purchase_id = $allocation['purchase_id']; $tickets = $allocation['tickets']; $instant_wins = $allocation['wins'];
+            $item->update_meta_data( '_raffle_purchase_id', $purchase_id ); $item->save();
+            if ( ! empty( $instant_wins ) ) { $all_instant_wins = array_merge( $all_instant_wins, $instant_wins ); }
 
             // Assign the actual prize artefacts (coupons / gift products /
             // credit) for any wins, now that the transaction is committed.
@@ -802,7 +820,8 @@ class Raffle_WooCommerce {
         }
 
         // Mark as processed on the order
-        $order->update_meta_data( '_raffle_tickets_generated', 'yes' );
+        $order->update_meta_data( '_raffle_tickets_generated', $had_failure ? ( $all_tickets_formatted ? 'partial' : 'no' ) : 'yes' );
+        $order->update_meta_data( '_raffle_allocation_incomplete', $had_failure ? 'yes' : 'no' );
         $order->update_meta_data( '_raffle_ticket_numbers', $all_tickets_formatted );
         $order->save();
 
@@ -829,98 +848,48 @@ class Raffle_WooCommerce {
      * @param WC_Order $order    Optional preloaded order.
      */
     public function revert_order_items( $order_id, $order = null ) {
-        if ( ! $order ) {
-            $order = wc_get_order( $order_id );
-        }
-        if ( ! $order ) {
-            return;
-        }
-
-        // Only orders that have raffle items AND were already processed.
-        if ( $order->get_meta( '_has_raffle_items' ) !== 'yes' ) {
-            return;
-        }
-        if ( $order->get_meta( '_raffle_tickets_generated' ) !== 'yes' ) {
-            return;
-        }
-        // Idempotency: don't revert twice.
-        if ( $order->get_meta( '_raffle_tickets_reverted' ) === 'yes' ) {
-            return;
-        }
-
         global $wpdb;
-        $table_purchases = $wpdb->prefix . 'raffle_purchases';
-        $table_tickets   = $wpdb->prefix . 'raffle_tickets';
-        $table_raffles   = $wpdb->prefix . 'raffles';
-
-        // Reverse instant-win prizes attached to this order first (deletes
-        // generated coupons, removes gift line items, reverses credits).
-        if ( class_exists( 'Raffle_Instant_Wins' ) ) {
-            Raffle_Instant_Wins::reverse_for_order( $order_id );
+        $result = Raffle_Transactions::run( array( 'wpraffle_order_' . absint( $order_id ) ), static function() use ( $wpdb, $order_id ) {
+            $order = wc_get_order( $order_id );
+            if ( ! $order || 'yes' !== $order->get_meta( '_has_raffle_items' ) || 'yes' === $order->get_meta( '_raffle_tickets_reverted' ) || ! in_array( $order->get_meta( '_raffle_tickets_generated' ), array( 'yes', 'partial' ), true ) ) { return array(); }
+            $purchases = $wpdb->get_results( $wpdb->prepare( "SELECT id, raffle_id, quantity FROM {$wpdb->prefix}raffle_purchases WHERE wc_order_id = %d ORDER BY raffle_id, id", $order_id ) );
+            // Lock and validate every competition before changing any ticket.
+            $raffles = array();
+            foreach ( $purchases as $purchase ) {
+                $id = (int) $purchase->raffle_id;
+                if ( isset( $raffles[ $id ] ) ) { continue; }
+                $r = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d FOR UPDATE", $id ) );
+                if ( ! $r || $r->winner_ticket_id || ( class_exists( 'Raffle_Draw_Receipts' ) && Raffle_Draw_Receipts::get( $id ) ) || $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}raffle_prizes WHERE raffle_id = %d AND winner_ticket_id IS NOT NULL LIMIT 1", $id ) ) ) {
+                    return new WP_Error( 'draw_history', 'Tickets belong to a completed or missing competition. Draw history retained; manual refund reconciliation required.' );
+                }
+                $raffles[ $id ] = $r;
+            }
+            foreach ( $purchases as $purchase ) {
+                $id = (int) $purchase->raffle_id; $r = $raffles[ $id ];
+                $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}raffle_tickets WHERE purchase_id = %d", $purchase->id ) );
+                if ( false === $wpdb->delete( $wpdb->prefix . 'raffle_tickets', array( 'purchase_id' => $purchase->id ), array( '%d' ) ) || false === $wpdb->delete( $wpdb->prefix . 'raffle_purchases', array( 'id' => $purchase->id ), array( '%d' ) ) ) { return new WP_Error( 'revert_write_failed', 'Could not remove the allocation.' ); }
+                $r->sold_tickets = max( 0, (int) $r->sold_tickets - $count );
+                // Reopen only sellout closure, within its original entry window.
+                if ( 'finished' === $r->status && ( ! $r->draw_date || $r->draw_date > current_time( 'mysql' ) ) ) { $r->status = 'active'; }
+                if ( false === $wpdb->update( $wpdb->prefix . 'raffles', array( 'sold_tickets' => $r->sold_tickets, 'status' => $r->status ), array( 'id' => $id ), array( '%d', '%s' ), array( '%d' ) ) ) { return new WP_Error( 'revert_write_failed', 'Could not update the allocation count.' ); }
+            }
+            return $purchases;
+        }, static function( $purchases ) use ( $order_id ) {
+            if ( ! $purchases ) { return; }
+            if ( class_exists( 'Raffle_Instant_Wins' ) ) { Raffle_Instant_Wins::reverse_for_order( $order_id ); }
+            foreach ( $purchases as $purchase ) {
+                if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) { wpraffle_flush_raffle_cache( $purchase->raffle_id ); }
+            }
+            $order = wc_get_order( $order_id );
+            $order->update_meta_data( '_raffle_tickets_reverted', 'yes' );
+            $order->update_meta_data( '_raffle_tickets_generated', 'no' );
+            $order->save();
+            $order->add_order_note( __( 'Raffle allocations reverted. Gateway refunds must be reconciled separately.', 'wpraffle' ) );
+        } );
+        if ( is_wp_error( $result ) ) {
+            $order = wc_get_order( $order_id );
+            if ( $order ) { $order->add_order_note( $result->get_error_message() ); }
         }
-
-        // Find every purchase row created for this order and revert each one.
-        $purchases = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, raffle_id, quantity FROM {$table_purchases} WHERE wc_order_id = %d",
-            $order_id
-        ) );
-
-        foreach ( $purchases as $purchase ) {
-            $qty         = (int) $purchase->quantity;
-            $raffle_id   = (int) $purchase->raffle_id;
-            $purchase_id = (int) $purchase->id;
-
-            $wpdb->query( 'START TRANSACTION' );
-
-            // Lock the raffle row so sold_tickets decrement is atomic.
-            $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT sold_tickets FROM {$table_raffles} WHERE id = %d FOR UPDATE", $raffle_id ) );
-            if ( ! $raffle ) {
-                $wpdb->query( 'ROLLBACK' );
-                continue;
-            }
-
-            // Delete the allocated tickets for this purchase.
-            $wpdb->delete( $table_tickets, array( 'purchase_id' => $purchase_id ), array( '%d' ) );
-
-            // Decrement sold_tickets, clamped at 0, and reopen the raffle if it
-            // had been auto-closed by the sellout path.
-            $new_sold = max( 0, (int) $raffle->sold_tickets - $qty );
-            $wpdb->update(
-                $table_raffles,
-                array(
-                    'sold_tickets' => $new_sold,
-                    'status'       => 'active', // reopening; safe since draws set 'finished' explicitly.
-                ),
-                array( 'id' => $raffle_id ),
-                array( '%d', '%s' ),
-                array( '%d' )
-            );
-
-            // Delete the purchase row.
-            $wpdb->delete( $table_purchases, array( 'id' => $purchase_id ), array( '%d' ) );
-
-            $wpdb->query( 'COMMIT' );
-
-            if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {
-                wpraffle_flush_raffle_cache( $raffle_id );
-            }
-            if ( class_exists( 'Raffle_Audit' ) ) {
-                Raffle_Audit::log( $raffle_id, 'tickets_reverted', array(
-                    'order'      => $order_id,
-                    'purchase'   => $purchase_id,
-                    'quantity'   => $qty,
-                ), 'system' );
-            }
-        }
-
-        // Mark reverted so a subsequent status transition (e.g. refund after
-        // cancel) is a no-op, and clear the generated flag so a re-payment
-        // could re-issue tickets idempotently.
-        $order->update_meta_data( '_raffle_tickets_reverted', 'yes' );
-        $order->update_meta_data( '_raffle_tickets_generated', 'no' );
-        $order->save();
-
-        $order->add_order_note( __( 'Raffle tickets and instant-win prizes reverted for this order.', 'wpraffle' ) );
     }
 
     /**
@@ -936,6 +905,11 @@ class Raffle_WooCommerce {
     }
 
     public function on_order_refunded( $order_id, $refund_id = null ) {
+        $order = wc_get_order( $order_id );
+        if ( $order && $order->get_total_refunded() < (float) $order->get_total() && ! $order->has_status( 'refunded' ) ) {
+            $order->add_order_note( 'Partial refund: raffle tickets retained pending explicit line-level reconciliation.' );
+            return;
+        }
         $this->revert_order_items( $order_id );
     }
 

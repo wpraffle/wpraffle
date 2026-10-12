@@ -72,6 +72,12 @@ class Raffle_Elementor {
      * @param \Elementor\Core\DynamicTags\Manager $dynamic_tags
      */
     public function register_dynamic_tags( $dynamic_tags ) {
+        // Optional integration: do not include subclasses until the API exists.
+        if ( ! class_exists( '\Elementor\Core\DynamicTags\Data_Tag' ) ||
+             ! class_exists( '\Elementor\Modules\DynamicTags\Module' ) ) {
+            return;
+        }
+
         // Register the group once.
         $groups = \Elementor\Plugin::$instance->dynamic_tags->get_config( 'groups' );
         if ( ! is_array( $groups ) || ! isset( $groups['raffle-system'] ) ) {

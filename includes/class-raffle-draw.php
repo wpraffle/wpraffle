@@ -54,145 +54,54 @@ class Raffle_Draw {
      */
     public static function do_draw( $raffle_id ) {
         $raffle_id = absint( $raffle_id );
-        if ( ! $raffle_id ) {
-            return new WP_Error( 'invalid_raffle', 'Invalid raffle.' );
-        }
-
+        if ( ! $raffle_id ) { return new WP_Error( 'invalid_raffle', 'Invalid raffle.' ); }
         global $wpdb;
-        $table_raffles  = $wpdb->prefix . 'raffles';
-        $table_tickets  = $wpdb->prefix . 'raffle_tickets';
-
-        $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$table_raffles} WHERE id = %d",
-            $raffle_id
-        ) );
-
-        if ( ! $raffle ) {
-            return new WP_Error( 'not_found', 'Raffle not found.' );
-        }
-
-        if ( (int) $raffle->sold_tickets === 0 ) {
-            return new WP_Error( 'no_tickets', 'No tickets have been sold yet.' );
-        }
-
-        // 1.3.0 — Min-tickets / min-unique-users gate. If the operator set a
-        // minimum subscription threshold and the raffle hasn't reached it, the
-        // draw FAILS rather than running: status flips to 'failed', the
-        // fail_reason is recorded, and the wpraffle_raffle_failed action fires
-        // (which the auto-refund listener in the lifecycle class handles).
-        if ( class_exists( 'Raffle_Lifecycle' ) ) {
-            $fail = Raffle_Lifecycle::evaluate_min_thresholds( $raffle );
-            if ( is_wp_error( $fail ) ) {
-                return $fail; // Already failed + fired its action inside the helper.
+        $result = Raffle_Transactions::run( array(), static function() use ( $wpdb, $raffle_id ) {
+            $raffle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d FOR UPDATE", $raffle_id ) );
+            if ( ! $raffle ) { return new WP_Error( 'not_found', 'Raffle not found.' ); }
+            if ( $raffle->winner_ticket_id ) { return new WP_Error( 'already_drawn', 'This raffle already has a winner selected.' ); }
+            if ( ! in_array( $raffle->status, array( 'active','finished' ), true ) ) { return new WP_Error( 'not_drawable', 'This competition is not available for a draw.' ); }
+            if ( (int) $raffle->sold_tickets < 1 ) { return new WP_Error( 'no_tickets', 'No tickets have been sold yet.' ); }
+            // Evaluate thresholds while the same row lock excludes allocation.
+            $reason = class_exists( 'Raffle_Lifecycle' ) ? Raffle_Lifecycle::threshold_reason( $raffle ) : '';
+            if ( $reason ) {
+                if ( false === $wpdb->update( $wpdb->prefix . 'raffles', array( 'status' => 'failed', 'fail_reason' => $reason ), array( 'id' => $raffle_id ), array( '%s','%s' ), array( '%d' ) ) ) { return new WP_Error( 'fail_save_failed', 'Could not record the failed competition.' ); }
+                return array( 'failed' => $reason, 'raffle' => $raffle );
             }
-        }
-
-        // TRANSACTION: lock + atomic draw to prevent concurrent draws
-        $wpdb->query( 'START TRANSACTION' );
-
-        // Lock raffle row — prevents simultaneous draws
-        $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$table_raffles} WHERE id = %d FOR UPDATE",
-            $raffle_id
-        ) );
-
-        if ( $raffle->winner_ticket_id ) {
-            $wpdb->query( 'COMMIT' );
-            return new WP_Error( 'already_drawn', 'This raffle already has a winner selected.' );
-        }
-
-        // Multi-winner support
-        if ( ! empty( $raffle->multi_winner ) && (int) $raffle->number_of_winners > 1 ) {
-            // SEC-13 FIX: Keep transaction open during multi-winner draw (don't release the lock early)
-            $results = Raffle_Prizes::draw_multiple_winners( $raffle_id, (int) $raffle->number_of_winners );
-            $wpdb->query( 'COMMIT' );
-
-            // Fire draw-completed action so charity allocations + wallet payouts run.
-            if ( ! is_wp_error( $results ) && ! empty( $results ) ) {
-                $first_winner = (object) $results[0];
-                do_action( 'raffle_draw_completed', $raffle_id, $first_winner );
+            if ( ! empty( $raffle->multi_winner ) && (int) $raffle->number_of_winners > 1 ) {
+                $winners = Raffle_Prizes::draw_multiple_winners( $raffle_id, (int) $raffle->number_of_winners );
+                return is_wp_error( $winners ) ? $winners : array( 'winners' => $winners, 'raffle' => $raffle );
             }
-
-            if ( is_wp_error( $results ) ) {
-                return $results;
+            $tickets = $wpdb->get_results( $wpdb->prepare( "SELECT t.*, p.buyer_name FROM {$wpdb->prefix}raffle_tickets t JOIN {$wpdb->prefix}raffle_purchases p ON t.purchase_id = p.id WHERE t.raffle_id = %d AND p.payment_status = 'completed' ORDER BY t.id", $raffle_id ) );
+            if ( ! $tickets ) { return new WP_Error( 'no_tickets', 'No eligible tickets sold.' ); }
+            $proof = Raffle_Audit::generate_draw_proof( $raffle_id, array( 'ticket_count' => count( $tickets ) ) );
+            $selection = class_exists( 'Raffle_Draw_Receipts' ) ? Raffle_Draw_Receipts::select( $raffle_id, $tickets, 1 ) : null;
+            if ( is_wp_error( $selection ) ) { return $selection; }
+            $winner = $selection ? $selection['winners'][0] : $tickets[ random_int( 0, count( $tickets ) - 1 ) ];
+            if ( false === $wpdb->update( $wpdb->prefix . 'raffles', array( 'winner_ticket_id' => $winner->id, 'status' => 'finished' ), array( 'id' => $raffle_id ), array( '%d','%s' ), array( '%d' ) ) ) { return new WP_Error( 'draw_save_failed', 'Could not save the winner.' ); }
+            if ( class_exists( 'Raffle_Draw_Receipts' ) && ! Raffle_Draw_Receipts::persist( $raffle_id, $tickets, array( $winner ), $selection ?: array() ) ) { return new WP_Error( 'receipt_failed', 'Could not record the draw result.' ); }
+            return array( 'winner' => $winner, 'raffle' => $raffle, 'proof' => $proof );
+        } );
+        if ( is_wp_error( $result ) ) { return $result; }
+        if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) { wpraffle_flush_raffle_cache( $raffle_id ); }
+        if ( isset( $result['failed'] ) ) {
+            Raffle_Audit::log( $raffle_id, 'raffle_failed', array( 'reason' => $result['failed'] ), 'system' );
+            do_action( 'wpraffle_raffle_failed', $raffle_id, $result['failed'] );
+            return new WP_Error( 'under_subscribed', 'Raffle failed: ' . $result['failed'] . ' threshold not met.' );
+        }
+        $raffle = $result['raffle'];
+        if ( isset( $result['winners'] ) ) {
+            foreach ( $result['winners'] as $winner ) { if ( class_exists( 'Raffle_Email' ) ) { Raffle_Email::send_winner_notification( $winner['buyer_email'], $winner['buyer_name'], $raffle, $winner['ticket_number'] ); } }
+            if ( $result['winners'] ) {
+                $first = (object) $result['winners'][0]; $first->id = $first->ticket_id;
+                do_action( 'raffle_draw_completed', $raffle_id, $first );
             }
-            return array( 'winners' => $results );
+            return array( 'winners' => $result['winners'] );
         }
-
-        // Get all sold tickets
-        $tickets = $wpdb->get_results( $wpdb->prepare(
-            "SELECT t.*, p.buyer_name
-             FROM {$table_tickets} t
-             JOIN {$wpdb->prefix}raffle_purchases p ON t.purchase_id = p.id
-             WHERE t.raffle_id = %d",
-            $raffle_id
-        ) );
-
-        if ( empty( $tickets ) ) {
-            $wpdb->query( 'ROLLBACK' );
-            return new WP_Error( 'no_tickets', 'No tickets sold.' );
-        }
-
-        // Generate fairness proof
-        $proof = Raffle_Audit::generate_draw_proof( $raffle_id, array(
-            'ticket_count' => count( $tickets ),
-        ) );
-
-        // Select random winner using secure random_int()
-        $winner_index  = random_int( 0, count( $tickets ) - 1 );
-        $winner_ticket = $tickets[ $winner_index ];
-
-        // Save winner and finalize raffle (inside transaction)
-        $wpdb->update(
-            $table_raffles,
-            array(
-                'winner_ticket_id' => $winner_ticket->id,
-                'status'           => 'finished',
-            ),
-            array( 'id' => $raffle_id ),
-            array( '%d', '%s' ),
-            array( '%d' )
-        );
-
-        $wpdb->query( 'COMMIT' );
-
-        // Invalidate the cached raffle row — status flipped to finished + winner set.
-        if ( function_exists( 'wpraffle_flush_raffle_cache' ) ) {
-            wpraffle_flush_raffle_cache( $raffle_id );
-        }
-
-        // Feature expansion: fire action so charity allocations + wallet payouts run.
-        do_action( 'raffle_draw_completed', $raffle_id, $winner_ticket );
-
-        Raffle_Audit::log( $raffle_id, 'draw_completed', array(
-            'ticket' => $winner_ticket->ticket_number,
-            'proof'  => $proof,
-        ), wp_doing_ajax() ? 'admin' : 'cron' );
-
-        $total_digits = strlen( (string) $raffle->total_tickets );
-
-        // Send winner notification email
-        $winner_purchase = $wpdb->get_row( $wpdb->prepare(
-            "SELECT p.buyer_name, p.buyer_email
-             FROM {$wpdb->prefix}raffle_purchases p
-             JOIN {$wpdb->prefix}raffle_tickets t ON t.purchase_id = p.id
-             WHERE t.id = %d",
-            $winner_ticket->id
-        ) );
-        if ( $winner_purchase && class_exists( 'Raffle_Email' ) ) {
-            Raffle_Email::send_winner_notification(
-                $winner_purchase->buyer_email,
-                $winner_purchase->buyer_name,
-                $raffle,
-                $winner_ticket->ticket_number
-            );
-        }
-
-        return array(
-            'message'       => 'Winner selected!',
-            'ticket_number' => str_pad( $winner_ticket->ticket_number, $total_digits, '0', STR_PAD_LEFT ),
-            'buyer_name'    => $winner_ticket->buyer_name,
-            'buyer_email'   => $winner_ticket->buyer_email,
-        );
+        $winner = $result['winner'];
+        do_action( 'raffle_draw_completed', $raffle_id, $winner );
+        Raffle_Audit::log( $raffle_id, 'draw_completed', array( 'ticket' => $winner->ticket_number, 'proof' => $result['proof'] ), wp_doing_ajax() ? 'admin' : 'cron' );
+        if ( class_exists( 'Raffle_Email' ) ) { Raffle_Email::send_winner_notification( $winner->buyer_email, $winner->buyer_name, $raffle, $winner->ticket_number ); }
+        return array( 'message' => 'Winner selected!', 'ticket_id' => $winner->id, 'ticket_number' => str_pad( $winner->ticket_number, strlen( (string) $raffle->total_tickets ), '0', STR_PAD_LEFT ), 'buyer_name' => $winner->buyer_name, 'buyer_email' => $winner->buyer_email );
     }
 }

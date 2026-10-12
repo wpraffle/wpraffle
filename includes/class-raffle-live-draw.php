@@ -34,7 +34,7 @@ class Raffle_Live_Draw {
             "SELECT t.id, t.ticket_number, t.buyer_email, p.buyer_name
              FROM {$wpdb->prefix}raffle_tickets t
              JOIN {$wpdb->prefix}raffle_purchases p ON t.purchase_id = p.id
-             WHERE t.raffle_id = %d",
+             WHERE t.raffle_id = %d AND p.payment_status = 'completed'",
             $raffle_id
         ) );
 
@@ -88,100 +88,20 @@ class Raffle_Live_Draw {
             wp_send_json_error( 'Invalid raffle' );
         }
 
-        global $wpdb;
-        $raffle = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d",
-            $raffle_id
-        ) );
-
-        if ( ! $raffle ) {
-            wp_send_json_error( 'Raffle not found' );
+        // Share the same locked draw, eligibility checks and completion hooks.
+        $result = Raffle_Draw::do_draw( $raffle_id );
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( $result->get_error_message() );
         }
-
-        // Use multi-winner draw if enabled
-        if ( $raffle->multi_winner && $raffle->number_of_winners > 1 ) {
-            $results = Raffle_Prizes::draw_multiple_winners( $raffle_id, (int) $raffle->number_of_winners );
-            if ( is_wp_error( $results ) ) {
-                wp_send_json_error( $results->get_error_message() );
-            }
-            wp_send_json_success( array(
-                'multi'   => true,
-                'winners' => $results,
-            ) );
-        } else {
-            // SEC-3 FIX: Single winner — use transaction with FOR UPDATE lock like Raffle_Draw::handle_draw()
-            $wpdb->query( 'START TRANSACTION' );
-
-            // Lock the raffle row to prevent concurrent draws
-            $raffle_locked = $wpdb->get_row( $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}raffles WHERE id = %d FOR UPDATE",
-                $raffle_id
-            ) );
-
-            // Check if already drawn
-            if ( $raffle_locked->winner_ticket_id ) {
-                $wpdb->query( 'COMMIT' );
-                wp_send_json_error( 'This raffle already has a winner selected.' );
-            }
-
-            $tickets = $wpdb->get_results( $wpdb->prepare(
-                "SELECT t.*, p.buyer_name
-                 FROM {$wpdb->prefix}raffle_tickets t
-                 JOIN {$wpdb->prefix}raffle_purchases p ON t.purchase_id = p.id
-                 WHERE t.raffle_id = %d",
-                $raffle_id
-            ) );
-
-            if ( empty( $tickets ) ) {
-                $wpdb->query( 'ROLLBACK' );
-                wp_send_json_error( 'No tickets sold' );
-            }
-
-            $winner_index  = random_int( 0, count( $tickets ) - 1 );
-            $winner_ticket = $tickets[ $winner_index ];
-            $total_digits  = strlen( (string) $raffle_locked->total_tickets );
-
-            $wpdb->update(
-                $wpdb->prefix . 'raffles',
-                array( 'winner_ticket_id' => $winner_ticket->id, 'status' => 'finished' ),
-                array( 'id' => $raffle_id ),
-                array( '%d', '%s' ),
-                array( '%d' )
-            );
-
-            $wpdb->query( 'COMMIT' );
-
-            Raffle_Audit::log( $raffle_id, 'live_draw_completed', array(
-                'ticket' => $winner_ticket->ticket_number,
-            ), 'admin' );
-
-            // Send winner notification email
-            $winner_purchase = $wpdb->get_row( $wpdb->prepare(
-                "SELECT p.buyer_name, p.buyer_email
-                 FROM {$wpdb->prefix}raffle_purchases p
-                 JOIN {$wpdb->prefix}raffle_tickets t ON t.purchase_id = p.id
-                 WHERE t.id = %d",
-                $winner_ticket->id
-            ) );
-            if ( $winner_purchase && class_exists( 'Raffle_Email' ) ) {
-                Raffle_Email::send_winner_notification(
-                    $winner_purchase->buyer_email,
-                    $winner_purchase->buyer_name,
-                    $raffle_locked,
-                    $winner_ticket->ticket_number
-                );
-            }
-
-            wp_send_json_success( array(
-                'multi'  => false,
-                'winner' => array(
-                    'ticket_id'     => $winner_ticket->id,
-                    'ticket_number' => str_pad( $winner_ticket->ticket_number, $total_digits, '0', STR_PAD_LEFT ),
-                    'buyer_name'    => $winner_ticket->buyer_name,
-                    'buyer_email'   => $winner_ticket->buyer_email,
-                ),
-            ) );
+        if ( isset( $result['winners'] ) ) {
+            wp_send_json_success( array( 'multi' => true, 'winners' => $result['winners'] ) );
         }
+        wp_send_json_success( array( 'multi' => false, 'winner' => array(
+            'ticket_id' => $result['ticket_id'],
+            'ticket_number' => $result['ticket_number'],
+            'buyer_name' => $result['buyer_name'],
+            'buyer_email' => $result['buyer_email'],
+        ) ) );
     }
 
     /**

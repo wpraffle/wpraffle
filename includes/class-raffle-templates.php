@@ -67,14 +67,16 @@ class Raffle_Templates {
 
         // Clone the raffle data
         $data = (array) $raffle;
-        unset( $data['id'], $data['winner_ticket_id'], $data['sold_tickets'], $data['reminder_sent'], $data['wc_product_id'] );
+        unset( $data['id'], $data['winner_ticket_id'], $data['sold_tickets'], $data['reminder_sent'], $data['wc_product_id'], $data['verified_result'], $data['fail_reason'], $data['extended_from'], $data['relist_config'] );
         $data['wc_product_id'] = 0;
         $data['title']          = $raffle->title . ' (Copy)';
         $data['status']         = 'draft';
         $data['sold_tickets']   = 0;
         $data['created_at']     = current_time( 'mysql' );
 
-        $wpdb->insert( $wpdb->prefix . 'raffles', $data );
+        if ( false === $wpdb->insert( $wpdb->prefix . 'raffles', $data ) || ! $wpdb->insert_id ) {
+            return new WP_Error( 'clone_failed', 'Could not create a competition draft.' );
+        }
         $new_id = $wpdb->insert_id;
 
         // Always create a WooCommerce product for the cloned raffle
@@ -85,7 +87,11 @@ class Raffle_Templates {
                 'post_status'  => 'draft',
                 'post_type'    => 'product',
                 'post_author'  => get_current_user_id() ?: 1,
-            ) );
+            ), true );
+            if ( is_wp_error( $wc_product_id ) || ! $wc_product_id ) {
+                $wpdb->delete( $wpdb->prefix . 'raffles', array( 'id' => $new_id ), array( '%d' ) );
+                return new WP_Error( 'product_clone_failed', 'Could not create the draft product.' );
+            }
 
             if ( ! is_wp_error( $wc_product_id ) && $wc_product_id ) {
                 wp_set_object_terms( $wc_product_id, 'simple', 'product_type' );
@@ -107,13 +113,14 @@ class Raffle_Templates {
                 }
 
                 // Update the cloned raffle with the new WC product ID
-                $wpdb->update(
+                $updated = $wpdb->update(
                     $wpdb->prefix . 'raffles',
                     array( 'wc_product_id' => $wc_product_id ),
                     array( 'id' => $new_id ),
                     array( '%d' ),
                     array( '%d' )
                 );
+                if ( false === $updated ) { wp_delete_post( $wc_product_id, true ); $wpdb->delete( $wpdb->prefix . 'raffles', array( 'id' => $new_id ), array( '%d' ) ); return new WP_Error( 'product_link_failed', 'Could not link the draft product.' ); }
             }
         }
 

@@ -412,6 +412,7 @@ class Raffle_Email {
      * ──────────────────────────────────────────────────────────────────── */
 
     public static function send_no_luck( $buyer_email, $buyer_name, $raffle ) {
+        if ( class_exists( 'Raffle_Notifications' ) && ! Raffle_Notifications::allowed( $buyer_email, 'no_luck' ) ) { return; }
         if ( empty( $buyer_email ) || ! self::is_email_enabled( 'no_luck' ) ) {
             return;
         }
@@ -424,6 +425,7 @@ class Raffle_Email {
     }
 
     public static function send_raffle_started( $buyer_email, $buyer_name, $raffle ) {
+        if ( class_exists( 'Raffle_Notifications' ) && ! Raffle_Notifications::allowed( $buyer_email, 'raffle_started' ) ) { return; }
         if ( empty( $buyer_email ) || ! self::is_email_enabled( 'raffle_started' ) ) {
             return;
         }
@@ -435,6 +437,7 @@ class Raffle_Email {
     }
 
     public static function send_raffle_extended( $buyer_email, $buyer_name, $raffle, $new_draw_date ) {
+        if ( class_exists( 'Raffle_Notifications' ) && ! Raffle_Notifications::allowed( $buyer_email, 'raffle_extended' ) ) { return; }
         if ( empty( $buyer_email ) || ! self::is_email_enabled( 'raffle_extended' ) ) {
             return;
         }
@@ -542,6 +545,7 @@ class Raffle_Email {
     // ─────────────────────────────────────────────────────────────────────
 
     public static function send_draw_reminder( $buyer_email, $buyer_name, $raffle ) {
+        if ( class_exists( 'Raffle_Notifications' ) && ! Raffle_Notifications::allowed( $buyer_email, 'draw_reminder' ) ) { return; }
         $s   = self::get_settings();
         $col = $s['accent_color'];
 
