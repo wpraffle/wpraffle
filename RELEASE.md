@@ -2,6 +2,15 @@
 
 Released 11 October 2026.
 
+## Menu correction — 12 October 2026
+
+- Update Insights, Draw Verification and Recurring Raffles with matching admin cards, labelled forms and responsive layouts.
+- Format Insights sales values using the store currency and add linked raffle rows.
+
+- Fix the Insights and Draw Verification menu links.
+- Group additional pages after Templates and keep Settings last.
+- Rename Recurring competitions to Recurring Raffles.
+
 ## Changes
 
 - Lead the private account overview with the next awaiting draw and a direct My tickets action; group lifetime totals and provide a useful empty state.

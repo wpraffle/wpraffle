@@ -2,6 +2,15 @@
 
 ## [1.4.6] — 2026-10-11
 
+### Fixed — 2026-10-12
+
+- Update Insights, Draw Verification and Recurring Raffles with matching admin cards, labelled forms and responsive layouts.
+- Format Insights sales values using the store currency and add linked raffle rows.
+
+- Correct the Insights and Draw Verification administrator page links.
+- Place additional pages after Templates, with Settings last.
+- Rename Recurring competitions to Recurring Raffles and standardize page titles.
+
 - Lead the private account overview with the next awaiting draw and a direct My tickets action; group lifetime totals and provide a useful empty state.
 - Render localized, absolute draw dates with timezone-aware machine-readable values and readable translated price qualifiers.
 - Update account styles and add regression coverage for account summaries and draw dates.

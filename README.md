@@ -59,7 +59,7 @@ Customers can choose whether to receive optional reminders, results, launch and 
 
 ## Recurring competitions
 
-Raffles → Recurring competitions creates fresh drafts from a selected competition. Prize rules are copied, while entries and results are reset. Review the prize inventory, dates, prices and entry rules before publishing each draft.
+Raffles → Recurring Raffles creates fresh drafts from a selected competition. Prize rules are copied, while entries and results are reset. Review the prize inventory, dates, prices and entry rules before publishing each draft.
 
 Schedules use WordPress cron. Configure a reliable cron service for sites that require predictable processing times.
 

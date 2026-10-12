@@ -108,6 +108,34 @@ class Raffle_Admin {
             array( $this, 'render_templates_page' )
         );
 
+        // Register feature pages after the parent so WordPress assigns the correct hooks.
+        add_submenu_page(
+            'raffle-system',
+            __( 'Recurring Raffles', 'wpraffle' ),
+            __( 'Recurring Raffles', 'wpraffle' ),
+            'manage_options',
+            'wpraffle-recurring',
+            array( 'Raffle_Recurring', 'render' )
+        );
+
+        add_submenu_page(
+            'raffle-system',
+            __( 'Insights', 'wpraffle' ),
+            __( 'Insights', 'wpraffle' ),
+            'manage_options',
+            'wpraffle-insights',
+            array( 'Raffle_Insights', 'render' )
+        );
+
+        add_submenu_page(
+            'raffle-system',
+            __( 'Draw Verification', 'wpraffle' ),
+            __( 'Draw Verification', 'wpraffle' ),
+            'manage_options',
+            'wpraffle-verification',
+            array( 'Raffle_Draw_Receipts', 'settings' )
+        );
+
         // 5. Charities (links to the raffle_charity CPT list)
         add_submenu_page(
             'raffle-system',
