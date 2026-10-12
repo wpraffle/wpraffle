@@ -108,6 +108,7 @@ class Raffle_Public {
     public static function enqueue_public_assets() {
         wp_enqueue_style( 'wpraffle-icons' );
         wp_enqueue_style( 'raffle-public' );
+        wp_enqueue_style( 'raffle-design-146', RAFFLE_SYSTEM_URL . 'public/css/design-1.4.6.css', array( 'raffle-public' ), RAFFLE_SYSTEM_VERSION );
         wp_enqueue_script( 'raffle-public' );
 
         $localize_data = array(
@@ -758,62 +759,14 @@ class Raffle_Public {
     public function render_raffle_list_shortcode( $atts ) {
         $sc_defaults = self::get_sc_settings( 'raffle_list', array(
             'status'   => 'active', // 'active' (live), 'finished' (ended), 'draft', or 'all'
+            'min_price' => '', 'max_price' => '', 'sort' => 'newest', 'availability' => '', 'closing' => '', 'page' => 1, 'per_page' => 12,
             'category' => '',      // raffle_category term slug/name (v1.3.1) — '' = no filter
             'featured' => '',      // '1' to limit to is_featured=1 raffles (v1.3.1)
         ) );
 
         $atts = shortcode_atts( $sc_defaults, $atts, 'raffle_list' );
 
-        global $wpdb;
-        $table = $wpdb->prefix . 'raffles';
-        $now = current_time( 'mysql' );
-
-        // Featured filter (column on the raffles table — safe to inline as a literal).
-        $featured_sql = ( $atts['featured'] === '1' ) ? ' AND is_featured = 1 ' : '';
-
-        if ( $atts['status'] === 'active' ) {
-            $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 WHERE status = 'active'
-                   AND ( start_date IS NULL OR start_date <= %s )
-                   AND ( draw_date IS NULL OR draw_date > %s )
-                   AND sold_tickets < total_tickets
-                   {$featured_sql}
-                 ORDER BY is_featured DESC, created_at DESC",
-                $now, $now
-            ) );
-        } elseif ( $atts['status'] === 'finished' || $atts['status'] === 'ended' ) {
-            $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 WHERE status = 'finished'
-                    OR ( status = 'active' AND draw_date IS NOT NULL AND draw_date <= %s )
-                    OR ( status = 'active' AND sold_tickets >= total_tickets )
-                   {$featured_sql}
-                 ORDER BY draw_date DESC, created_at DESC",
-                $now
-            ) );
-        } elseif ( $atts['status'] === 'draft' ) {
-            $raffles = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 WHERE status = 'draft'
-                    OR ( status = 'active' AND start_date IS NOT NULL AND start_date > %s )
-                   {$featured_sql}
-                 ORDER BY created_at DESC",
-                $now
-            ) );
-        } else {
-            // SEC-19: No user input in this query — table name is from $wpdb->prefix (safe)
-            $raffles = $wpdb->get_results( "SELECT * FROM {$table} WHERE 1=1 {$featured_sql} ORDER BY is_featured DESC, created_at DESC" );
-        }
-
-        // Category filter — resolve the raffle_category term to its WC product IDs,
-        // then keep only raffles whose wc_product_id is in that set. Done in PHP
-        // (not SQL) because the taxonomy lives in WP term tables, not the raffles
-        // table, and the active-list result set is small.
-        $category = sanitize_text_field( $atts['category'] );
-        if ( $category && ! empty( $raffles ) ) {
-            $raffles = self::filter_raffles_by_category( $raffles, $category );
-        }
+        $raffles = Raffle_Discovery::query( $atts );
 
         if ( empty( $raffles ) ) {
             ob_start();

@@ -1,123 +1,177 @@
 === WPRaffle ===
 Contributors: wpraffle
-Tags: raffle, competition, competition prize, woocommerce raffle, prize draw, sweepstakes, instant win
+Tags: raffle, competition, woocommerce, instant-win
 Requires at least: 6.5
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
-WC tested up to: 10.9
-Stable tag: 1.3.0
+WC tested up to: 11.2
+Stable tag: 1.4.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-A fully-featured WooCommerce raffle & competition system. Run live competitions, manage tickets, instant wins, skill questions, postal entries, and lifecycle states.
+A WooCommerce competition plugin with ticket allocation, instant wins, single- and multi-winner draws, account entry history, and optional companion-theme integration. This release extends the supplied 1.4.0 source and preserves its existing configuration and competition records.
 
-== Description ==
+== Requirements and compatibility ==
 
-WPRaffle turns WooCommerce into a complete raffle and prize-competition platform. Run live competitions, sell tickets through WooCommerce checkout, manage instant wins, skill questions, multi-winner draws, postal/free entry routes, geo-restriction, referrals, charity fundraising, and responsible-gambling controls.
+Declared minimums remain WordPress 6.5, PHP 8.1 and WooCommerce 8.0. Elementor is optional. Integration testing for this release used WordPress 7.1.3, WooCommerce 11.2.0, Elementor 4.3.4, PHP 8.4.25 and MySQL 9.5 on a disposable installation. Minimum-version combinations and every third-party adapter were not tested. Reproducible draws require a 64-bit PHP runtime.
 
-= Key features =
+Use transactional InnoDB tables and a database that supports row locks, transactions and advisory locks. An administrator's database account must allow the additive purchase-table migration. The companion theme's new discovery, dashboard and card features should be paired with plugin 1.4.5.
 
-* **Configurable raffles** — title, description, prize image, ticket count, price, and ticket packages.
-* **WooCommerce integration** — full checkout with any payment gateway, cart, and order management.
-* **Random ticket assignment** — cryptographically secure (`random_int()`) unique ticket numbers.
-* **Instant wins** — prizes automatically awarded at specific ticket numbers.
-* **Multi-winner draws** — multiple winners with configurable prize tiers.
-* **Live draw** — animated draw page with spinning numbers and confetti.
-* **Skill questions** — multiple-choice questions required before purchase (UK Gambling Act compliance).
-* **Free / postal entry** — alternative entry route for compliance.
-* **Geo-restriction** — restrict entry by country via IP geolocation.
-* **Referral system** — unique referral codes with bonus entries.
-* **Charity fundraising** — pledge a portion of proceeds to a charity.
-* **Responsible-gambling controls** — spend limits, cooldowns, and self-exclusion.
-* **Audit log** — a full, exportable trail of purchases, draws, and admin actions with SHA-256 fairness proofs.
-* **Elementor widget pack** — 18 widgets for visually composing competition pages.
-* **Shortcodes** — drop raffles, entry lists, and lookup forms onto any page.
-* **GDPR** — full export and erasure handlers.
+== Existing functionality ==
 
-== Installation ==
+The supplied plugin already contains competition schedules and automatic draws, live draw animation, random/sequential/shuffled or selected ticket numbers, reservations, quantity bundles, skill questions, free/postal entry tools, instant-win prize groups/types, prize tiers, featured winners, referrals, coupons, charity allocation tools, country restrictions, responsible-gambling controls, email templates, analytics, audit logs, privacy tools, Elementor widgets/dynamic tags, Gutenberg blocks and compatibility adapters. These systems were retained; earlier suggestions describing them as absent were not treated as established gaps.
 
-1. Install and activate WooCommerce (required dependency).
-2. Upload the `wpraffle` folder to `/wp-content/plugins/` or install via the Plugins → Add New uploader.
-3. Activate WPRaffle through the Plugins screen.
-4. Navigate to **Raffles → Settings** to configure currency, email, pages, and legal templates.
-5. Create your first raffle under **Raffles → New Raffle**.
-6. (Optional) Place the shortcode `[raffle id="X"]` on any page, or build a page with the Elementor widgets.
+Their presence is not a legal or regulatory certification. Gateway, wallet, mail, geolocation, currency, multilingual and marketplace integrations depend on the operator's configuration and need site-specific testing.
 
-== Frequently Asked Questions ==
+== Changes in 1.4.5 ==
 
-= Does this require WooCommerce? =
+- Public JSON draw records, optional seed commitment and reproducible winner selection, plus an independent offline verifier.
+- Recurring creation of fresh competition drafts with reset results and copied prize rules.
+- Customer overview and optional email preferences inside the existing My Raffles account endpoint.
+- Public competition REST discovery and restricted account/admin endpoints.
+- Shared bounded discovery filters and administrator aggregate sales/returning-buyer insights.
+- Checked allocation transactions, order-line idempotency, free-entry serialization, locked draw thresholds and safer refund reconciliation.
+- Retained security fixes for completed-purchase draw pools, privacy ownership, early ticket closure and Elementor dynamic-tag inheritance.
+- Executable regression, WordPress integration, concurrency and browser suites.
 
-Yes. WooCommerce handles checkout, payment gateways, and order management. WPRaffle layers the raffle mechanics on top.
+See [CHANGELOG.md](CHANGELOG.md), [RELEASE.md](RELEASE.md), [AUDIT-1.4.5.md](AUDIT-1.4.5.md) and the tests directories for details.
 
-= Is a skill question required? =
+== Install or upgrade ==
 
-It's optional but recommended for UK compliance. Enable it per raffle in the UK Regulations section.
+1. Back up files and the database, and test the upgrade on staging.
+2. Install and activate WooCommerce. Upload `wpraffle-1.4.5.zip` using Plugins → Add New → Upload Plugin, replacing the previous WPRaffle folder when prompted.
+3. Activate WPRaffle. Review Raffles settings and WooCommerce checkout, mail and payment configuration. Do not publish sample competitions automatically.
+4. If using the companion theme, install `wpraffle-theme-1.4.5.zip` separately. Clear relevant application/page caches after updating both.
+5. Verify that checkout can allocate tickets and that the schema migration succeeded before opening sales.
 
-= Can entrants enter for free? =
+The additive migration introduces nullable `wc_order_item_id` and its unique index in the purchases table. Legacy rows remain nullable, and existing per-item purchase metadata is recovered when replaying older orders. A separate feature-schema flag applies the migration even when an earlier build already reported version 1.4.5. Existing tickets, IDs and prices are preserved.
 
-Yes — the free / postal entry route is built in and can be enabled per raffle, satisfying "no purchase necessary" requirements in many jurisdictions.
+Deactivation clears the new recurring cron hook. Uninstallation follows the existing explicit delete-data setting; destructive uninstall also removes new schedules, seed options and notification preference metadata. Retain backups of published commitments and result receipts.
 
-== Screenshots ==
+== Typical competition workflow ==
 
-1. The raffle product page with image, price, odds, quantity selector, countdown, and enter button.
-2. The admin dashboard with sales analytics and recent activity.
-3. The raffle create/edit screen with the friendly Bundle Builder.
-4. The audit log with structured, expandable entries and fairness proofs.
-5. The Elementor widget pack.
+Create a competition in Raffles, configure its dates, capacity, price, user limit, entry rules and optional prizes, then review its linked WooCommerce product before publishing. Existing scheduled lifecycle actions continue to use the shared draw implementation. New draws exclude purchases that are not completed. Drawing twice is rejected; failed winner/receipt writes roll back.
+
+A paid line either receives its full requested quantity or remains unfulfilled for retry/manual reconciliation. `_raffle_tickets_generated` can be `yes`, `partial` or `no`; `_raffle_allocation_incomplete=yes` identifies failures. Review order notes. This release does not silently reduce paid quantities or automatically invoke a new gateway-refund policy.
+
+Full cancellation/refund reversion is checked under order/competition locks. Completed draw history is retained for manual reconciliation. Partial monetary refunds retain allocations for an explicit line-level decision, rather than deleting all tickets in an order. Instant-win external effects and gateway reconciliation still need staging tests.
+
+== Draw verification ==
+
+Every successful new draw stores a privacy-preserving receipt containing a draw UUID, timestamp, competition ID, sorted eligible ticket numbers, ordered winners, selection algorithm and SHA-256 digest. Buyer names, emails and purchase IDs are excluded.
+
+For opt-in reproducible selection:
+
+1. Before any tickets are allocated, open Raffles → Draw verification and enable a commitment for the new competition ID.
+2. Publish `[raffle_draw_receipt raffle_id="123"]` and save its public commitment JSON before opening entries. The same shortcode shows the receipt after the draw.
+3. Run the draw normally. The receipt reveals the seed and eligible pool, allowing independent reproduction of the winning numbers.
+4. Download the receipt and use `python3 tools/verify-draw.py receipt.json commitment.json` with Python 3. The second file is the commitment saved earlier.
+
+The algorithm `sha256-rejection-v1` hashes the hex seed, sorted comma-separated pool digest and an incrementing counter; it uses unsigned 32-bit rejection sampling and removes selected numbers. Without opt-in, the existing `random_int` selection remains and the receipt checks result integrity only.
+
+Commitments cannot be replaced. A missing or mismatched private seed blocks the draw. A committed competition cannot be destructively relisted; create a new competition. Protect the seed option and database backups until the draw. Save commitment records outside the operator's database to establish that they were published beforehand. Receipt hashes are not an independent immutable ledger, fairness certificate, proof of pool completeness, or regulatory approval; an operator controlling the database can alter records and participation.
+
+== Recurring competitions ==
+
+Raffles → Recurring competitions schedules 1–52 fresh drafts from an existing source every 1–365 days, with at most 50 schedules and 10 due drafts processed per run. Drafts receive fresh review-window dates, a new product, copied instant-win groups/rules and prize tiers, with winner and purchase data reset. Previous competitions are preserved.
+
+Review prize inventory, images, pricing, dates, entry rules and eligibility before publishing each draft. The new scheduler deliberately creates drafts; it does not publish them, take payments, or reuse past entrants. Its hourly WP-Cron hook is `wpraffle_recurring_check`; traffic or a reliable system cron must trigger WordPress cron. Missed runs create one due draft per schedule, rather than a burst of historical copies. Removing a schedule retains already created drafts.
+
+== Customer account and notifications ==
+
+WooCommerce My Account → My Raffles includes Overview, Tickets and Notifications alongside existing tabs. Overview shows completed entries, competitions, wins and upcoming draws; wallet information is shown when the existing wallet API is available.
+
+Registered users can choose draw reminders, non-winning results, launch announcements and extension announcements. Defaults preserve existing optional-email behaviour. Purchase/prize/security messages remain essential; existing operator email settings still apply. Guests retain existing behaviour. Preferences use account ownership and nonce protection and are included in WordPress privacy export/erasure tools. SMS delivery is not implemented or configured in this release; it requires a provider, phone-verification and consent design.
+
+== Discovery and shortcodes ==
+
+| Shortcode | Purpose |
+|---|---|
+| `[raffle id="123"]` | Existing competition/entry interface |
+| `[raffle_list columns="3" per_page="12"]` | Bounded competition grid |
+| `[raffle_ended_list columns="3"]` | Existing ended competition listing |
+| `[raffle_lookup]` | Existing guest lookup with emailed secure link |
+| `[raffle_live_draw raffle_id="123"]` | Existing animated live draw |
+| `[raffle_entry_list raffle_id="123"]` | Existing configured ticket/entry list |
+| `[raffle_charities columns="3"]` | Existing charity directory |
+| `[raffle_refer raffle_id="123"]` | Existing referral display |
+| `[raffle_draw_receipt raffle_id="123"]` | Commitment before the draw; receipt afterward |
+
+`raffle_list` supports `category`, `status`, `min_price`, `max_price`, `sort`, `availability`, `closing`, `page` and `per_page`. Sort: newest, closing, price_asc, price_desc, remaining. Availability: available or sold_out. Closing: 24h or 7d. Page size is capped at 48. New theme discovery also provides category, upcoming/ended status and AJAX enhancement. Published, unprotected linked products are required for public results.
+
+== REST API ==
+
+Base path: `/wp-json/wpraffle/v1` (or WordPress's equivalent REST URL when pretty permalinks are disabled).
+
+| Method/path | Access and purpose |
+|---|---|
+| GET `/competitions` | Public bounded discovery, same filter keys; `X-WP-Total` and `X-WP-TotalPages` |
+| GET `/competitions/{id}` | Public whitelisted competition data |
+| GET `/competitions/{id}/commitment` | Public seed digest/timestamp; never the private seed |
+| GET `/competitions/{id}/receipt` | Public validated result JSON |
+| GET `/me/entries?page=1` | Authenticated user's own account-email entries, 25 per page; no-store |
+| GET `/templates` | Administrator (`manage_options`) only |
+| POST `/competitions/{id}/clone` | Administrator only; creates a draft |
+
+Use WordPress cookie authentication with a REST nonce, or configured Application Password authentication over HTTPS. No new API key store was added. Drafts/private/password-protected linked products and buyer details are excluded from public responses. There is no REST endpoint for purchasing tickets, running draws, or looking up another buyer's email. WordPress/plugins may further restrict REST access; configure ordinary edge caching/rate limits for traffic needs.
+
+== Insights ==
+
+Raffles → Insights aggregates completed purchases: gross amounts, tickets, purchase counts, unique/returning buyers, average purchase value and a bounded top-competition table. This complements existing analytics. It does not add cookies or advertising attribution and does not calculate net profit, deleted/refunded historical revenue, full conversion funnels or cohorts. Amounts are meaningful only in the source store's currency model.
+
+== Developers, testing and security ==
+
+New public filters include `wpraffle_card_fields` (whitelisted card-part order) and the theme's private preview settings filter. Existing hooks/adapters remain. Do not call internal draw/purchase helpers from an unauthenticated endpoint; endpoint callers must enforce capabilities/nonces.
+
+Run the supplied unit suites from `tests/`. WordPress integration/concurrency tests are opt-in and require a disposable database explicitly marked in wp-config.php; see `tests/integration/README.md`. They create and delete fixtures. Theme browser tests cover filters, preview, mobile layout and keyboard focus. The offline verifier needs only the Python standard library.
+
+Release checks include PHP/JavaScript syntax, unit/security suites, actual WordPress activation/integration, duplicate payment callbacks, injected write rollback, real simultaneous free-entry/draw/capacity requests and headless Chrome. PHPCS/PHPStan and the minimum-version matrix were unavailable. Outbound HTTP and email were suppressed; no real charges, SMS, emails or production-site writes were performed.
+
+Retest your gateways/refunds, coupons/gifts/wallets, reservations, postal entries, translations/currencies, cron timing, mail delivery, existing-site upgrades and accessibility with real content. Bundled third-party components were preserved, not independently audited. Server crashes and remote instant-win effects need operational reconciliation; transaction checks do not provide distributed exactly-once guarantees.
+
+== Privacy, updates and license ==
+
+Account self-service exports use the authenticated account email, never customer-editable billing email as proof of ownership. Public draw JSON contains ticket numbers only; other existing public entry/winner displays depend on operator settings and consent. Review the existing activation tracking, privacy and update settings before enabling optional services.
+
+Use controlled releases and staging validation for updates; replacing an earlier 1.4.5 build requires uploading these revised ZIPs because the version number is intentionally unchanged. GPL-2.0-or-later; see bundled license notices. No guarantee of competition legality or independent draw certification is implied.
 
 == Changelog ==
 
-= 1.3.0 =
-* Added: Full instant-win prize engine — coupon, gift-product, site-credit (pushed to the live WooWallet/TerraWallet balance), physical, and custom prize types, with prize groups and automatic assignment + reversal on payment / refund.
-* Added: Raffle lifecycle — min-tickets / min-unique-users thresholds with auto-fail and opt-in auto-refund, extend (push draw date), and relist (manual or scheduled, reusing the same raffle id + permalink).
-* Added: Expanded email suite — standalone no-luck, instant-win, raffle-started/extended, failed-participant, plus admin notifications (sale/draw/winner/failed/started/relisted), with per-email enable toggles and configurable admin recipients.
-* Added: Ticket PDF attachment on the purchase-confirmation email.
-* Added: Compatibility layer — auto-activating adapters for WPML/WCML, Polylang, CURCY Multi-Currency, Stripe, Square, WooPayments, Smart Coupons, Dokan/WC Vendors, Yoast/Rank Math, and page-cache plugins; new Compatibility settings tab.
-* Added: CSV import/export of tickets and instant-win rules/prize groups, with an admin import form and per-raffle export buttons.
-* Added: Admin order-item "View Tickets" UI for per-order ticket management.
-* Added: Skill-question time limit and attempt limit (compliance-grade).
-* Added: Ticket numbering modes — random, sequential, or shuffled, with per-raffle prefix/suffix and start number.
-* Added: Gutenberg blocks (countdown, progress, entry button, instant wins, raffle list) — no build step required.
-* Added: Operator-facing admin form fields for every new raffle column (lifecycle, Q&A limits, numbering, instant-win prize-type selector) with server-side validation, plus Extend/Relist buttons and CSV import on the Raffle Details page.
-* Added: "My Coupons" account tab in My Account → My Raffles showing won coupons with click-to-copy codes, expiry, and Ready/Used badges.
-* Added: Manual wallet/credit payout re-sync — "Sync Wallet Payouts" on Raffle Details + "Sync All Wallet Payouts" under Settings → Sync, a true reconciliation that catches orphaned won-but-unpaid credit prizes. Idempotent and safe to run repeatedly.
-* Added: Featured winners — flag a finished raffle's winner as featured, upload a winner photo, and add an optional testimonial. Stored in a queryable `raffle_featured_winners` table for a future winners carousel. Auto-saves via AJAX.
-* Fixed: Cancelling, refunding, or failing an order now reverts the allocated tickets and instant-win prizes (previously there was no reversion path at all).
-* Fixed: Raffle not saving after upgrade — migrations now run before the form handler on the same request, plus a column-guard so a missing optional column can never break the save.
-* Fixed: Missing payouts/credits tables — a flag-independent backstop now creates `raffle_payouts` / `raffle_credits` if the v6 dbDelta run silently no-op'd.
-* Fixed: Instant-win credit prizes now reach the live WooWallet/TerraWallet balance (previously only the internal ledger was updated).
-* Fixed: Silent instant-win assignment failures now log to the audit log (`instant_win_assign_failed`) instead of being swallowed.
-* Fixed: Winners page Instant Wins tab now shows wins across all raffles (claimed live during a competition), not just ended ones.
+= 1.4.6 =
 
-= 1.2.2 =
-* Added: Server-side form validation with inline error messages on the raffle create/edit form and key settings tabs.
-* Added: Draw-winner confirmation dialog (accessible modal replacing the native browser confirm).
-* Added: Structured audit-log rendering — labelled details, expandable rows, copyable fairness proof, and an actor/user filter.
-* Added: Raffle ID control on every single-raffle Elementor widget, plus editor previews and modern styling controls.
-* Fixed: Four non-functional Elementor widgets (Enter Button, Modal, Tabs, Question) now work.
-* Fixed: Instant Wins `show_ticket_numbers` control now renders ticket numbers.
-* Fixed: Quantity widget now preserves bundle metadata via `wpraffle_normalise_packages()`.
-* Changed: Elementor widget registration is now a glob-based autoloader; widget data access goes through the cached `wpraffle_get_raffle()` helper.
+- Lead the private account overview with the next awaiting draw and a direct My tickets action; group lifetime totals and provide a useful empty state.
+- Render localized, absolute draw dates with timezone-aware machine-readable values and readable translated price qualifiers.
+- Add component-scoped account styles and meaningful design integration tests; preserve the 1.4.5 purchase, draw, verification, migration and privacy safeguards.
 
-= 1.2.1 =
-* Fixed: "YOU WON!" badge never appeared in My Raffles (row-id vs ticket-number mismatch).
-* Fixed: Lookup form now sends the promised tokenised secure link.
-* Added: Odds-of-winning display, pending-purchase visibility, SOLD OUT/ENDING SOON badges, friendly Bundle Builder, admin list search/filter/pagination, buyers CSV export.
 
-= 1.2.0 =
-* Added: Charity fundraising, credits/wallet integration, responsible-gambling controls, account area, and a styling preset system.
+= 1.4.5 =
 
-= 1.1.0 =
-* Added: Live draw, multi-winner draws, templates & clone, ticket reservations, and the audit log.
+### Added
+- Privacy-preserving draw receipts and opt-in pre-entry seed commitments, reproducible single/multi-winner selection, public commitment/result JSON and an offline Python verifier.
+- Recurring fresh competition drafts with copied/reset instant-win groups and prize tiers; bounded schedules and hourly cron cleanup.
+- Account Overview and optional lifecycle email preferences, with WordPress privacy export/erasure integration.
+- Bounded public competition REST discovery, own-account entries and administrator template/draft-clone endpoints.
+- Shared price/category/date/status/availability/sort discovery and aggregate completed-purchase insights.
+- Reusable isolated integration/concurrency regression suites alongside existing PHP/Elementor/privacy tests.
 
-= 1.0.0 =
-* Initial release.
+### Fixed
+- Use the shared row-locked draw for normal/live draws; completed-purchase eligibility and threshold evaluation under the draw lock.
+- Roll back failed winner/receipt/counter/transaction writes and suppress post-commit side effects after failed transactions.
+- Serialize free entries by buyer and IP, recheck quotas/throttles after locks, and commit purchase/ticket/free-entry records together.
+- Serialize payment callbacks, uniquely identify WooCommerce order lines, recover legacy per-item allocations and preserve retryable partial failures without reducing paid quantity.
+- Transactional full-allocation reversion; retain completed draw history and allocations after partial monetary refunds for manual reconciliation.
+- Fix premature sellout from SQL assignment ordering, direct purchase lock cleanup and authenticated privacy email ownership.
+- Fix Elementor dynamic tags to use Core\DynamicTags\Data_Tag and safely skip unavailable APIs.
+- Reset clone runtime/results data and return errors for failed draft/product creation.
+
+### Upgrade notes
+- Add nullable wc_order_item_id and a unique order-line index; retain legacy rows. A separate feature-schema flag supports upgrades from an earlier 1.4.5 build.
+- Commitments are optional; legacy draws retain random_int. Recurrence creates drafts for review, not automatic publication.
+- SMS, full funnel/profit/attribution reporting, independent fairness certification and production gateway validation remain outside this release.
+
 
 == Upgrade Notice ==
 
-= 1.2.2 =
-Admin polish (form validation, draw confirmation dialog, structured audit log) and a full rebuild of the Elementor widget pack. Drop-in upgrade — no database migration required.
-
-= 1.2.1 =
-Fixes the "YOU WON!" detection bug and adds odds-of-winning, a friendly Bundle Builder, and lookup email delivery. Drop-in upgrade.
+= 1.4.5 =
+Back up and stage both packages. Additive purchase order-line migration; manually replace earlier 1.4.5 builds. See RELEASE.md and AUDIT-1.4.5.md.

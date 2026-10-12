@@ -3,7 +3,7 @@
  * Plugin Name: WPRaffle
  * Plugin URI:  https://github.com/wpraffle/wpraffle
  * Description: A fully-featured WooCommerce raffle & competition system. Run live competitions, manage tickets, instant wins, skill questions, postal entries, and lifecycle states — all for free.
- * Version:     1.3.1
+ * Version:     1.4.6
  * Author:      WPRaffle
  * Author URI:  https://github.com/wpraffle
  * Text Domain: wpraffle
@@ -13,14 +13,14 @@
  * Requires at least: 6.5
  * Requires PHP: 8.1
  * WC requires at least: 8.0
- * WC tested up to: 10.9
+ * WC tested up to: 11.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RAFFLE_SYSTEM_VERSION', '1.3.1' );
+define( 'RAFFLE_SYSTEM_VERSION', '1.4.6' );
 define( 'RAFFLE_SYSTEM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RAFFLE_SYSTEM_URL', plugin_dir_url( __FILE__ ) );
 
@@ -98,6 +98,7 @@ require_once RAFFLE_SYSTEM_PATH . 'admin/class-raffle-analytics.php';
 require_once RAFFLE_SYSTEM_PATH . 'public/class-raffle-public.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-dashboard-widgets.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-elementor.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-integration.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-updater.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-privacy.php';
 require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-rate-limiter.php';
@@ -121,6 +122,28 @@ require_once RAFFLE_SYSTEM_PATH . 'includes/blocks/class-raffle-blocks.php';
 if ( file_exists( RAFFLE_SYSTEM_PATH . 'includes/compatibility/class-raffle-compat-loader.php' ) ) {
     require_once RAFFLE_SYSTEM_PATH . 'includes/compatibility/class-raffle-compat-loader.php';
 }
+
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-transactions.php';
+
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-notifications.php';
+add_action( 'admin_post_wpraffle_notifications', array( 'Raffle_Notifications', 'save' ) );
+
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-recurring.php';
+add_action( 'init', array( 'Raffle_Recurring', 'init' ) );
+
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-feature-schema.php';
+add_action( 'init', array( 'Raffle_Feature_Schema', 'ensure' ), 5 );
+
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-insights.php';
+Raffle_Insights::init();
+
+// 1.4.5: bounded discovery, public verification records and authenticated REST.
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-discovery.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-draw-receipts.php';
+require_once RAFFLE_SYSTEM_PATH . 'includes/class-raffle-rest.php';
+Raffle_Draw_Receipts::init();
+add_action( 'rest_api_init', array( 'Raffle_REST', 'register' ) );
+add_shortcode( 'raffle_draw_receipt', array( 'Raffle_Draw_Receipts', 'render' ) );
 
 // Declare compatibility with WooCommerce High-Performance Order Storage (HPOS).
 // WPRaffle stores its own data in custom tables and uses WooCommerce only for
@@ -147,6 +170,7 @@ register_deactivation_hook( __FILE__, function() {
         'wpraffle_check_updates',
         'wpraffle_relist_check',
         'wpraffle_started_notify',
+        'wpraffle_recurring_check',
     ) as $event ) {
         $ts = wp_next_scheduled( $event );
         while ( $ts ) {
@@ -809,4 +833,3 @@ function wpraffle_parse_consolation_config( $config_json ) {
         'expiry_days' => 30,
     ) );
 }
-

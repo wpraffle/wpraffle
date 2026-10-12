@@ -57,6 +57,8 @@ $options = array(
     'raffle_rate_limit_log',
     'wpraffle_pages',
     'wpraffle_settings',
+    'wpraffle_recurring_schedules',
+    'wpraffle_schema_145_order_items',
     'wpraffle_email_settings',
     'wpraffle_shortcode_settings',
     'wpraffle_update_settings',
@@ -65,6 +67,7 @@ $options = array(
     'wpraffle_install_id',
     'wpraffle_activation_ping_sent',
     'wpraffle_tracking_opted_out',
+    'wpraffle_tracking_enabled',
 );
 
 foreach ( $options as $option ) {
@@ -88,6 +91,7 @@ $cron_hooks = array(
     'raffle_cleanup_reservations',
     'raffle_draw_reminder_cron',
     'wpraffle_check_updates',
+    'wpraffle_recurring_check',
 );
 
 foreach ( $cron_hooks as $hook ) {
@@ -113,3 +117,7 @@ $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = '_raffle_tickets_g
 
 // ── Flush rewrite rules ──
 flush_rewrite_rules();
+
+// Remove feature data only within the explicit destructive uninstall path.
+$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'wpraffle\_draw\_seed\_%'" );
+delete_metadata( 'user', 0, 'wpraffle_notification_preferences', '', true );
